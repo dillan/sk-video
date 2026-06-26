@@ -19,7 +19,7 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "prepare": "simple-git-hooks || true",
+    "prepare": "node scripts/prepare.mjs",
     "prepublishOnly": "npm run build"
   },
   "simple-git-hooks": {
