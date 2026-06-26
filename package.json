@@ -44,6 +44,7 @@
     "@signalk/server-api": "^2.22.0",
     "@types/adm-zip": "^0.5.8",
     "@types/express": "^5.0.6",
+    "@types/multicast-dns": "^7.2.4",
     "@types/node": "^20.16.0",
     "eslint": "^9.13.0",
     "globals": "^15.11.0",
@@ -55,6 +56,7 @@
   },
   "dependencies": {
     "adm-zip": "^0.5.17",
+    "multicast-dns": "^7.2.5",
     "onvif": "^0.8.1"
   }
 }
