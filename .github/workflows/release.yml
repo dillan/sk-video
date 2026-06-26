@@ -4,6 +4,8 @@ on:
   push:
     branches: [main]
 
+# OIDC trusted publishing to npm — no NPM_TOKEN. The id-token permission lets npm verify the
+# build came from this repo + workflow. See CONTRIBUTING.md "Releases" for the one-time npm setup.
 permissions:
   contents: write
   issues: write
@@ -13,22 +15,27 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
-    # Skip the release commit semantic-release makes ("[skip ci]" also guards, this is a belt + braces).
-    if: "!contains(github.event.head_commit.message, 'chore(release):')"
+    # Dormant until releasing is switched on: set the repo variable RELEASE_ENABLED=true once the
+    # npm trusted publisher is configured (see CONTRIBUTING.md). The chore(release) guard stops the
+    # release commit semantic-release pushes from triggering another run ("[skip ci]" also guards).
+    if: >-
+      vars.RELEASE_ENABLED == 'true' &&
+      !contains(github.event.head_commit.message, 'chore(release):')
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
           registry-url: https://registry.npmjs.org
+      # Trusted publishing needs npm CLI >= 11.5.1; setup-node ships an older npm with Node 24.
+      - run: npm install -g npm@latest
       - run: npm ci
       - run: npm run build
       - run: npx semantic-release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-          NPM_CONFIG_PROVENANCE: "true"
+          NPM_CONFIG_PROVENANCE: 'true'
