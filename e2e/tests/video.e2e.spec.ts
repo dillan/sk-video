@@ -123,6 +123,24 @@ test.describe('sk-video plugin live contract', () => {
     expect(second.status()).toBe(404);
   });
 
+  test('deleting a camera also clears its stored credentials', async ({ request }) => {
+    const id = 'cleanup-cam';
+    await request.put(`${BASE}/signalk/v2/api/resources/cameras/${id}`, {
+      data: { name: 'Cleanup', enabled: false, source: { scheme: 'rtsp', host: 'mediamtx' } },
+    });
+    const post = await request.post(`${BASE}/plugins/sk-video/cameras/${id}/credentials`, {
+      data: { username: 'u', password: 'temp-secret' },
+    });
+    expect(post.status()).toBe(204);
+
+    // Removing the camera resource must also drop its credentials server-side.
+    await request.delete(`${BASE}/signalk/v2/api/resources/cameras/${id}`);
+
+    // If the credentials were cleared with the camera, a delete now finds nothing (404).
+    const after = await request.delete(`${BASE}/plugins/sk-video/cameras/${id}/credentials`);
+    expect(after.status()).toBe(404);
+  });
+
   test('proxies the HLS sub-resources referenced by the master playlist', async ({ request }) => {
     const masterUrl = `${BASE}/plugins/sk-video/cameras/${CAMERA}/stream.m3u8`;
     await waitFor200(request, masterUrl);

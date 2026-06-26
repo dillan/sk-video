@@ -57,4 +57,18 @@ describe('CredentialStore', () => {
     expect(store.get('foredeck')).toBeNull();
     expect(store.delete('foredeck')).toBe(false);
   });
+
+  it('rejects an over-long username or password and does not persist it', () => {
+    const tooLong = 'x'.repeat(1025);
+    expect(() => store.set('a', { username: tooLong })).toThrow();
+    expect(() => store.set('a', { password: tooLong })).toThrow();
+    expect(persistence.saves).toBe(0);
+    expect(store.get('a')).toBeNull();
+  });
+
+  it('accepts a username and password at the length limit', () => {
+    const max = 'x'.repeat(1024);
+    store.set('a', { username: max, password: max });
+    expect(store.get('a')).toEqual({ username: max, password: max });
+  });
 });

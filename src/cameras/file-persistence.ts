@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import type { ICamera } from './camera-validation';
 import type { ICameraPersistence } from './camera-store';
@@ -17,10 +17,19 @@ function readJsonObject<T>(file: string): Record<string, T> {
   }
 }
 
-/** Writes a JSON object to a file with owner-only permissions. */
+/**
+ * Writes a JSON object to a file with owner-only permissions, atomically. We write a temp file and
+ * rename it into place so a crash mid-write can never truncate the existing file (losing every stored
+ * credential). `mode` only applies when writeFileSync *creates* the file, so we also chmod the temp
+ * explicitly — that guarantees 0o600 even if a temp was left from a previous run, and the rename
+ * carries those perms onto the destination regardless of any looser pre-existing mode.
+ */
 function writeJsonObject(file: string, value: unknown): void {
   mkdirSync(dirname(file), { recursive: true });
-  writeFileSync(file, JSON.stringify(value, null, 2), { mode: 0o600 });
+  const tmp = `${file}.tmp`;
+  writeFileSync(tmp, JSON.stringify(value, null, 2), { mode: 0o600 });
+  chmodSync(tmp, 0o600);
+  renameSync(tmp, file);
 }
 
 /**

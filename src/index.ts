@@ -103,6 +103,9 @@ export = function (app: ServerAPI): Plugin {
             },
             async deleteResource(id: string) {
               await base.deleteResource(id);
+              // Drop the camera's stored credentials too, so a deleted camera never leaves an
+              // orphaned secret behind (and a later camera reusing the id can't inherit it).
+              credentials?.delete(id);
               ptz?.invalidate(id);
               scheduleSync();
             },

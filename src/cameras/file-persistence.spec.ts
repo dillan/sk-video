@@ -186,6 +186,29 @@ describe('FileCredentialPersistence', () => {
     const reopened = new FileCredentialPersistence(dir);
     expect(reopened.load()).toEqual({ foredeck: credA, mast: credB });
   });
+
+  // SECURITY-CRITICAL: `mode` only applies when writeFileSync CREATES the file. A credentials file
+  // that already exists with looser permissions (e.g. restored from a backup, or left by an older
+  // build) must be re-tightened to 0o600 on the next save, not left world-readable.
+  it('save(): re-tightens permissions when overwriting a pre-existing loose file', () => {
+    const dir = freshDir();
+    const file = join(dir, 'credentials.json');
+    writeFileSync(file, '{}', { mode: 0o644 });
+    if (process.platform !== 'win32') {
+      expect(statSync(file).mode & 0o777).toBe(0o644); // sanity: it really is loose to begin with
+    }
+    new FileCredentialPersistence(dir).save({ foredeck: credA });
+    expectOwnerOnly(file);
+  });
+
+  it('save(): writes atomically and leaves no temp file behind', () => {
+    const dir = freshDir();
+    new FileCredentialPersistence(dir).save({ foredeck: credA });
+    expect(existsSync(join(dir, 'credentials.json.tmp'))).toBe(false);
+    expect(JSON.parse(readFileSync(join(dir, 'credentials.json'), 'utf8'))).toEqual({
+      foredeck: credA,
+    });
+  });
 });
 
 describe('camera / credential isolation over a shared dataDir', () => {
