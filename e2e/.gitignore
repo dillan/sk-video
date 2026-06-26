@@ -1,0 +1,11 @@
+node_modules/
+test-results/
+playwright-report/
+
+# Signal K writes runtime files into the mounted config dir; commit only the intended seed config.
+signalk-config/*
+!signalk-config/settings.json
+!signalk-config/plugin-config-data/
+signalk-config/plugin-config-data/*
+!signalk-config/plugin-config-data/sk-video.json
+!signalk-config/plugin-config-data/kip.json

@@ -1,0 +1,112 @@
+import { test, expect, type APIRequestContext } from '@playwright/test';
+
+const BASE = process.env.SIGNALK_URL || 'http://localhost:3000';
+const CAMERA = 'testcam';
+
+/** A minimal valid MP4 (ftyp + isom brand) padded, so the plugin accepts the upload by magic bytes. */
+function tinyMp4(size = 4096): Buffer {
+  const head = Buffer.from([0, 0, 0, 0x20, ...Buffer.from('ftypisom')]);
+  return Buffer.concat([head, Buffer.alloc(size - head.length, 7)]);
+}
+
+/** Polls an endpoint until it returns 200 (go2rtc needs a few seconds to warm up the HLS muxer). */
+async function waitFor200(request: APIRequestContext, url: string, timeoutMs = 45_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  let last = 0;
+  while (Date.now() < deadline) {
+    const res = await request.get(url).catch(() => null);
+    last = res?.status() ?? 0;
+    if (last === 200) return;
+    await new Promise((r) => setTimeout(r, 2000));
+  }
+  throw new Error(`timed out waiting for 200 from ${url} (last status ${last})`);
+}
+
+test.beforeAll(async ({ request }) => {
+  // Ensure the camera resource exists (idempotent — the harness seed may already have run).
+  await request
+    .put(`${BASE}/signalk/v2/api/resources/cameras/${CAMERA}`, {
+      data: {
+        name: 'Test Camera',
+        enabled: true,
+        source: { scheme: 'rtsp', host: 'mediamtx', port: 8554, path: '/cam' }
+      }
+    })
+    .catch(() => undefined);
+});
+
+test.describe('sk-video plugin live contract', () => {
+  test('reports ready status', async ({ request }) => {
+    const res = await request.get(`${BASE}/plugins/sk-video/status`);
+    expect(res.ok()).toBeTruthy();
+    const body = await res.json();
+    expect(body.ready).toBe(true);
+  });
+
+  test('serves the camera as browser HLS through the gateway', async ({ request }) => {
+    const url = `${BASE}/plugins/sk-video/cameras/${CAMERA}/stream.m3u8`;
+    await waitFor200(request, url);
+    const res = await request.get(url);
+    expect(res.status()).toBe(200);
+    expect(await res.text()).toContain('#EXTM3U');
+  });
+
+  test('returns a JPEG snapshot frame', async ({ request }) => {
+    const url = `${BASE}/plugins/sk-video/cameras/${CAMERA}/frame.jpeg`;
+    // go2rtc transcodes the frame with ffmpeg; poll until a non-empty JPEG comes back.
+    const deadline = Date.now() + 45_000;
+    let body = Buffer.alloc(0);
+    while (Date.now() < deadline) {
+      const res = await request.get(url).catch(() => null);
+      if (res?.status() === 200) {
+        body = Buffer.from(await res.body());
+        if (body.length > 0) break;
+      }
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+    expect(body.length).toBeGreaterThan(0);
+    expect(body[0]).toBe(0xff); // JPEG SOI
+    expect(body[1]).toBe(0xd8);
+  });
+
+  test('discovery endpoint responds (candidates depend on multicast)', async ({ request }) => {
+    const res = await request.get(`${BASE}/plugins/sk-video/cameras/discover`);
+    // 200 with an array, or 429 if a scan is already in flight — both are valid.
+    expect([200, 429]).toContain(res.status());
+    if (res.status() === 200) {
+      expect(Array.isArray((await res.json()).cameras)).toBe(true);
+    }
+  });
+
+  test('uploads a video and serves it back with HTTP Range', async ({ request }) => {
+    const upload = await request.post(`${BASE}/plugins/sk-video/videos`, {
+      headers: { 'Content-Type': 'video/mp4', 'X-Filename': 'e2e-clip.mp4' },
+      data: tinyMp4()
+    });
+    expect(upload.status()).toBe(201);
+    const asset = await upload.json();
+    expect(asset.contentType).toBe('video/mp4');
+
+    const list = await request.get(`${BASE}/plugins/sk-video/videos`);
+    expect((await list.json()).videos.some((v: { id: string }) => v.id === asset.id)).toBe(true);
+
+    const ranged = await request.get(`${BASE}/plugins/sk-video/videos/${asset.id}`, {
+      headers: { Range: 'bytes=0-9' }
+    });
+    expect(ranged.status()).toBe(206);
+    expect(ranged.headers()['content-range']).toMatch(/^bytes 0-9\//);
+
+    // Clean up so reruns stay deterministic.
+    await request.delete(`${BASE}/plugins/sk-video/videos/${asset.id}`);
+  });
+});
+
+test.describe('KIP webapp', () => {
+  test('loads the KIP shell (skipped if KIP is not built/mounted)', async ({ page }) => {
+    const res = await page.goto('/@mxtommy/kip').catch(() => null);
+    test.skip(!res || !res.ok(), 'KIP webapp not mounted (set KIP_PATH and rebuild the stack)');
+    const hasApp = await page.locator('app-root').count().catch(() => 0);
+    test.skip(hasApp === 0, 'KIP not built — run ./run.sh to build the webapp');
+    await expect(page.locator('app-root')).toBeAttached();
+  });
+});

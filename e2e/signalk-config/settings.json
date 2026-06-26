@@ -1,0 +1,22 @@
+{
+  "interfaces": {},
+  "ssl": false,
+  "pipedProviders": [],
+  "vessel": {
+    "name": "Test Vessel",
+    "mmsi": "000000000"
+  },
+  "courseApi": {
+    "apiOnly": false
+  },
+  "resourcesApi": {
+    "defaultProviders": {
+      "routes": "resources-provider",
+      "waypoints": "resources-provider",
+      "regions": "resources-provider",
+      "notes": "resources-provider",
+      "charts": "resources-provider",
+      "cameras": "sk-video"
+    }
+  }
+}
