@@ -11,8 +11,17 @@ export interface ICameraCredentials {
  * safe allow-list, this can never produce a dangerous go2rtc source such as `exec:` or `ffmpeg:`.
  */
 export function buildGo2rtcSource(camera: ICamera, creds?: ICameraCredentials): string {
-  void camera;
-  void creds;
-  // RED stub.
-  return '';
+  const { scheme, host, port, path } = camera.source;
+
+  let userinfo = '';
+  if (creds?.username) {
+    const user = encodeURIComponent(creds.username);
+    const pass = encodeURIComponent(creds.password ?? '');
+    userinfo = `${user}:${pass}@`;
+  }
+
+  const portPart = port !== undefined ? `:${port}` : '';
+  const pathPart = path ?? '';
+
+  return `${scheme}://${userinfo}${host}${portPart}${pathPart}`;
 }
