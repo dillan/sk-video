@@ -12,6 +12,8 @@ import { Go2rtcBinaryManager } from './gateway/go2rtc-binary-manager';
 import { Go2rtcProcess } from './gateway/go2rtc-process';
 import { Go2rtcGateway } from './gateway/go2rtc-gateway';
 import { registerProxyRoutes } from './gateway/go2rtc-proxy-routes';
+import { PtzManager } from './onvif/ptz-manager';
+import { registerPtzRoutes } from './onvif/ptz-routes';
 
 const PLUGIN_ID = 'sk-video';
 const SYNC_DEBOUNCE_MS = 500;
@@ -20,6 +22,7 @@ export = function (app: ServerAPI): Plugin {
   let cameras: CameraStore | null = null;
   let credentials: CredentialStore | null = null;
   let gateway: Go2rtcGateway | null = null;
+  let ptz: PtzManager | null = null;
   let syncTimer: ReturnType<typeof setTimeout> | null = null;
 
   const ssrfOptions: ISsrfOptions = { allowPrivate: true };
@@ -63,6 +66,11 @@ export = function (app: ServerAPI): Plugin {
           binary: new Go2rtcBinaryManager({ dataDir, log }),
           process: new Go2rtcProcess(log)
         });
+        ptz = new PtzManager({
+          getCamera: (id) => cameras?.get(id) ?? null,
+          getCredentials: (id) => credentials?.get(id) ?? null,
+          assertHostAllowed: (host) => assertHostAllowed(host, ssrfOptions, lookup)
+        });
 
         const base = createCameraResourceMethods(cameras);
         app.registerResourceProvider({
@@ -75,10 +83,12 @@ export = function (app: ServerAPI): Plugin {
                 await assertHostAllowed(result.value.source.host, ssrfOptions, lookup);
               }
               await base.setResource(id, value);
+              ptz?.invalidate(id);
               scheduleSync();
             },
             async deleteResource(id: string) {
               await base.deleteResource(id);
+              ptz?.invalidate(id);
               scheduleSync();
             }
           }
@@ -99,10 +109,12 @@ export = function (app: ServerAPI): Plugin {
         clearTimeout(syncTimer);
         syncTimer = null;
       }
+      ptz?.disposeAll();
       const stopping = gateway?.stop();
       cameras = null;
       credentials = null;
       gateway = null;
+      ptz = null;
       return stopping;
     },
 
@@ -121,7 +133,9 @@ export = function (app: ServerAPI): Plugin {
           return;
         }
         try {
-          credentials.set(String(req.params.id), (req.body as unknown) ?? {});
+          const id = String(req.params.id);
+          credentials.set(id, (req.body as unknown) ?? {});
+          ptz?.invalidate(id);
           scheduleSync();
           res.status(204).end();
         } catch (err) {
@@ -133,8 +147,10 @@ export = function (app: ServerAPI): Plugin {
           res.status(503).json({ error: 'plugin not started' });
           return;
         }
-        const existed = credentials.delete(String(req.params.id));
+        const id = String(req.params.id);
+        const existed = credentials.delete(id);
         if (existed) {
+          ptz?.invalidate(id);
           scheduleSync();
         }
         res.status(existed ? 204 : 404).end();
@@ -145,6 +161,9 @@ export = function (app: ServerAPI): Plugin {
         apiPort: () => gateway?.apiPort ?? 1984,
         hasCamera: (id: string) => cameras?.get(id) !== null && cameras?.get(id) !== undefined
       });
+
+      // ONVIF PTZ control.
+      registerPtzRoutes(router, () => ptz);
     }
   };
 
