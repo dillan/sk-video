@@ -103,6 +103,77 @@ test.describe('sk-video plugin live contract', () => {
     // Clean up so reruns stay deterministic.
     await request.delete(`${BASE}/plugins/sk-video/videos/${asset.id}`);
   });
+
+  test('stores write-only camera credentials and never returns them', async ({ request }) => {
+    const secret = 'sup3r-s3cret-pw';
+    const post = await request.post(`${BASE}/plugins/sk-video/cameras/${CAMERA}/credentials`, {
+      data: { username: 'cam-admin', password: secret },
+    });
+    expect(post.status()).toBe(204);
+
+    // The shared cameras resource must never echo the secret back to clients.
+    const cam = await request.get(`${BASE}/signalk/v2/api/resources/cameras/${CAMERA}`);
+    expect(cam.ok()).toBeTruthy();
+    expect(await cam.text()).not.toContain(secret);
+
+    // Delete returns 204 the first time and 404 once the credentials are gone.
+    const first = await request.delete(`${BASE}/plugins/sk-video/cameras/${CAMERA}/credentials`);
+    expect(first.status()).toBe(204);
+    const second = await request.delete(`${BASE}/plugins/sk-video/cameras/${CAMERA}/credentials`);
+    expect(second.status()).toBe(404);
+  });
+
+  test('proxies the HLS sub-resources referenced by the master playlist', async ({ request }) => {
+    const masterUrl = `${BASE}/plugins/sk-video/cameras/${CAMERA}/stream.m3u8`;
+    await waitFor200(request, masterUrl);
+    const master = await (await request.get(masterUrl)).text();
+    // The master references sub-resources with RELATIVE urls (e.g. "hls/playlist.m3u8?id=..."), which
+    // resolve back through the /cameras/:id/hls/:resource proxy route. Fetching one exercises that route
+    // end to end (the segment-proxy path that makes live playback work).
+    const ref = master
+      .split('\n')
+      .map((l) => l.trim())
+      .find((l) => l.length > 0 && !l.startsWith('#'));
+    expect(ref, 'master playlist should reference a relative sub-resource').toBeTruthy();
+    const subUrl = `${BASE}/plugins/sk-video/cameras/${CAMERA}/${ref}`;
+    await waitFor200(request, subUrl);
+    const sub = await request.get(subUrl);
+    expect(sub.status()).toBe(200);
+    expect((await sub.body()).length).toBeGreaterThan(0);
+  });
+
+  test('rejects a non-video upload by magic bytes (415)', async ({ request }) => {
+    const res = await request.post(`${BASE}/plugins/sk-video/videos`, {
+      headers: { 'Content-Type': 'video/mp4', 'X-Filename': 'evil.mp4' },
+      data: Buffer.from('<!doctype html><html>not a video</html>'),
+    });
+    expect(res.status()).toBe(415);
+  });
+
+  test('returns 416 for an unsatisfiable Range', async ({ request }) => {
+    const up = await request.post(`${BASE}/plugins/sk-video/videos`, {
+      headers: { 'Content-Type': 'video/mp4', 'X-Filename': 'range.mp4' },
+      data: tinyMp4(2048),
+    });
+    const { id } = await up.json();
+    const res = await request.get(`${BASE}/plugins/sk-video/videos/${id}`, {
+      headers: { Range: 'bytes=999999-1000000' },
+    });
+    expect(res.status()).toBe(416);
+    await request.delete(`${BASE}/plugins/sk-video/videos/${id}`);
+  });
+
+  test('returns 404 for an unknown camera on the gateway proxy', async ({ request }) => {
+    const unknown = 'no-such-camera';
+    for (const path of ['stream.m3u8', 'frame.jpeg']) {
+      const res = await request.get(`${BASE}/plugins/sk-video/cameras/${unknown}/${path}`);
+      expect(res.status()).toBe(404);
+    }
+    const whep = await request.post(`${BASE}/plugins/sk-video/cameras/${unknown}/whep`, {
+      data: 'v=0',
+    });
+    expect(whep.status()).toBe(404);
+  });
 });
 
 test.describe('KIP webapp', () => {
