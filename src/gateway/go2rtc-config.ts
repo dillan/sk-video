@@ -24,7 +24,20 @@ export interface IGo2rtcConfigInput {
  * streams, keyed by their resource id, with credentials embedded server-side.
  */
 export function buildGo2rtcConfig(input: IGo2rtcConfigInput): Record<string, unknown> {
-  void input;
-  // RED stub.
-  return {};
+  const ports = input.ports ?? DEFAULT_GO2RTC_PORTS;
+
+  const streams: Record<string, string> = {};
+  for (const [id, camera] of Object.entries(input.cameras)) {
+    if (camera.enabled) {
+      streams[id] = buildGo2rtcSource(camera, input.credentials[id]);
+    }
+  }
+
+  return {
+    api: { listen: `127.0.0.1:${ports.api}` },
+    rtsp: { listen: `127.0.0.1:${ports.rtsp}` },
+    webrtc: { listen: `:${ports.webrtc}` },
+    log: { level: 'warn' },
+    streams
+  };
 }
