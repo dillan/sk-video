@@ -1,0 +1,62 @@
+# Reproducible end-to-end harness for the SK Video plugin + KIP video widget.
+#
+#   mediamtx   — a real RTSP/HLS/WebRTC server fed an ffmpeg test pattern (stands in for a camera)
+#   signalk    — Signal K server running the sk-video plugin and serving the KIP webapp
+#   onvif      — (opt-in profile) a virtual ONVIF device wrapping the test stream, for PTZ
+#
+# See README.md. Start the core stack with:  ./run.sh
+name: sk-video-e2e
+
+services:
+  mediamtx:
+    image: bluenviron/mediamtx:latest-ffmpeg
+    container_name: skv-mediamtx
+    environment:
+      MTX_PROTOCOLS: tcp
+    volumes:
+      - ./mediamtx.yml:/mediamtx.yml:ro
+    ports:
+      - "8554:8554"   # RTSP
+      - "8888:8888"   # HLS
+      - "8889:8889"   # WebRTC
+    healthcheck:
+      test: ["CMD", "sh", "-c", "wget -q -O- http://localhost:9997/v3/paths/list || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  signalk:
+    build: ./signalk-image   # signalk/signalk-server:latest + ffmpeg (for go2rtc snapshots/transcode)
+    container_name: skv-signalk
+    depends_on:
+      mediamtx:
+        condition: service_started
+    # The image's startup.sh forces --securityenabled; override it to run an open local server
+    # (see README — do not expose this stack). The plugin's own security envelope is still in force.
+    entrypoint: ["node", "/home/node/signalk/node_modules/signalk-server/bin/signalk-server"]
+    environment:
+      # Let the plugin reach the internet once to fetch the pinned go2rtc binary.
+      IS_IN_DOCKER: "true"
+    ports:
+      - "${SIGNALK_PORT:-3000}:3000"
+    volumes:
+      - ./signalk-config:/home/node/.signalk
+      # The built plugin (with its node_modules) and the built KIP webapp, mounted read-only.
+      - ../:/home/node/.signalk/node_modules/sk-video:ro
+      - ${KIP_PATH:-../../kip}:/home/node/.signalk/node_modules/@mxtommy/kip:ro
+
+  # Opt-in: a virtual ONVIF Profile-S device wrapping the mediamtx stream, for exercising PTZ.
+  # ONVIF/PTZ are unicast HTTP and work over this network; WS-Discovery needs multicast (see README).
+  #   docker compose --profile onvif up --build
+  onvif:
+    build: ./onvif
+    container_name: skv-onvif
+    profiles: ["onvif"]
+    depends_on:
+      mediamtx:
+        condition: service_started
+    volumes:
+      - ./onvif/config.yaml:/onvif/config.yaml:ro
+    ports:
+      - "8081:8081"   # ONVIF device service (unicast)
+      - "8554"        # RTSP passthrough (internal)
