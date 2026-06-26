@@ -13,9 +13,33 @@ export interface ISsrfOptions {
  * or the unspecified address; allows RFC1918 / unique-local only when `allowPrivate` is set;
  * otherwise allows public addresses. Invalid input is denied.
  */
+import { BlockList, isIP } from 'node:net';
+
+const DENY = new BlockList();
+DENY.addSubnet('127.0.0.0', 8, 'ipv4'); // loopback
+DENY.addAddress('::1', 'ipv6'); // loopback
+DENY.addSubnet('169.254.0.0', 16, 'ipv4'); // link-local + cloud metadata (169.254.169.254)
+DENY.addSubnet('fe80::', 10, 'ipv6'); // link-local
+DENY.addAddress('0.0.0.0', 'ipv4'); // unspecified
+DENY.addAddress('::', 'ipv6'); // unspecified
+
+const PRIVATE = new BlockList();
+PRIVATE.addSubnet('10.0.0.0', 8, 'ipv4');
+PRIVATE.addSubnet('172.16.0.0', 12, 'ipv4');
+PRIVATE.addSubnet('192.168.0.0', 16, 'ipv4');
+PRIVATE.addSubnet('fc00::', 7, 'ipv6'); // unique-local
+
 export function isIpAllowed(ip: string, options: ISsrfOptions): boolean {
-  void ip;
-  void options;
-  // RED stub.
-  return false;
+  const family = isIP(ip);
+  if (family === 0) {
+    return false; // not a valid IP literal
+  }
+  const kind = family === 4 ? 'ipv4' : 'ipv6';
+  if (DENY.check(ip, kind)) {
+    return false;
+  }
+  if (PRIVATE.check(ip, kind)) {
+    return options.allowPrivate;
+  }
+  return true;
 }
