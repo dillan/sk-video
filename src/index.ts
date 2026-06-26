@@ -46,7 +46,9 @@ export = function (app: ServerAPI): Plugin {
     try {
       await gateway.sync(cameras.list(), credentials.all());
     } catch (err) {
-      app.setPluginError(`Gateway error: ${err instanceof Error ? err.message : String(err)}`);
+      app.setPluginError(
+        redactUrl(`Gateway error: ${err instanceof Error ? err.message : String(err)}`),
+      );
     }
   }
 
@@ -111,7 +113,7 @@ export = function (app: ServerAPI): Plugin {
         app.setPluginStatus(`Ready — ${count} camera${count === 1 ? '' : 's'} configured`);
         scheduleSync(); // start go2rtc if cameras are already configured
       } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
+        const message = redactUrl(err instanceof Error ? err.message : String(err));
         app.error?.(`[sk-video] failed to start: ${message}`);
         app.setPluginError(`Failed to start: ${message}`);
       }
