@@ -9,7 +9,9 @@
     "stack:up": "./run.sh",
     "stack:onvif": "./run.sh --onvif",
     "stack:down": "./run.sh --down",
-    "seed": "./seed-camera.sh"
+    "seed": "./seed-camera.sh",
+    "seed:demo": "./seed-demo.sh",
+    "screenshots": "playwright test --config=screenshots.config.ts"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.0"

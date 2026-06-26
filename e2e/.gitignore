@@ -9,3 +9,4 @@ signalk-config/*
 signalk-config/plugin-config-data/*
 !signalk-config/plugin-config-data/sk-video.json
 !signalk-config/plugin-config-data/kip.json
+screenshots/out/
