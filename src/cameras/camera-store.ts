@@ -8,9 +8,7 @@ export interface ICameraPersistence {
 
 /** Resource ids become part of URLs and filenames, so they must be a plain safe slug. */
 export function isValidCameraId(id: string): boolean {
-  void id;
-  // RED stub.
-  return false;
+  return /^[A-Za-z0-9-]+$/.test(id);
 }
 
 /**
@@ -18,36 +16,41 @@ export function isValidCameraId(id: string): boolean {
  * keeps the persisted copy in sync. Read methods hand out copies so callers can't mutate the store.
  */
 export class CameraStore {
-  private cameras: Record<string, ICamera> = {};
+  private cameras: Record<string, ICamera>;
 
   constructor(private readonly persistence: ICameraPersistence) {
-    void persistence;
-    // RED stub.
+    this.cameras = { ...persistence.load() };
   }
 
   list(): Record<string, ICamera> {
-    // RED stub.
-    return {};
+    return { ...this.cameras };
   }
 
   get(id: string): ICamera | null {
-    void id;
-    // RED stub.
-    return null;
+    return this.cameras[id] ?? null;
   }
 
   /** Validates and upserts a camera; throws on an invalid id or record. */
   set(id: string, value: unknown): ICamera {
-    void id;
-    void value;
-    // RED stub.
-    throw new Error('not implemented');
+    if (!isValidCameraId(id)) {
+      throw new Error(`invalid camera id: ${id}`);
+    }
+    const result = validateCamera(value);
+    if (!result.valid || !result.value) {
+      throw new Error(`invalid camera: ${result.errors.join('; ')}`);
+    }
+    this.cameras[id] = result.value;
+    this.persistence.save({ ...this.cameras });
+    return result.value;
   }
 
   /** Removes a camera; returns whether it existed. */
   delete(id: string): boolean {
-    void id;
-    // RED stub.
-    return false;
+    if (!(id in this.cameras)) {
+      return false;
+    }
+    delete this.cameras[id];
+    this.persistence.save({ ...this.cameras });
+    return true;
   }
 }
