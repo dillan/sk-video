@@ -30,6 +30,35 @@ curl -fsS -X POST "${BASE}/plugins/sk-video/videos" \
   --data-binary @"$TMP" >/dev/null && echo "  video: Chart Briefing.mp4"
 rm -f "$TMP"
 
+# A real, playable clip the screenshot script uses for the "video playing" hero (it picks the
+# largest uploaded video). Set HERO_CLIP=/path/to.mp4 to use your own footage. The published docs
+# hero used a short recording of the Annapolis Yacht Club Spa Creek public webcam
+# (https://www.annapolisyc.com/webcams). Without a clip provided, a harbour-style test pattern is
+# generated so the hero still shows real moving video.
+HERO="${HERO_CLIP:-}"
+GEN=""
+if [ -z "$HERO" ]; then
+  GEN=$(mktemp /tmp/skv-hero-XXXX.mp4); HERO="$GEN"
+  FF="ffmpeg"; command -v ffmpeg >/dev/null 2>&1 || FF=""
+  if [ -n "$FF" ]; then
+    ffmpeg -y -f lavfi -i testsrc2=size=1280x720:rate=15 -t 8 -an \
+      -c:v libx264 -preset veryfast -profile:v baseline -pix_fmt yuv420p -movflags +faststart "$HERO" \
+      >/dev/null 2>&1
+  else
+    docker exec skv-mediamtx ffmpeg -y -f lavfi -i testsrc2=size=1280x720:rate=15 -t 8 -an \
+      -c:v libx264 -preset veryfast -profile:v baseline -pix_fmt yuv420p -movflags +faststart /tmp/hero.mp4 \
+      >/dev/null 2>&1 && docker cp skv-mediamtx:/tmp/hero.mp4 "$HERO" >/dev/null 2>&1
+  fi
+fi
+if [ -s "$HERO" ]; then
+  curl -fsS -X POST "${BASE}/plugins/sk-video/videos" \
+    -H 'Content-Type: video/mp4' -H 'X-Filename: Harbour.mp4' \
+    --data-binary @"$HERO" >/dev/null && echo "  video: Harbour.mp4 (hero clip)"
+else
+  echo "  (no ffmpeg — skipping the hero clip; provide HERO_CLIP to add real footage)"
+fi
+[ -n "$GEN" ] && rm -f "$GEN"
+
 echo "Injecting live telemetry..."
 node ./inject-telemetry.mjs "${BASE}" "${TELEMETRY_SECONDS:-8}" || echo "  (telemetry skipped)"
 
