@@ -19,16 +19,19 @@ function sample() {
   t += 1;
   const wobble = (amp, period) => amp * Math.sin(t / period);
   return [
-    ['navigation.position', { latitude: 48.4159 + wobble(0.0006, 9), longitude: -123.3702 + wobble(0.0008, 11) }],
-    ['navigation.speedOverGround', 3.1 + wobble(0.25, 5)],          // ~6 kn
-    ['navigation.courseOverGroundTrue', 2.03 + wobble(0.05, 7)],    // rad
+    [
+      'navigation.position',
+      { latitude: 48.4159 + wobble(0.0006, 9), longitude: -123.3702 + wobble(0.0008, 11) },
+    ],
+    ['navigation.speedOverGround', 3.1 + wobble(0.25, 5)], // ~6 kn
+    ['navigation.courseOverGroundTrue', 2.03 + wobble(0.05, 7)], // rad
     ['navigation.headingTrue', 1.98 + wobble(0.06, 6)],
     ['navigation.speedThroughWater', 3.0 + wobble(0.2, 5)],
     ['environment.depth.belowTransducer', 12.4 + wobble(1.5, 8)],
-    ['environment.wind.speedApparent', 6.2 + wobble(0.8, 4)],       // ~12 kn
+    ['environment.wind.speedApparent', 6.2 + wobble(0.8, 4)], // ~12 kn
     ['environment.wind.angleApparent', -0.62 + wobble(0.12, 6)],
-    ['environment.water.temperature', 285.95 + wobble(0.2, 13)],    // ~12.8 °C
-    ['environment.outside.temperature', 291.1 + wobble(0.3, 17)]    // ~18 °C
+    ['environment.water.temperature', 285.95 + wobble(0.2, 13)], // ~12.8 °C
+    ['environment.outside.temperature', 291.1 + wobble(0.3, 17)], // ~18 °C
   ];
 }
 
@@ -39,9 +42,9 @@ function delta() {
       {
         source: { label: 'sk-video-demo', type: 'demo' },
         timestamp: new Date(1700000000000 + t * 1000).toISOString(),
-        values: sample().map(([path, value]) => ({ path, value }))
-      }
-    ]
+        values: sample().map(([path, value]) => ({ path, value })),
+      },
+    ],
   });
 }
 

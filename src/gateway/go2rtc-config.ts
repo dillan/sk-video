@@ -38,6 +38,6 @@ export function buildGo2rtcConfig(input: IGo2rtcConfigInput): Record<string, unk
     rtsp: { listen: `127.0.0.1:${ports.rtsp}` },
     webrtc: { listen: `:${ports.webrtc}` },
     log: { level: 'warn' },
-    streams
+    streams,
   };
 }

@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from 'vitest';
 import {
   AssetStore,
   AssetQuotaError,
@@ -7,12 +7,12 @@ import {
   type IAssetIndexPersistence,
   type IBlobStore,
   type IVideoAsset,
-} from "./asset-store";
+} from './asset-store';
 
 /** A valid minimal mp4 header (ftyp + isom) padded to a chosen size. */
 function mp4(size = 64): Uint8Array {
   const head = [0, 0, 0, 0x20];
-  for (const ch of "ftypisom") head.push(ch.charCodeAt(0));
+  for (const ch of 'ftypisom') head.push(ch.charCodeAt(0));
   const bytes = new Uint8Array(Math.max(size, head.length));
   bytes.set(head);
   return bytes;
@@ -41,17 +41,17 @@ function counterIds() {
   return () => `id-${++n}`;
 }
 
-describe("sanitizeFilename", () => {
-  it("strips directories, control chars and unsafe characters", () => {
-    expect(sanitizeFilename("../../etc/pass\x00wd<>.mp4")).toBe("passwd__.mp4");
+describe('sanitizeFilename', () => {
+  it('strips directories, control chars and unsafe characters', () => {
+    expect(sanitizeFilename('../../etc/pass\x00wd<>.mp4')).toBe('passwd__.mp4');
   });
-  it("returns empty for nothing", () => {
-    expect(sanitizeFilename(undefined)).toBe("");
+  it('returns empty for nothing', () => {
+    expect(sanitizeFilename(undefined)).toBe('');
   });
 });
 
-describe("AssetStore", () => {
-  it("stores a valid mp4 and records derived metadata, not client claims", () => {
+describe('AssetStore', () => {
+  it('stores a valid mp4 and records derived metadata, not client claims', () => {
     const f = fakes();
     const store = new AssetStore({
       index: f.index,
@@ -59,33 +59,31 @@ describe("AssetStore", () => {
       idGen: counterIds(),
       now: () => 1000,
     });
-    const asset = store.add(mp4(100), "My Clip.mp4");
+    const asset = store.add(mp4(100), 'My Clip.mp4');
     expect(asset).toEqual({
-      id: "id-1",
-      name: "My Clip.mp4",
-      contentType: "video/mp4",
+      id: 'id-1',
+      name: 'My Clip.mp4',
+      contentType: 'video/mp4',
       size: 100,
       createdAt: 1000,
     });
-    expect(f.blobs.get("id-1")).toBeInstanceOf(Uint8Array);
-    expect(f.getSaved()["id-1"]).toEqual(asset); // persisted to the index
+    expect(f.blobs.get('id-1')).toBeInstanceOf(Uint8Array);
+    expect(f.getSaved()['id-1']).toEqual(asset); // persisted to the index
   });
 
-  it("rejects a non-video payload by magic bytes", () => {
+  it('rejects a non-video payload by magic bytes', () => {
     const f = fakes();
     const s = new AssetStore({
       index: f.index,
       blobs: f.blobStore,
       idGen: counterIds(),
     });
-    const html = Uint8Array.from(
-      "<!DOCTYPE html>".split("").map((c) => c.charCodeAt(0)),
-    );
-    expect(() => s.add(html, "evil.mp4")).toThrow(AssetRejectedError);
+    const html = Uint8Array.from('<!DOCTYPE html>'.split('').map((c) => c.charCodeAt(0)));
+    expect(() => s.add(html, 'evil.mp4')).toThrow(AssetRejectedError);
     expect(f.blobs.size).toBe(0); // nothing written
   });
 
-  it("enforces the per-file size cap", () => {
+  it('enforces the per-file size cap', () => {
     const f = fakes();
     const store = new AssetStore({
       index: f.index,
@@ -93,10 +91,10 @@ describe("AssetStore", () => {
       idGen: counterIds(),
       limits: { maxFileBytes: 50, maxTotalBytes: 1000, maxFileCount: 10 },
     });
-    expect(() => store.add(mp4(100), "big.mp4")).toThrow(AssetQuotaError);
+    expect(() => store.add(mp4(100), 'big.mp4')).toThrow(AssetQuotaError);
   });
 
-  it("enforces the total budget and file-count caps across uploads", () => {
+  it('enforces the total budget and file-count caps across uploads', () => {
     const f = fakes();
     const store = new AssetStore({
       index: f.index,
@@ -104,19 +102,19 @@ describe("AssetStore", () => {
       idGen: counterIds(),
       limits: { maxFileBytes: 1000, maxTotalBytes: 150, maxFileCount: 10 },
     });
-    store.add(mp4(100), "a.mp4");
-    expect(() => store.add(mp4(100), "b.mp4")).toThrow(AssetQuotaError); // 200 > 150 budget
+    store.add(mp4(100), 'a.mp4');
+    expect(() => store.add(mp4(100), 'b.mp4')).toThrow(AssetQuotaError); // 200 > 150 budget
     expect(store.usage()).toEqual({ totalBytes: 100, fileCount: 1 });
   });
 
-  it("lists, gets and deletes assets, cleaning up the blob", () => {
+  it('lists, gets and deletes assets, cleaning up the blob', () => {
     const f = fakes();
     const store = new AssetStore({
       index: f.index,
       blobs: f.blobStore,
       idGen: counterIds(),
     });
-    const a = store.add(mp4(), "a.mp4");
+    const a = store.add(mp4(), 'a.mp4');
     expect(store.list()).toHaveLength(1);
     expect(store.get(a.id)?.id).toBe(a.id);
     expect(store.delete(a.id)).toBe(true);
@@ -125,13 +123,13 @@ describe("AssetStore", () => {
     expect(store.delete(a.id)).toBe(false); // already gone
   });
 
-  it("reloads existing assets from the index on construction", () => {
+  it('reloads existing assets from the index on construction', () => {
     const f = fakes();
     new AssetStore({
       index: f.index,
       blobs: f.blobStore,
       idGen: counterIds(),
-    }).add(mp4(), "a.mp4");
+    }).add(mp4(), 'a.mp4');
     const reopened = new AssetStore({ index: f.index, blobs: f.blobStore });
     expect(reopened.list()).toHaveLength(1);
   });

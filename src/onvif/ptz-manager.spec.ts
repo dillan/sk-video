@@ -3,14 +3,18 @@ import { PtzManager, CameraNotFoundError, type IPtzManagerDeps } from './ptz-man
 import type { ICamera } from '../cameras/camera-validation';
 import type { IOnvifCam } from './onvif-controller';
 
-const camera: ICamera = { name: 'PTZ', enabled: true, source: { scheme: 'onvif', host: '192.168.1.60', port: 8000 } };
+const camera: ICamera = {
+  name: 'PTZ',
+  enabled: true,
+  source: { scheme: 'onvif', host: '192.168.1.60', port: 8000 },
+};
 
 function fakeCam(): IOnvifCam {
   return {
     continuousMove: (_o, cb) => cb(null),
     stop: (_o, cb) => cb(null),
     getPresets: (cb) => cb(null, {}),
-    gotoPreset: (_o, cb) => cb(null)
+    gotoPreset: (_o, cb) => cb(null),
   };
 }
 
@@ -20,7 +24,7 @@ function makeDeps(overrides: Partial<IPtzManagerDeps> = {}): IPtzManagerDeps {
     getCredentials: () => ({ username: 'u', password: 'p' }),
     assertHostAllowed: async () => undefined,
     connectFactory: () => async () => fakeCam(),
-    ...overrides
+    ...overrides,
   };
 }
 
@@ -45,10 +49,14 @@ describe('PtzManager', () => {
 
   it('propagates an SSRF rejection and does not cache a controller', async () => {
     const connectFactory = vi.fn(() => async () => fakeCam());
-    const mgr = new PtzManager(makeDeps({
-      assertHostAllowed: async () => { throw new Error('blocked host'); },
-      connectFactory
-    }));
+    const mgr = new PtzManager(
+      makeDeps({
+        assertHostAllowed: async () => {
+          throw new Error('blocked host');
+        },
+        connectFactory,
+      }),
+    );
     await expect(mgr.controllerFor('cam')).rejects.toThrow(/blocked/);
     expect(connectFactory).not.toHaveBeenCalled();
   });

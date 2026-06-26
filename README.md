@@ -106,16 +106,16 @@ uploaded video with HTTP range requests.
 
 ### HTTP endpoints (under `/plugins/sk-video`)
 
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `GET` | `/status` | plugin health |
-| `POST`/`DELETE` | `/cameras/:id/credentials` | write-only camera login (never read back) |
-| `POST` | `/cameras/:id/whep` | WebRTC (WHEP) signaling |
-| `GET` | `/cameras/:id/stream.m3u8` | HLS playlist |
-| `GET` | `/cameras/:id/frame.jpeg` | snapshot frame |
-| `POST`/`GET` | `/cameras/:id/ptz[/stop\|/presets\|/preset]` | ONVIF PTZ |
-| `GET` | `/cameras/discover` | scan the LAN for cameras (rate-limited) |
-| `POST`/`GET`/`DELETE` | `/videos[/:id]` | upload / list / play (HTTP Range) / delete |
+| Method                | Path                                         | Purpose                                    |
+| --------------------- | -------------------------------------------- | ------------------------------------------ |
+| `GET`                 | `/status`                                    | plugin health                              |
+| `POST`/`DELETE`       | `/cameras/:id/credentials`                   | write-only camera login (never read back)  |
+| `POST`                | `/cameras/:id/whep`                          | WebRTC (WHEP) signaling                    |
+| `GET`                 | `/cameras/:id/stream.m3u8`                   | HLS playlist                               |
+| `GET`                 | `/cameras/:id/frame.jpeg`                    | snapshot frame                             |
+| `POST`/`GET`          | `/cameras/:id/ptz[/stop\|/presets\|/preset]` | ONVIF PTZ                                  |
+| `GET`                 | `/cameras/discover`                          | scan the LAN for cameras (rate-limited)    |
+| `POST`/`GET`/`DELETE` | `/videos[/:id]`                              | upload / list / play (HTTP Range) / delete |
 
 Camera definitions live at `/signalk/v2/api/resources/cameras`. All browser traffic is same-origin
 through the plugin proxy — the browser never reaches go2rtc or a camera directly.

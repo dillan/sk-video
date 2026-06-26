@@ -43,7 +43,10 @@ export class Go2rtcGateway {
     return (this.opts.ports ?? DEFAULT_GO2RTC_PORTS).api;
   }
 
-  async sync(cameras: Record<string, ICamera>, credentials: Record<string, ICameraCredentials>): Promise<void> {
+  async sync(
+    cameras: Record<string, ICamera>,
+    credentials: Record<string, ICameraCredentials>,
+  ): Promise<void> {
     const anyEnabled = Object.values(cameras).some((c) => c.enabled);
     if (!anyEnabled) {
       // Never run go2rtc with no cameras configured.

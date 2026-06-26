@@ -43,7 +43,7 @@ export class PtzManager {
       hostname: camera.source.host,
       port,
       username: creds?.username,
-      password: creds?.password
+      password: creds?.password,
     });
     const controller = new OnvifPtzController(connect);
     this.controllers.set(id, controller);

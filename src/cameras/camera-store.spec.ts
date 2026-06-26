@@ -36,7 +36,9 @@ describe('CameraStore', () => {
   });
 
   it('loads existing cameras from persistence', () => {
-    const seeded = new FakePersistence({ a: { name: 'A', enabled: true, source: { scheme: 'rtsp', host: 'h' } } });
+    const seeded = new FakePersistence({
+      a: { name: 'A', enabled: true, source: { scheme: 'rtsp', host: 'h' } },
+    });
     const s = new CameraStore(seeded);
     expect(s.get('a')?.name).toBe('A');
   });

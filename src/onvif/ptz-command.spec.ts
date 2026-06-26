@@ -3,7 +3,11 @@ import { clampPtzVelocity, isValidPtzToken } from './ptz-command';
 
 describe('clampPtzVelocity', () => {
   it('passes through in-range values', () => {
-    expect(clampPtzVelocity({ pan: 0.5, tilt: -0.25, zoom: 1 })).toEqual({ pan: 0.5, tilt: -0.25, zoom: 1 });
+    expect(clampPtzVelocity({ pan: 0.5, tilt: -0.25, zoom: 1 })).toEqual({
+      pan: 0.5,
+      tilt: -0.25,
+      zoom: 1,
+    });
   });
 
   it('clamps out-of-range values to [-1, 1]', () => {
@@ -12,7 +16,11 @@ describe('clampPtzVelocity', () => {
 
   it('coerces missing or non-finite values to 0', () => {
     expect(clampPtzVelocity({ pan: 0.3 })).toEqual({ pan: 0.3, tilt: 0, zoom: 0 });
-    expect(clampPtzVelocity({ pan: NaN, tilt: Infinity, zoom: undefined })).toEqual({ pan: 0, tilt: 0, zoom: 0 });
+    expect(clampPtzVelocity({ pan: NaN, tilt: Infinity, zoom: undefined })).toEqual({
+      pan: 0,
+      tilt: 0,
+      zoom: 0,
+    });
     expect(clampPtzVelocity(null)).toEqual({ pan: 0, tilt: 0, zoom: 0 });
   });
 });

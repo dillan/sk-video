@@ -23,16 +23,16 @@ export function checkQuota(
   limits: IQuotaLimits,
 ): IQuotaResult {
   if (!Number.isFinite(incomingBytes) || incomingBytes <= 0) {
-    return { ok: false, reason: "empty file" };
+    return { ok: false, reason: 'empty file' };
   }
   if (incomingBytes > limits.maxFileBytes) {
-    return { ok: false, reason: "file too large" };
+    return { ok: false, reason: 'file too large' };
   }
   if (usage.fileCount + 1 > limits.maxFileCount) {
-    return { ok: false, reason: "too many files stored" };
+    return { ok: false, reason: 'too many files stored' };
   }
   if (usage.totalBytes + incomingBytes > limits.maxTotalBytes) {
-    return { ok: false, reason: "storage budget full" };
+    return { ok: false, reason: 'storage budget full' };
   }
   return { ok: true };
 }

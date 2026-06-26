@@ -24,9 +24,9 @@ export function createOnvifConnect(target: IOnvifTarget): OnvifConnect {
             port: target.port ?? 80,
             username: target.username,
             password: target.password,
-            timeout: target.timeoutMs ?? 5000
+            timeout: target.timeoutMs ?? 5000,
           },
-          (err) => (err ? reject(err) : resolve(cam as unknown as IOnvifCam))
+          (err) => (err ? reject(err) : resolve(cam as unknown as IOnvifCam)),
         );
       }).catch((err) => {
         cached = null;

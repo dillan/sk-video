@@ -11,10 +11,14 @@ const ENDPOINTS: Record<TGatewayTransport, { scheme: 'http' | 'ws'; path: string
   webrtc: { scheme: 'http', path: '/api/webrtc' },
   hls: { scheme: 'http', path: '/api/stream.m3u8' },
   frame: { scheme: 'http', path: '/api/frame.jpeg' },
-  mse: { scheme: 'ws', path: '/api/ws' }
+  mse: { scheme: 'ws', path: '/api/ws' },
 };
 
-export function go2rtcApiUrl(apiPort: number, transport: TGatewayTransport, cameraId: string): string {
+export function go2rtcApiUrl(
+  apiPort: number,
+  transport: TGatewayTransport,
+  cameraId: string,
+): string {
   if (!isValidCameraId(cameraId)) {
     throw new Error(`invalid camera id: ${cameraId}`);
   }
@@ -30,7 +34,12 @@ const HLS_RESOURCE = /^[A-Za-z0-9._-]+$/;
  * segment) that the master playlist points at. The camera id and resource name are validated and any
  * client-supplied `src=` is stripped, so the proxy can never be redirected to another stream or path.
  */
-export function go2rtcHlsUrl(apiPort: number, cameraId: string, resource: string, rawQuery = ''): string {
+export function go2rtcHlsUrl(
+  apiPort: number,
+  cameraId: string,
+  resource: string,
+  rawQuery = '',
+): string {
   if (!isValidCameraId(cameraId)) {
     throw new Error(`invalid camera id: ${cameraId}`);
   }

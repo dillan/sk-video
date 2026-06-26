@@ -1,6 +1,6 @@
-import { randomUUID } from "node:crypto";
-import { sniffVideoType } from "./video-sniff";
-import { checkQuota, type IQuotaLimits, type IQuotaUsage } from "./quota";
+import { randomUUID } from 'node:crypto';
+import { sniffVideoType } from './video-sniff';
+import { checkQuota, type IQuotaLimits, type IQuotaUsage } from './quota';
 
 /** Metadata for one stored video. The blob itself lives next to this under an opaque id. */
 export interface IVideoAsset {
@@ -31,7 +31,7 @@ export interface IBlobStore {
 export class AssetRejectedError extends Error {
   constructor(message: string) {
     super(message);
-    this.name = "AssetRejectedError";
+    this.name = 'AssetRejectedError';
   }
 }
 
@@ -39,7 +39,7 @@ export class AssetRejectedError extends Error {
 export class AssetQuotaError extends Error {
   constructor(message: string) {
     super(message);
-    this.name = "AssetQuotaError";
+    this.name = 'AssetQuotaError';
   }
 }
 
@@ -57,18 +57,18 @@ export function isValidAssetId(id: string): boolean {
 /** Strips any path components and unsafe characters from a client-supplied filename (display only). */
 export function sanitizeFilename(name: string | undefined): string {
   if (!name) {
-    return "";
+    return '';
   }
-  const base = name.split(/[\\/]/).pop() ?? "";
+  const base = name.split(/[\\/]/).pop() ?? '';
   return base
-    .replace(CONTROL_CHARS, "")
-    .replace(/[^A-Za-z0-9._ -]/g, "_")
+    .replace(CONTROL_CHARS, '')
+    .replace(/[^A-Za-z0-9._ -]/g, '_')
     .trim()
     .slice(0, 120);
 }
 
 // eslint-disable-next-line no-control-regex -- stripping control chars is the point
-const CONTROL_CHARS = new RegExp("[\u0000-\u001f\u007f]", "g");
+const CONTROL_CHARS = new RegExp('[\u0000-\u001f\u007f]', 'g');
 
 export interface IAssetStoreOptions {
   index: IAssetIndexPersistence;
@@ -123,7 +123,7 @@ export class AssetStore {
   add(bytes: Uint8Array, originalName?: string): IVideoAsset {
     const sniff = sniffVideoType(bytes);
     if (!sniff) {
-      throw new AssetRejectedError("unsupported or unrecognized video format");
+      throw new AssetRejectedError('unsupported or unrecognized video format');
     }
     const quota = checkQuota(this.usage(), bytes.length, this.limits);
     if (!quota.ok) {
@@ -132,7 +132,7 @@ export class AssetStore {
 
     const id = this.idGen();
     if (!isValidAssetId(id)) {
-      throw new Error("generated an invalid asset id");
+      throw new Error('generated an invalid asset id');
     }
     this.blobs.write(id, bytes);
     const asset: IVideoAsset = {

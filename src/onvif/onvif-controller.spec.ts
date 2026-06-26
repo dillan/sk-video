@@ -43,7 +43,9 @@ describe('OnvifPtzController', () => {
   it('propagates a camera error from a move', async () => {
     const cam = new FakeCam();
     cam.failContinuous = true;
-    await expect(new OnvifPtzController(async () => cam).move({ pan: 1 })).rejects.toThrow(/offline/);
+    await expect(new OnvifPtzController(async () => cam).move({ pan: 1 })).rejects.toThrow(
+      /offline/,
+    );
   });
 
   it('rejects an invalid preset token before contacting the camera', async () => {

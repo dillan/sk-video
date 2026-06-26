@@ -11,15 +11,15 @@ widget against a simulated camera, plus a Playwright suite (Chromium + WebKit).
 
 ## What it verifies
 
-| Path | How |
-| --- | --- |
-| RTSP camera → browser **HLS** via the gateway | real go2rtc pulls the mediamtx stream; the e2e fetches `…/stream.m3u8` |
-| **Snapshot** frame | `…/frame.jpeg` returns a real JPEG |
-| Camera **resource CRUD** + SSRF/scheme validation | seed script PUTs a `cameras` resource |
-| **Video upload** + magic-byte validation + **HTTP Range** | e2e uploads a tiny MP4 and re-fetches it with a `Range` header (206) |
-| Plugin **status** / wiring | `…/status` |
-| **KIP webapp** loads (same-origin with the plugin) | Playwright opens `/@mxtommy/kip` |
-| **ONVIF / PTZ** (opt-in) | the virtual ONVIF device answers the plugin's PTZ proxy over unicast HTTP |
+| Path                                                      | How                                                                       |
+| --------------------------------------------------------- | ------------------------------------------------------------------------- |
+| RTSP camera → browser **HLS** via the gateway             | real go2rtc pulls the mediamtx stream; the e2e fetches `…/stream.m3u8`    |
+| **Snapshot** frame                                        | `…/frame.jpeg` returns a real JPEG                                        |
+| Camera **resource CRUD** + SSRF/scheme validation         | seed script PUTs a `cameras` resource                                     |
+| **Video upload** + magic-byte validation + **HTTP Range** | e2e uploads a tiny MP4 and re-fetches it with a `Range` header (206)      |
+| Plugin **status** / wiring                                | `…/status`                                                                |
+| **KIP webapp** loads (same-origin with the plugin)        | Playwright opens `/@mxtommy/kip`                                          |
+| **ONVIF / PTZ** (opt-in)                                  | the virtual ONVIF device answers the plugin's PTZ proxy over unicast HTTP |
 
 ## Prerequisites
 

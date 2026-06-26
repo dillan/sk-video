@@ -17,7 +17,7 @@ export function registerPtzRoutes(router: IRouter, getPtz: () => PtzManager | nu
   const withController = async (
     req: Request,
     res: Response,
-    fn: (ctrl: Awaited<ReturnType<PtzManager['controllerFor']>>) => Promise<void>
+    fn: (ctrl: Awaited<ReturnType<PtzManager['controllerFor']>>) => Promise<void>,
   ): Promise<void> => {
     const ptz = getPtz();
     if (!ptz) {
@@ -37,20 +37,20 @@ export function registerPtzRoutes(router: IRouter, getPtz: () => PtzManager | nu
       const body = (req.body ?? {}) as { pan?: number; tilt?: number; zoom?: number };
       await ctrl.move({ pan: body.pan, tilt: body.tilt, zoom: body.zoom });
       res.status(204).end();
-    })
+    }),
   );
 
   router.post('/cameras/:id/ptz/stop', (req: Request, res: Response) =>
     withController(req, res, async (ctrl) => {
       await ctrl.stop();
       res.status(204).end();
-    })
+    }),
   );
 
   router.get('/cameras/:id/ptz/presets', (req: Request, res: Response) =>
     withController(req, res, async (ctrl) => {
       res.json(await ctrl.getPresets());
-    })
+    }),
   );
 
   router.post('/cameras/:id/ptz/preset', (req: Request, res: Response) =>
@@ -58,6 +58,6 @@ export function registerPtzRoutes(router: IRouter, getPtz: () => PtzManager | nu
       const token = String((req.body as { token?: unknown })?.token ?? '');
       await ctrl.gotoPreset(token);
       res.status(204).end();
-    })
+    }),
   );
 }

@@ -8,27 +8,40 @@ function cam(source: ICamera['source']): ICamera {
 
 describe('buildGo2rtcSource', () => {
   it('builds an RTSP URL without credentials', () => {
-    expect(buildGo2rtcSource(cam({ scheme: 'rtsp', host: 'cam.local', port: 554, path: '/stream1' })))
-      .toBe('rtsp://cam.local:554/stream1');
+    expect(
+      buildGo2rtcSource(cam({ scheme: 'rtsp', host: 'cam.local', port: 554, path: '/stream1' })),
+    ).toBe('rtsp://cam.local:554/stream1');
   });
 
   it('injects URL-encoded credentials', () => {
-    expect(buildGo2rtcSource(cam({ scheme: 'rtsp', host: 'cam.local', port: 554, path: '/s' }), { username: 'admin', password: 'p@ss/w:rd' }))
-      .toBe('rtsp://admin:p%40ss%2Fw%3Ard@cam.local:554/s');
+    expect(
+      buildGo2rtcSource(cam({ scheme: 'rtsp', host: 'cam.local', port: 554, path: '/s' }), {
+        username: 'admin',
+        password: 'p@ss/w:rd',
+      }),
+    ).toBe('rtsp://admin:p%40ss%2Fw%3Ard@cam.local:554/s');
   });
 
   it('omits the port and path when absent', () => {
-    expect(buildGo2rtcSource(cam({ scheme: 'onvif', host: '192.168.1.50' }), { username: 'u', password: 'p' }))
-      .toBe('onvif://u:p@192.168.1.50');
+    expect(
+      buildGo2rtcSource(cam({ scheme: 'onvif', host: '192.168.1.50' }), {
+        username: 'u',
+        password: 'p',
+      }),
+    ).toBe('onvif://u:p@192.168.1.50');
   });
 
   it('supports an empty password with a username', () => {
-    expect(buildGo2rtcSource(cam({ scheme: 'rtsp', host: 'h' }), { username: 'u', password: '' }))
-      .toBe('rtsp://u:@h');
+    expect(
+      buildGo2rtcSource(cam({ scheme: 'rtsp', host: 'h' }), { username: 'u', password: '' }),
+    ).toBe('rtsp://u:@h');
   });
 
   it('ignores credentials when no username is given', () => {
-    expect(buildGo2rtcSource(cam({ scheme: 'http', host: 'h', port: 8080, path: '/mjpeg' }), { password: 'p' }))
-      .toBe('http://h:8080/mjpeg');
+    expect(
+      buildGo2rtcSource(cam({ scheme: 'http', host: 'h', port: 8080, path: '/mjpeg' }), {
+        password: 'p',
+      }),
+    ).toBe('http://h:8080/mjpeg');
   });
 });

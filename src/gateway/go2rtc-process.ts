@@ -21,7 +21,7 @@ export class Go2rtcProcess implements IProcessController {
     }
     const child = spawn(binaryPath, ['-config', configPath], {
       stdio: ['ignore', 'pipe', 'pipe'],
-      windowsHide: true
+      windowsHide: true,
     });
     this.child = child;
     child.stderr?.on('data', (d: Buffer) => this.log(`go2rtc: ${d.toString().trim()}`));

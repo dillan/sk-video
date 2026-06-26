@@ -1,7 +1,7 @@
-import { describe, it, expect, vi } from "vitest";
-import type { IRouter, Request, Response } from "express";
-import { registerDiscoveryRoutes } from "./discovery-routes";
-import { DiscoveryService, ScanThrottledError } from "./discovery-service";
+import { describe, it, expect, vi } from 'vitest';
+import type { IRouter, Request, Response } from 'express';
+import { registerDiscoveryRoutes } from './discovery-routes';
+import { DiscoveryService, ScanThrottledError } from './discovery-service';
 
 /** A fake router that captures the GET handler so we can invoke it directly. */
 function fakeRouter() {
@@ -38,54 +38,45 @@ function makeRes() {
   };
 }
 
-describe("registerDiscoveryRoutes", () => {
-  it("returns 503 when the plugin is not started", async () => {
+describe('registerDiscoveryRoutes', () => {
+  it('returns 503 when the plugin is not started', async () => {
     const { router } = fakeRouter();
     let captured!: (req: Request, res: Response) => void;
-    (router.get as unknown as (p: string, h: typeof captured) => void) = (
-      _p,
-      h,
-    ) => (captured = h);
+    (router.get as unknown as (p: string, h: typeof captured) => void) = (_p, h) => (captured = h);
     registerDiscoveryRoutes(router, () => null);
     const res = makeRes();
     captured({} as Request, res);
     expect(res.statusCode).toBe(503);
   });
 
-  it("returns the discovered cameras on success", async () => {
+  it('returns the discovered cameras on success', async () => {
     const svc = {
-      scan: vi.fn().mockResolvedValue([{ name: "Cam", host: "10.0.0.1" }]),
+      scan: vi.fn().mockResolvedValue([{ name: 'Cam', host: '10.0.0.1' }]),
     };
     const { router } = fakeRouter();
     let captured!: (req: Request, res: Response) => void;
-    (router.get as unknown as (p: string, h: typeof captured) => void) = (
-      _p,
-      h,
-    ) => (captured = h);
+    (router.get as unknown as (p: string, h: typeof captured) => void) = (_p, h) => (captured = h);
     registerDiscoveryRoutes(router, () => svc as unknown as DiscoveryService);
     const res = makeRes();
     captured({} as Request, res);
     await vi.waitFor(() =>
       expect(res.body).toEqual({
-        cameras: [{ name: "Cam", host: "10.0.0.1" }],
+        cameras: [{ name: 'Cam', host: '10.0.0.1' }],
       }),
     );
   });
 
-  it("returns 429 with Retry-After when rate-limited", async () => {
+  it('returns 429 with Retry-After when rate-limited', async () => {
     const svc = {
       scan: vi.fn().mockRejectedValue(new ScanThrottledError(8000)),
     };
     const { router } = fakeRouter();
     let captured!: (req: Request, res: Response) => void;
-    (router.get as unknown as (p: string, h: typeof captured) => void) = (
-      _p,
-      h,
-    ) => (captured = h);
+    (router.get as unknown as (p: string, h: typeof captured) => void) = (_p, h) => (captured = h);
     registerDiscoveryRoutes(router, () => svc as unknown as DiscoveryService);
     const res = makeRes();
     captured({} as Request, res);
     await vi.waitFor(() => expect(res.statusCode).toBe(429));
-    expect(res.headers["Retry-After"]).toBe("8");
+    expect(res.headers['Retry-After']).toBe('8');
   });
 });

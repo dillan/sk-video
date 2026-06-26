@@ -52,7 +52,11 @@ export type HostLookup = (host: string) => Promise<string[]>;
  * resolved and EVERY resolved address must be allowed — so a name that resolves (now or via
  * rebinding) to a blocked address is rejected. Throws on a blocked or unresolvable host.
  */
-export async function assertHostAllowed(host: string, options: ISsrfOptions, lookup: HostLookup): Promise<void> {
+export async function assertHostAllowed(
+  host: string,
+  options: ISsrfOptions,
+  lookup: HostLookup,
+): Promise<void> {
   if (isIP(host) !== 0) {
     if (!isIpAllowed(host, options)) {
       throw new Error(`host ${host} is not an allowed address`);

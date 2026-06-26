@@ -3,7 +3,9 @@ import { redactUrl } from './redact';
 
 describe('redactUrl', () => {
   it('replaces userinfo with a redaction marker', () => {
-    expect(redactUrl('rtsp://admin:secret@cam.local:554/stream')).toBe('rtsp://***@cam.local:554/stream');
+    expect(redactUrl('rtsp://admin:secret@cam.local:554/stream')).toBe(
+      'rtsp://***@cam.local:554/stream',
+    );
     expect(redactUrl('http://user:p%40ss@host/path')).toBe('http://***@host/path');
   });
 

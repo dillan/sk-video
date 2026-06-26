@@ -46,7 +46,7 @@ export function registerProxyRoutes(router: IRouter, ctx: IProxyContext): void {
       const upstream = await doFetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/sdp' },
-        body: offer
+        body: offer,
       });
       const answer = await upstream.text();
       res.status(upstream.status).set('Content-Type', 'application/sdp').send(answer);
@@ -89,7 +89,7 @@ export function registerProxyRoutes(router: IRouter, ctx: IProxyContext): void {
   // Snapshot frame and HLS master playlist: GET passthrough.
   const getRoutes: [string, 'frame' | 'hls'][] = [
     ['/cameras/:id/frame.jpeg', 'frame'],
-    ['/cameras/:id/stream.m3u8', 'hls']
+    ['/cameras/:id/stream.m3u8', 'hls'],
   ];
   for (const [path, transport] of getRoutes) {
     router.get(path, async (req: Request, res: Response) => {

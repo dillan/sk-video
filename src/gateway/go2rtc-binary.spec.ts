@@ -39,8 +39,9 @@ describe('go2rtcAssetName', () => {
 
 describe('go2rtcDownloadUrl', () => {
   it('builds the GitHub release URL for a version + platform', () => {
-    expect(go2rtcDownloadUrl('1.9.9', 'linux', 'x64'))
-      .toBe('https://github.com/AlexxIT/go2rtc/releases/download/v1.9.9/go2rtc_linux_amd64');
+    expect(go2rtcDownloadUrl('1.9.9', 'linux', 'x64')).toBe(
+      'https://github.com/AlexxIT/go2rtc/releases/download/v1.9.9/go2rtc_linux_amd64',
+    );
   });
 
   it('is null when the platform is unsupported', () => {

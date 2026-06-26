@@ -1,15 +1,11 @@
-import {
-  normalizeDiscovery,
-  type ICameraCandidate,
-  type IRawDiscovery,
-} from "./normalize";
-import { ScanThrottle } from "./scan-throttle";
+import { normalizeDiscovery, type ICameraCandidate, type IRawDiscovery } from './normalize';
+import { ScanThrottle } from './scan-throttle';
 
 /** Thrown when a scan is requested while one is running or the cooldown is active. */
 export class ScanThrottledError extends Error {
   constructor(public readonly retryAfterMs: number) {
     super(`discovery is rate-limited; retry in ${retryAfterMs}ms`);
-    this.name = "ScanThrottledError";
+    this.name = 'ScanThrottledError';
   }
 }
 
@@ -51,9 +47,7 @@ export class DiscoveryService {
     this.probes = options.probes;
     this.timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     this.maxResults = options.maxResults ?? DEFAULT_MAX_RESULTS;
-    this.throttle =
-      options.throttle ??
-      new ScanThrottle(options.cooldownMs ?? DEFAULT_COOLDOWN_MS);
+    this.throttle = options.throttle ?? new ScanThrottle(options.cooldownMs ?? DEFAULT_COOLDOWN_MS);
   }
 
   /** Runs one bounded, rate-limited discovery scan. Throws ScanThrottledError when rate-limited. */
@@ -64,9 +58,7 @@ export class DiscoveryService {
     this.throttle.begin();
     try {
       const settled = await Promise.all(
-        this.probes.map((probe) =>
-          probe(this.timeoutMs).catch(() => [] as IRawDiscovery[]),
-        ),
+        this.probes.map((probe) => probe(this.timeoutMs).catch(() => [] as IRawDiscovery[])),
       );
       const seen = new Map<string, ICameraCandidate>();
       for (const raw of settled.flat()) {

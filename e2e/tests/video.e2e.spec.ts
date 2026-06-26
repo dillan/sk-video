@@ -10,7 +10,11 @@ function tinyMp4(size = 4096): Buffer {
 }
 
 /** Polls an endpoint until it returns 200 (go2rtc needs a few seconds to warm up the HLS muxer). */
-async function waitFor200(request: APIRequestContext, url: string, timeoutMs = 45_000): Promise<void> {
+async function waitFor200(
+  request: APIRequestContext,
+  url: string,
+  timeoutMs = 45_000,
+): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   let last = 0;
   while (Date.now() < deadline) {
@@ -29,8 +33,8 @@ test.beforeAll(async ({ request }) => {
       data: {
         name: 'Test Camera',
         enabled: true,
-        source: { scheme: 'rtsp', host: 'mediamtx', port: 8554, path: '/cam' }
-      }
+        source: { scheme: 'rtsp', host: 'mediamtx', port: 8554, path: '/cam' },
+      },
     })
     .catch(() => undefined);
 });
@@ -81,7 +85,7 @@ test.describe('sk-video plugin live contract', () => {
   test('uploads a video and serves it back with HTTP Range', async ({ request }) => {
     const upload = await request.post(`${BASE}/plugins/sk-video/videos`, {
       headers: { 'Content-Type': 'video/mp4', 'X-Filename': 'e2e-clip.mp4' },
-      data: tinyMp4()
+      data: tinyMp4(),
     });
     expect(upload.status()).toBe(201);
     const asset = await upload.json();
@@ -91,7 +95,7 @@ test.describe('sk-video plugin live contract', () => {
     expect((await list.json()).videos.some((v: { id: string }) => v.id === asset.id)).toBe(true);
 
     const ranged = await request.get(`${BASE}/plugins/sk-video/videos/${asset.id}`, {
-      headers: { Range: 'bytes=0-9' }
+      headers: { Range: 'bytes=0-9' },
     });
     expect(ranged.status()).toBe(206);
     expect(ranged.headers()['content-range']).toMatch(/^bytes 0-9\//);
@@ -105,7 +109,10 @@ test.describe('KIP webapp', () => {
   test('loads the KIP shell (skipped if KIP is not built/mounted)', async ({ page }) => {
     const res = await page.goto('/@mxtommy/kip').catch(() => null);
     test.skip(!res || !res.ok(), 'KIP webapp not mounted (set KIP_PATH and rebuild the stack)');
-    const hasApp = await page.locator('app-root').count().catch(() => 0);
+    const hasApp = await page
+      .locator('app-root')
+      .count()
+      .catch(() => 0);
     test.skip(hasApp === 0, 'KIP not built — run ./run.sh to build the webapp');
     await expect(page.locator('app-root')).toBeAttached();
   });

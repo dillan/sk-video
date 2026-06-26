@@ -14,7 +14,7 @@ export default defineConfig({
     deviceScaleFactor: 2,
     // KIP is a PWA; its service worker reloads/resets the page and fights our injected config.
     serviceWorkers: 'block',
-    ...devices['Desktop Chrome']
+    ...devices['Desktop Chrome'],
   },
-  projects: [{ name: 'docs', use: {} }]
+  projects: [{ name: 'docs', use: {} }],
 });

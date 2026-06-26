@@ -10,13 +10,27 @@ const DIALOG = 'mat-dialog-container';
 const SNAPSHOT = { embedTelemetry: true, embedLocation: true, defaultDestination: 'download' };
 
 function dashboardsJson(displayName: string, video: Record<string, unknown>) {
-  return JSON.stringify([{
-    id: 'demo', name: 'Underway', icon: 'dashboard-dashboard', collapseSplitShell: true,
-    configuration: [{
-      w: 24, h: 24, x: 0, y: 0, id: 'vid', selector: 'widget-host2',
-      input: { widgetProperties: { type: 'widget-video', uuid: 'vid', config: { displayName, video } } }
-    }]
-  }]);
+  return JSON.stringify([
+    {
+      id: 'demo',
+      name: 'Underway',
+      icon: 'dashboard-dashboard',
+      collapseSplitShell: true,
+      configuration: [
+        {
+          w: 24,
+          h: 24,
+          x: 0,
+          y: 0,
+          id: 'vid',
+          selector: 'widget-host2',
+          input: {
+            widgetProperties: { type: 'widget-video', uuid: 'vid', config: { displayName, video } },
+          },
+        },
+      ],
+    },
+  ]);
 }
 
 /** Load Demo writes a full valid config (appConfig/theme/connection) so KIP won't first-run-reset. */
@@ -32,7 +46,10 @@ async function bootstrapKip(page: Page) {
 
 /** Force a dashboard on every subsequent navigation (beats KIP's unload-save clobber). */
 async function setDashboard(page: Page, displayName: string, video: Record<string, unknown>) {
-  await page.addInitScript((dash) => localStorage.setItem('dashboardsConfig', dash), dashboardsJson(displayName, video));
+  await page.addInitScript(
+    (dash) => localStorage.setItem('dashboardsConfig', dash),
+    dashboardsJson(displayName, video),
+  );
   await page.goto(KIP);
   await page.evaluate(() => (location.hash = '#/dashboard/0'));
   await page.waitForTimeout(500);
@@ -52,12 +69,21 @@ async function shot(page: Page, name: string, target?: string) {
 
 test('capture documentation screenshots', async ({ page }) => {
   await page.route('**/plugins/sk-video/cameras/discover', (route) =>
-    route.fulfill({ json: { cameras: [
-      { name: 'Foredeck Cam', host: '192.168.1.41', port: 554, onvifUrl: 'http://192.168.1.41/onvif/device_service' },
-      { name: 'Cockpit Dome', host: '192.168.1.42', port: 554 },
-      { name: 'Engine Bay', host: '192.168.1.43', port: 8554 },
-      { name: 'Masthead', host: '192.168.1.44', port: 554 }
-    ] } })
+    route.fulfill({
+      json: {
+        cameras: [
+          {
+            name: 'Foredeck Cam',
+            host: '192.168.1.41',
+            port: 554,
+            onvifUrl: 'http://192.168.1.41/onvif/device_service',
+          },
+          { name: 'Cockpit Dome', host: '192.168.1.42', port: 554 },
+          { name: 'Engine Bay', host: '192.168.1.43', port: 8554 },
+          { name: 'Masthead', host: '192.168.1.44', port: 554 },
+        ],
+      },
+    }),
   );
 
   await bootstrapKip(page);
@@ -67,30 +93,60 @@ test('capture documentation screenshots', async ({ page }) => {
     try {
       const r = await fetch('/plugins/sk-video/videos');
       const { videos } = await r.json();
-      return (videos as { id: string; size: number }[]).sort((a, b) => b.size - a.size)[0]?.id ?? null;
-    } catch { return null; }
+      return (
+        (videos as { id: string; size: number }[]).sort((a, b) => b.size - a.size)[0]?.id ?? null
+      );
+    } catch {
+      return null;
+    }
   });
   console.log('  using video asset: ' + assetId);
 
   // --- 1) Hero: a real video playing on the dashboard (file source) ---
   if (assetId) {
     await setDashboard(page, 'Foredeck', {
-      sourceKind: 'file', fileAssetId: assetId, transport: 'auto',
-      muted: true, autoplay: true, loop: true, objectFit: 'cover', snapshot: SNAPSHOT
+      sourceKind: 'file',
+      fileAssetId: assetId,
+      transport: 'auto',
+      muted: true,
+      autoplay: true,
+      loop: true,
+      objectFit: 'cover',
+      snapshot: SNAPSHOT,
     });
-    try { await page.locator('widget-video video').first().waitFor({ timeout: 15000 }); } catch { /* */ }
+    try {
+      await page.locator('widget-video video').first().waitFor({ timeout: 15000 });
+    } catch {
+      /* */
+    }
     await page.waitForTimeout(4000);
     await shot(page, 'widget-playing');
   }
 
   // --- 2) Camera source: PTZ controls + the settings dialog ---
   await setDashboard(page, 'Foredeck', {
-    sourceKind: 'camera', cameraId: 'foredeck', transport: 'hls', preset: 'balanced',
-    muted: true, autoplay: true, loop: false, objectFit: 'cover', snapshot: SNAPSHOT
+    sourceKind: 'camera',
+    cameraId: 'foredeck',
+    transport: 'hls',
+    preset: 'balanced',
+    muted: true,
+    autoplay: true,
+    loop: false,
+    objectFit: 'cover',
+    snapshot: SNAPSHOT,
   });
-  try { await page.locator('widget-video').first().waitFor({ timeout: 15000 }); } catch { console.log('  WARN: camera widget did not load'); }
+  try {
+    await page.locator('widget-video').first().waitFor({ timeout: 15000 });
+  } catch {
+    console.log('  WARN: camera widget did not load');
+  }
   await page.waitForTimeout(2000);
-  try { await page.locator('widget-video').first().hover(); await page.waitForTimeout(400); } catch { /* */ }
+  try {
+    await page.locator('widget-video').first().hover();
+    await page.waitForTimeout(400);
+  } catch {
+    /* */
+  }
   await shot(page, 'ptz', 'widget-video');
 
   await page.keyboard.press('Control+Shift+E'); // edit mode
@@ -99,10 +155,16 @@ test('capture documentation screenshots', async ({ page }) => {
   for (let attempt = 0; attempt < 2 && !dialogOpen; attempt++) {
     try {
       if (attempt) await page.keyboard.press('Escape');
-      await page.locator('widget-host2').first().dblclick({ position: { x: 36, y: 36 }, timeout: 8000 });
+      await page
+        .locator('widget-host2')
+        .first()
+        .dblclick({ position: { x: 36, y: 36 }, timeout: 8000 });
       await page.locator(DIALOG).first().waitFor({ timeout: 5000 });
       dialogOpen = true;
-    } catch (e) { if (attempt) console.log('  config dialog did not open: ' + (e as Error).message.split('\n')[0]); }
+    } catch (e) {
+      if (attempt)
+        console.log('  config dialog did not open: ' + (e as Error).message.split('\n')[0]);
+    }
   }
 
   if (dialogOpen) {
@@ -115,13 +177,17 @@ test('capture documentation screenshots', async ({ page }) => {
       await page.getByRole('button', { name: /Scan network/i }).click();
       await page.waitForTimeout(1500);
       await shot(page, 'scan', DIALOG);
-    } catch (e) { console.log('  scan: ' + (e as Error).message.split('\n')[0]); }
+    } catch (e) {
+      console.log('  scan: ' + (e as Error).message.split('\n')[0]);
+    }
 
     try {
       await page.locator('mat-button-toggle:has-text("Uploaded")').click();
       await page.waitForTimeout(900);
       await shot(page, 'uploaded', DIALOG);
-    } catch (e) { console.log('  uploaded: ' + (e as Error).message.split('\n')[0]); }
+    } catch (e) {
+      console.log('  uploaded: ' + (e as Error).message.split('\n')[0]);
+    }
 
     try {
       await page.locator('mat-button-toggle:has-text("URL")').click();
@@ -132,7 +198,9 @@ test('capture documentation screenshots', async ({ page }) => {
       await page.getByText('Snapshot', { exact: false }).first().scrollIntoViewIfNeeded();
       await page.waitForTimeout(300);
       await shot(page, 'snapshot', DIALOG);
-    } catch (e) { console.log('  quality/snapshot: ' + (e as Error).message.split('\n')[0]); }
+    } catch (e) {
+      console.log('  quality/snapshot: ' + (e as Error).message.split('\n')[0]);
+    }
 
     await page.keyboard.press('Escape').catch(() => {});
   }
@@ -142,5 +210,7 @@ test('capture documentation screenshots', async ({ page }) => {
     await page.goto('/admin/#/serverConfiguration/plugins/sk-video');
     await page.waitForTimeout(3000);
     await shot(page, 'plugin-config');
-  } catch (e) { console.log('  plugin-config: ' + (e as Error).message.split('\n')[0]); }
+  } catch (e) {
+    console.log('  plugin-config: ' + (e as Error).message.split('\n')[0]);
+  }
 });

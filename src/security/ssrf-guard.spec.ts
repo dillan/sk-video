@@ -51,7 +51,12 @@ describe('assertHostAllowed', () => {
 
   it('passes an IP literal that is allowed without resolving', async () => {
     let called = false;
-    await expect(assertHostAllowed('192.168.1.50', allowLan, async () => { called = true; return []; })).resolves.toBeUndefined();
+    await expect(
+      assertHostAllowed('192.168.1.50', allowLan, async () => {
+        called = true;
+        return [];
+      }),
+    ).resolves.toBeUndefined();
     expect(called).toBe(false);
   });
 
@@ -60,11 +65,15 @@ describe('assertHostAllowed', () => {
   });
 
   it('resolves a hostname and passes when every address is allowed', async () => {
-    await expect(assertHostAllowed('cam.example', deny, lookup({ 'cam.example': ['8.8.8.8'] }))).resolves.toBeUndefined();
+    await expect(
+      assertHostAllowed('cam.example', deny, lookup({ 'cam.example': ['8.8.8.8'] })),
+    ).resolves.toBeUndefined();
   });
 
   it('rejects when any resolved address is blocked (DNS rebinding defense)', async () => {
-    await expect(assertHostAllowed('evil.example', deny, lookup({ 'evil.example': ['8.8.8.8', '127.0.0.1'] }))).rejects.toThrow();
+    await expect(
+      assertHostAllowed('evil.example', deny, lookup({ 'evil.example': ['8.8.8.8', '127.0.0.1'] })),
+    ).rejects.toThrow();
   });
 
   it('rejects an unresolvable host', async () => {

@@ -1,6 +1,6 @@
 // Minimal ambient declaration for the parts of the `onvif` package (v0.8) this plugin uses.
 // The package ships no types of its own.
-declare module "onvif" {
+declare module 'onvif' {
   export interface CamOptions {
     hostname: string;
     username?: string;
@@ -19,13 +19,8 @@ declare module "onvif" {
       options: { panTilt?: boolean; zoom?: boolean },
       callback: (err?: Error | null) => void,
     ): void;
-    getPresets(
-      callback: (err: Error | null, presets?: Record<string, string>) => void,
-    ): void;
-    gotoPreset(
-      options: { preset: string },
-      callback: (err?: Error | null) => void,
-    ): void;
+    getPresets(callback: (err: Error | null, presets?: Record<string, string>) => void): void;
+    gotoPreset(options: { preset: string }, callback: (err?: Error | null) => void): void;
   }
 
   /** A device returned by Discovery.probe (a Cam instance enriched with discovery metadata). */

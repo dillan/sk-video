@@ -17,8 +17,13 @@ export function verifySha256(data: Buffer, expectedHex: string): boolean {
 // Windows assets are .zip archives that must be extracted.
 const ASSETS: Record<string, Record<string, string>> = {
   darwin: { x64: 'go2rtc_mac_amd64.zip', arm64: 'go2rtc_mac_arm64.zip' },
-  linux: { x64: 'go2rtc_linux_amd64', arm64: 'go2rtc_linux_arm64', arm: 'go2rtc_linux_arm', ia32: 'go2rtc_linux_i386' },
-  win32: { x64: 'go2rtc_win64.zip', ia32: 'go2rtc_win32.zip', arm64: 'go2rtc_win_arm64.zip' }
+  linux: {
+    x64: 'go2rtc_linux_amd64',
+    arm64: 'go2rtc_linux_arm64',
+    arm: 'go2rtc_linux_arm',
+    ia32: 'go2rtc_linux_i386',
+  },
+  win32: { x64: 'go2rtc_win64.zip', ia32: 'go2rtc_win32.zip', arm64: 'go2rtc_win_arm64.zip' },
 };
 
 export function go2rtcAssetName(platform: NodeJS.Platform, arch: string): string | null {
@@ -31,7 +36,11 @@ export function isZipAsset(assetName: string): boolean {
 }
 
 /** Builds the GitHub release download URL for a go2rtc asset, or null if the platform is unsupported. */
-export function go2rtcDownloadUrl(version: string, platform: NodeJS.Platform, arch: string): string | null {
+export function go2rtcDownloadUrl(
+  version: string,
+  platform: NodeJS.Platform,
+  arch: string,
+): string | null {
   const asset = go2rtcAssetName(platform, arch);
   if (!asset) {
     return null;

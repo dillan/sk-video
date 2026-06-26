@@ -16,29 +16,29 @@ services:
     volumes:
       - ./mediamtx.yml:/mediamtx.yml:ro
     ports:
-      - "8554:8554"   # RTSP
-      - "8888:8888"   # HLS
-      - "8889:8889"   # WebRTC
+      - '8554:8554' # RTSP
+      - '8888:8888' # HLS
+      - '8889:8889' # WebRTC
     healthcheck:
-      test: ["CMD", "sh", "-c", "wget -q -O- http://localhost:9997/v3/paths/list || exit 1"]
+      test: ['CMD', 'sh', '-c', 'wget -q -O- http://localhost:9997/v3/paths/list || exit 1']
       interval: 5s
       timeout: 3s
       retries: 20
 
   signalk:
-    build: ./signalk-image   # signalk/signalk-server:latest + ffmpeg (for go2rtc snapshots/transcode)
+    build: ./signalk-image # signalk/signalk-server:latest + ffmpeg (for go2rtc snapshots/transcode)
     container_name: skv-signalk
     depends_on:
       mediamtx:
         condition: service_started
     # The image's startup.sh forces --securityenabled; override it to run an open local server
     # (see README — do not expose this stack). The plugin's own security envelope is still in force.
-    entrypoint: ["node", "/home/node/signalk/node_modules/signalk-server/bin/signalk-server"]
+    entrypoint: ['node', '/home/node/signalk/node_modules/signalk-server/bin/signalk-server']
     environment:
       # Let the plugin reach the internet once to fetch the pinned go2rtc binary.
-      IS_IN_DOCKER: "true"
+      IS_IN_DOCKER: 'true'
     ports:
-      - "${SIGNALK_PORT:-3000}:3000"
+      - '${SIGNALK_PORT:-3000}:3000'
     volumes:
       - ./signalk-config:/home/node/.signalk
       # The built plugin (with its node_modules) and the built KIP webapp, mounted read-only.
@@ -51,12 +51,12 @@ services:
   onvif:
     build: ./onvif
     container_name: skv-onvif
-    profiles: ["onvif"]
+    profiles: ['onvif']
     depends_on:
       mediamtx:
         condition: service_started
     volumes:
       - ./onvif/config.yaml:/onvif/config.yaml:ro
     ports:
-      - "8081:8081"   # ONVIF device service (unicast)
-      - "8554"        # RTSP passthrough (internal)
+      - '8081:8081' # ONVIF device service (unicast)
+      - '8554' # RTSP passthrough (internal)

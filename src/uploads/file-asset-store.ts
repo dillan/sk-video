@@ -1,40 +1,32 @@
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
-import { join } from "node:path";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import {
   AssetStore,
   type IAssetIndexPersistence,
   type IBlobStore,
   type IVideoAsset,
-} from "./asset-store";
-import type { IQuotaLimits } from "./quota";
+} from './asset-store';
+import type { IQuotaLimits } from './quota';
 
 /** File-backed asset index (id → metadata) as owner-only JSON in the plugin data directory. */
 export class FileAssetIndexPersistence implements IAssetIndexPersistence {
   private readonly file: string;
 
-  constructor(dataDir: string, filename = "videos.json") {
+  constructor(dataDir: string, filename = 'videos.json') {
     this.file = join(dataDir, filename);
   }
 
   load(): Record<string, IVideoAsset> {
     try {
-      const parsed = JSON.parse(readFileSync(this.file, "utf8")) as unknown;
-      return parsed && typeof parsed === "object"
-        ? (parsed as Record<string, IVideoAsset>)
-        : {};
+      const parsed = JSON.parse(readFileSync(this.file, 'utf8')) as unknown;
+      return parsed && typeof parsed === 'object' ? (parsed as Record<string, IVideoAsset>) : {};
     } catch {
       return {};
     }
   }
 
   save(index: Record<string, IVideoAsset>): void {
-    mkdirSync(join(this.file, ".."), { recursive: true });
+    mkdirSync(join(this.file, '..'), { recursive: true });
     writeFileSync(this.file, JSON.stringify(index, null, 2), { mode: 0o600 });
   }
 }
@@ -43,7 +35,7 @@ export class FileAssetIndexPersistence implements IAssetIndexPersistence {
 export class FileBlobStore implements IBlobStore {
   private readonly dir: string;
 
-  constructor(dataDir: string, subdir = "videos") {
+  constructor(dataDir: string, subdir = 'videos') {
     this.dir = join(dataDir, subdir);
   }
 
@@ -66,10 +58,7 @@ export class FileBlobStore implements IBlobStore {
 }
 
 /** Builds a file-backed AssetStore rooted at the plugin data directory. */
-export function createFileAssetStore(
-  dataDir: string,
-  limits?: IQuotaLimits,
-): AssetStore {
+export function createFileAssetStore(dataDir: string, limits?: IQuotaLimits): AssetStore {
   return new AssetStore({
     index: new FileAssetIndexPersistence(dataDir),
     blobs: new FileBlobStore(dataDir),

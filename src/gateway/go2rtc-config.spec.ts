@@ -2,7 +2,11 @@ import { describe, it, expect } from 'vitest';
 import { buildGo2rtcConfig, DEFAULT_GO2RTC_PORTS } from './go2rtc-config';
 import type { ICamera } from '../cameras/camera-validation';
 
-const foredeck: ICamera = { name: 'Foredeck', enabled: true, source: { scheme: 'rtsp', host: 'cam1', port: 554, path: '/s' } };
+const foredeck: ICamera = {
+  name: 'Foredeck',
+  enabled: true,
+  source: { scheme: 'rtsp', host: 'cam1', port: 554, path: '/s' },
+};
 const aft: ICamera = { name: 'Aft', enabled: false, source: { scheme: 'rtsp', host: 'cam2' } };
 
 describe('buildGo2rtcConfig', () => {
@@ -16,7 +20,7 @@ describe('buildGo2rtcConfig', () => {
   it('maps enabled cameras to streams keyed by id, with embedded credentials', () => {
     const cfg = buildGo2rtcConfig({
       cameras: { foredeck },
-      credentials: { foredeck: { username: 'u', password: 'p' } }
+      credentials: { foredeck: { username: 'u', password: 'p' } },
     });
     expect(cfg.streams).toEqual({ foredeck: 'rtsp://u:p@cam1:554/s' });
   });

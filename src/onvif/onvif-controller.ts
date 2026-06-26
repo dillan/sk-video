@@ -2,7 +2,10 @@ import { clampPtzVelocity, isValidPtzToken, type IPtzVelocity } from './ptz-comm
 
 /** The subset of the onvif Cam PTZ API this plugin uses (callback style), behind our own interface. */
 export interface IOnvifCam {
-  continuousMove(options: { x: number; y: number; zoom: number }, cb: (err?: Error | null) => void): void;
+  continuousMove(
+    options: { x: number; y: number; zoom: number },
+    cb: (err?: Error | null) => void,
+  ): void;
   stop(options: { panTilt?: boolean; zoom?: boolean }, cb: (err?: Error | null) => void): void;
   getPresets(cb: (err: Error | null, presets?: Record<string, string>) => void): void;
   gotoPreset(options: { preset: string }, cb: (err?: Error | null) => void): void;
@@ -24,7 +27,10 @@ export class OnvifPtzController {
   private autoStop: ReturnType<typeof setTimeout> | null = null;
   private readonly autoStopMs: number;
 
-  constructor(private readonly connect: OnvifConnect, options: IOnvifControllerOptions = {}) {
+  constructor(
+    private readonly connect: OnvifConnect,
+    options: IOnvifControllerOptions = {},
+  ) {
     this.autoStopMs = options.autoStopMs ?? 2000;
   }
 
@@ -32,7 +38,9 @@ export class OnvifPtzController {
     const v = clampPtzVelocity(velocity);
     const cam = await this.connect();
     await new Promise<void>((resolve, reject) => {
-      cam.continuousMove({ x: v.pan, y: v.tilt, zoom: v.zoom }, (err) => (err ? reject(err) : resolve()));
+      cam.continuousMove({ x: v.pan, y: v.tilt, zoom: v.zoom }, (err) =>
+        err ? reject(err) : resolve(),
+      );
     });
     this.armAutoStop();
   }

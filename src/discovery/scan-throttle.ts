@@ -28,7 +28,7 @@ export class ScanThrottle {
   /** Marks a scan as started; throws if one is already running or the cooldown is active. */
   begin(): void {
     if (this.inFlight) {
-      throw new Error("a discovery scan is already in progress");
+      throw new Error('a discovery scan is already in progress');
     }
     const wait = this.retryAfterMs();
     if (wait > 0) {

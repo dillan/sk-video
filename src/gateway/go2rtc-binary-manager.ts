@@ -1,7 +1,13 @@
 import { chmodSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import AdmZip from 'adm-zip';
-import { GO2RTC_VERSION, go2rtcAssetName, go2rtcDownloadUrl, isZipAsset, verifySha256 } from './go2rtc-binary';
+import {
+  GO2RTC_VERSION,
+  go2rtcAssetName,
+  go2rtcDownloadUrl,
+  isZipAsset,
+  verifySha256,
+} from './go2rtc-binary';
 
 /** Extracts the go2rtc binary from a release zip archive (macOS/Windows). */
 function extractBinaryFromZip(zipData: Buffer): Buffer {
@@ -60,7 +66,9 @@ export class Go2rtcBinaryManager {
     }
     const url = go2rtcDownloadUrl(GO2RTC_VERSION, this.platform, this.arch);
     if (!url) {
-      throw new Error(`go2rtc has no published binary for ${this.platform}/${this.arch} — place one at ${this.binaryPath}`);
+      throw new Error(
+        `go2rtc has no published binary for ${this.platform}/${this.arch} — place one at ${this.binaryPath}`,
+      );
     }
     this.log(`downloading go2rtc ${GO2RTC_VERSION} for ${this.platform}/${this.arch}`);
     const res = await this.fetchImpl(url, { redirect: 'follow' });

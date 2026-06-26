@@ -5,13 +5,25 @@ import type { ICamera } from '../cameras/camera-validation';
 class FakeProcess implements IProcessController {
   calls: string[] = [];
   running = false;
-  start() { this.calls.push('start'); this.running = true; }
-  restart() { this.calls.push('restart'); }
-  async stop() { this.calls.push('stop'); this.running = false; }
+  start() {
+    this.calls.push('start');
+    this.running = true;
+  }
+  restart() {
+    this.calls.push('restart');
+  }
+  async stop() {
+    this.calls.push('stop');
+    this.running = false;
+  }
 }
 
 const enabledCam: ICamera = { name: 'A', enabled: true, source: { scheme: 'rtsp', host: 'cam1' } };
-const disabledCam: ICamera = { name: 'B', enabled: false, source: { scheme: 'rtsp', host: 'cam2' } };
+const disabledCam: ICamera = {
+  name: 'B',
+  enabled: false,
+  source: { scheme: 'rtsp', host: 'cam2' },
+};
 
 function makeGateway(proc: IProcessController) {
   const writes: Record<string, unknown>[] = [];
@@ -20,7 +32,7 @@ function makeGateway(proc: IProcessController) {
     dataDir: '/data',
     binary,
     process: proc,
-    writeConfig: (_path, cfg) => writes.push(cfg)
+    writeConfig: (_path, cfg) => writes.push(cfg),
   });
   return { gateway, writes };
 }
@@ -36,7 +48,7 @@ describe('Go2rtcGateway.sync', () => {
     const { gateway, writes } = makeGateway(proc);
     await gateway.sync({ a: enabledCam }, {});
     expect(writes).toHaveLength(1);
-    expect((writes[0].streams as object)).toEqual({ a: 'rtsp://cam1' });
+    expect(writes[0].streams as object).toEqual({ a: 'rtsp://cam1' });
     expect(proc.calls).toEqual(['start']);
   });
 

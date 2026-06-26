@@ -12,10 +12,10 @@ export default defineConfig({
   reporter: [['list']],
   use: {
     baseURL: process.env.SIGNALK_URL || 'http://localhost:3000',
-    trace: 'on-first-retry'
+    trace: 'on-first-retry',
   },
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
-    { name: 'webkit', use: { ...devices['Desktop Safari'] } }
-  ]
+    { name: 'webkit', use: { ...devices['Desktop Safari'] } },
+  ],
 });
