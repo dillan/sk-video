@@ -1,6 +1,6 @@
 {
   "name": "sk-video",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "SK Video — a Signal K plugin that turns IP cameras (RTSP/RTMP/ONVIF) into browser-playable streams for KIP, with ONVIF PTZ, discovery and video uploads.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

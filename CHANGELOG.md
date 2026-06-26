@@ -1,3 +1,10 @@
+## [1.0.1](https://github.com/dillan/sk-video/compare/v1.0.0...v1.0.1) (2026-06-26)
+
+
+### Bug Fixes
+
+* treat a JSON array in a persisted store file as empty ([6e4db66](https://github.com/dillan/sk-video/commit/6e4db665ad44cf0cba4fae5b37975dc94c3b6b51))
+
 # 1.0.0 (2026-06-26)
 
 
