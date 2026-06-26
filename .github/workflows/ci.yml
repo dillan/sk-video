@@ -12,17 +12,35 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # Span the Node versions real Signal K servers run on, plus the 24 toolchain we develop with.
         node: [20, 22, 24]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: ${{ matrix.node }}
           cache: npm
       - run: npm ci
+      - run: npm run format:check
       - run: npm run lint
       - run: npm run build
-      - run: npm test
+      - run: npm run test:coverage
+
+  # Check that every commit on a pull request follows Conventional Commits, so releasing stays
+  # automatic even for contributors whose local git hooks didn't run.
+  commitlint:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx commitlint --from ${{ github.event.pull_request.base.sha }} --to ${{ github.event.pull_request.head.sha }} --verbose
 
   # Official Signal K plugin integration check: packs + installs the plugin into a real server and
   # verifies it loads and registers its providers. See docs/develop/plugins/ci.md.

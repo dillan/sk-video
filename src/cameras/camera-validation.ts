@@ -75,7 +75,8 @@ export function validateCamera(input: unknown): IValidationResult {
     }
 
     const scheme = s.scheme;
-    const schemeOk = typeof scheme === 'string' && (CAMERA_SCHEMES as readonly string[]).includes(scheme);
+    const schemeOk =
+      typeof scheme === 'string' && (CAMERA_SCHEMES as readonly string[]).includes(scheme);
     if (!schemeOk) {
       errors.push(`source.scheme must be one of ${CAMERA_SCHEMES.join(', ')}`);
     }
@@ -110,7 +111,7 @@ export function validateCamera(input: unknown): IValidationResult {
         scheme: scheme as TCameraScheme,
         host,
         ...(port !== undefined ? { port } : {}),
-        ...(path !== undefined ? { path } : {})
+        ...(path !== undefined ? { path } : {}),
       };
     }
   }
@@ -118,5 +119,9 @@ export function validateCamera(input: unknown): IValidationResult {
   if (errors.length > 0 || !normalizedSource) {
     return { valid: false, errors: errors.length ? errors : ['invalid camera'] };
   }
-  return { valid: true, errors: [], value: { name, enabled: enabled as boolean, source: normalizedSource } };
+  return {
+    valid: true,
+    errors: [],
+    value: { name, enabled: enabled as boolean, source: normalizedSource },
+  };
 }

@@ -32,6 +32,6 @@ export function createCameraResourceMethods(store: CameraStore): ICameraResource
       if (!store.delete(id)) {
         throw new Error(`camera "${id}" not found`);
       }
-    }
+    },
   };
 }

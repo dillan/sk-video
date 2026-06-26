@@ -1,0 +1,29 @@
+# Virtual ONVIF device for the e2e harness. It presents the mediamtx test stream as an ONVIF
+# Profile-S camera with PTZ enabled, so the plugin's PTZ proxy has something to talk to.
+# (Movements are acknowledged, not physical.) Format follows daniela-hase/onvif-server.
+onvif:
+  - mac: 02:42:ac:11:00:99
+    ports:
+      server: 8081
+      rtsp: 8554
+    name: SK Video Test Camera
+    uuid: 8f2e1a00-0000-4000-8000-000000000001
+    highQuality:
+      rtsp: /cam
+      width: 1280
+      height: 720
+      framerate: 15
+      bitrate: 1024
+      quality: 4
+    lowQuality:
+      rtsp: /cam
+      width: 640
+      height: 360
+      framerate: 15
+      bitrate: 512
+      quality: 1
+    ptz: true
+    target:
+      hostname: mediamtx
+      ports:
+        rtsp: 8554

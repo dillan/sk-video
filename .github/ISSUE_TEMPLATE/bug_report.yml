@@ -1,0 +1,55 @@
+name: Bug report
+description: Something isn't working the way it should
+labels: ['bug']
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for the report! Please fill in what you can — it helps us fix things faster.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead?
+      placeholder: I added a camera and the video stays black...
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Go to ...
+        2. Click ...
+        3. See ...
+    validations:
+      required: false
+  - type: input
+    id: sk-video-version
+    attributes:
+      label: SK Video version
+      placeholder: e.g. 1.2.0
+    validations:
+      required: true
+  - type: input
+    id: signalk-version
+    attributes:
+      label: Signal K server version
+      placeholder: e.g. 2.13.0
+    validations:
+      required: false
+  - type: input
+    id: environment
+    attributes:
+      label: Where it runs
+      description: Server hardware/OS, browser, and camera make/model if relevant.
+      placeholder: Raspberry Pi 4, Chrome on iPad, Reolink RLC-810A
+    validations:
+      required: false
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Relevant Signal K server log lines. Remove any camera passwords or addresses first.
+      render: shell
+    validations:
+      required: false

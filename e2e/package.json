@@ -1,0 +1,20 @@
+{
+  "name": "sk-video-e2e",
+  "private": true,
+  "version": "0.0.0",
+  "description": "End-to-end harness for the SK Video plugin and KIP video widget",
+  "scripts": {
+    "pretest": "playwright install chromium webkit",
+    "test": "playwright test",
+    "test:chromium": "playwright test --project=chromium",
+    "stack:up": "./run.sh",
+    "stack:onvif": "./run.sh --onvif",
+    "stack:down": "./run.sh --down",
+    "seed": "./seed-camera.sh",
+    "seed:demo": "./seed-demo.sh",
+    "screenshots": "playwright test --config=screenshots.config.ts"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0"
+  }
+}
