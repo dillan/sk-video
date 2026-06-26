@@ -71,4 +71,25 @@ describe('CredentialStore', () => {
     store.set('a', { username: max, password: max });
     expect(store.get('a')).toEqual({ username: max, password: max });
   });
+
+  describe('presence', () => {
+    it('reports no credentials for an unknown camera', () => {
+      expect(store.presence('nope')).toEqual({ hasUsername: false, hasPassword: false });
+    });
+
+    it('reports which fields are set without revealing the values', () => {
+      store.set('a', { username: 'admin', password: 's3cret' });
+      expect(store.presence('a')).toEqual({ hasUsername: true, hasPassword: true });
+    });
+
+    it('reports a username-only credential', () => {
+      store.set('a', { username: 'admin' });
+      expect(store.presence('a')).toEqual({ hasUsername: true, hasPassword: false });
+    });
+
+    it('treats an empty string as not set', () => {
+      store.set('a', { username: '', password: '' });
+      expect(store.presence('a')).toEqual({ hasUsername: false, hasPassword: false });
+    });
+  });
 });

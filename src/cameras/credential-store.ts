@@ -32,6 +32,18 @@ export class CredentialStore {
     return { ...this.credentials };
   }
 
+  /**
+   * Reports which credential fields are stored for a camera WITHOUT revealing the values, so the UI
+   * can show a "credentials saved" state and a clear button. An empty string counts as not set.
+   */
+  presence(id: string): { hasUsername: boolean; hasPassword: boolean } {
+    const c = this.credentials[id];
+    return {
+      hasUsername: typeof c?.username === 'string' && c.username.length > 0,
+      hasPassword: typeof c?.password === 'string' && c.password.length > 0,
+    };
+  }
+
   /** Validates id + credential shape and upserts; throws on invalid input. */
   set(id: string, credentials: unknown): void {
     if (!isValidCameraId(id)) {

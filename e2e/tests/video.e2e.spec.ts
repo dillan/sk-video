@@ -116,11 +116,22 @@ test.describe('sk-video plugin live contract', () => {
     expect(cam.ok()).toBeTruthy();
     expect(await cam.text()).not.toContain(secret);
 
+    // The presence endpoint reports which fields are set, but never the secret itself.
+    const presence = await request.get(`${BASE}/plugins/sk-video/cameras/${CAMERA}/credentials`);
+    expect(presence.status()).toBe(200);
+    const presenceBody = await presence.json();
+    expect(presenceBody).toEqual({ hasUsername: true, hasPassword: true });
+    expect(JSON.stringify(presenceBody)).not.toContain(secret);
+
     // Delete returns 204 the first time and 404 once the credentials are gone.
     const first = await request.delete(`${BASE}/plugins/sk-video/cameras/${CAMERA}/credentials`);
     expect(first.status()).toBe(204);
     const second = await request.delete(`${BASE}/plugins/sk-video/cameras/${CAMERA}/credentials`);
     expect(second.status()).toBe(404);
+
+    // After clearing, presence reports nothing set.
+    const gone = await request.get(`${BASE}/plugins/sk-video/cameras/${CAMERA}/credentials`);
+    expect(await gone.json()).toEqual({ hasUsername: false, hasPassword: false });
   });
 
   test('deleting a camera also clears its stored credentials', async ({ request }) => {

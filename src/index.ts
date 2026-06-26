@@ -146,6 +146,15 @@ export = function (app: ServerAPI): Plugin {
         });
       });
 
+      // Credential presence — booleans only, never the secret — so the UI can show a saved state.
+      router.get('/cameras/:id/credentials', (req: Request, res: Response) => {
+        if (!credentials) {
+          res.status(503).json({ error: 'plugin not started' });
+          return;
+        }
+        res.json(credentials.presence(String(req.params.id)));
+      });
+
       // Write-only camera credentials.
       router.post('/cameras/:id/credentials', (req: Request, res: Response) => {
         if (!credentials) {
