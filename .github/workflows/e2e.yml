@@ -1,0 +1,75 @@
+name: E2E
+
+# Boots the Docker harness (MediaMTX RTSP test pattern -> plugin -> go2rtc) and runs the Playwright
+# contract suite against the real stack on Chromium and WebKit (WebKit covers the Safari quirks the
+# widget design pivots on). Linux runners run Docker natively, so the live gateway path (HLS, JPEG
+# snapshot, upload + Range) is exercised end to end. KIP is not built here, so its UI test skips.
+# See e2e/README.md.
+on:
+  push:
+    branches: [main]
+  # No base-branch filter: this also covers the harness PR while it is stacked on the feature
+  # branches (its base is not main yet).
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 20
+          cache: npm
+
+      # Build the plugin: the stack mounts this repo (with node_modules + dist) into Signal K.
+      - run: npm ci
+      - run: npm run build
+
+      # The container's node user (uid 1000) must be able to write the mounted config dir.
+      - name: Make the Signal K config dir writable in-container
+        run: chmod -R 777 e2e/signalk-config
+
+      - name: Start the stack
+        working-directory: e2e
+        env:
+          # No KIP here — point the webapp mount at an empty dir so the bind is valid.
+          KIP_PATH: ${{ runner.temp }}/empty-kip
+        run: |
+          mkdir -p "$KIP_PATH"
+          docker compose up -d --build mediamtx signalk
+
+      - name: Wait for Signal K and seed the camera
+        working-directory: e2e
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:3000/signalk >/dev/null 2>&1; then break; fi
+            sleep 2
+          done
+          curl -fsS http://localhost:3000/plugins/sk-video/status
+          SIGNALK_URL=http://localhost:3000 ./seed-camera.sh
+
+      - name: Install Playwright (Chromium + WebKit)
+        working-directory: e2e
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium webkit
+
+      - name: Run the e2e suite (Chromium + WebKit)
+        working-directory: e2e
+        env:
+          SIGNALK_URL: http://localhost:3000
+        run: npx playwright test
+
+      - name: Stack logs on failure
+        if: failure()
+        working-directory: e2e
+        run: docker compose logs --no-color --tail=300
+
+      - name: Tear down
+        if: always()
+        working-directory: e2e
+        run: docker compose down -v
