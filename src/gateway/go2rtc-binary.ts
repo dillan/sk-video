@@ -1,5 +1,16 @@
+import { createHash } from 'node:crypto';
+
 /** Pinned go2rtc version this plugin downloads and runs. */
 export const GO2RTC_VERSION = '1.9.9';
+
+/** Verifies a downloaded binary against an expected SHA-256 hex digest (case-insensitive). */
+export function verifySha256(data: Buffer, expectedHex: string): boolean {
+  void data;
+  void expectedHex;
+  void createHash;
+  // RED stub.
+  return false;
+}
 
 /**
  * Maps a Node platform + arch to the go2rtc release asset name, or null if unsupported.
