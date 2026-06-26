@@ -14,20 +14,24 @@ export interface ICameraResourceMethods {
  * server, so validation happens in the store.
  */
 export function createCameraResourceMethods(store: CameraStore): ICameraResourceMethods {
-  void store;
-  // RED stub.
   return {
     async listResources() {
-      throw new Error('not implemented');
+      return store.list();
     },
-    async getResource() {
-      throw new Error('not implemented');
+    async getResource(id: string) {
+      const camera = store.get(id);
+      if (!camera) {
+        throw new Error(`camera "${id}" not found`);
+      }
+      return camera;
     },
-    async setResource() {
-      throw new Error('not implemented');
+    async setResource(id: string, value: Record<string, unknown>) {
+      store.set(id, value);
     },
-    async deleteResource() {
-      throw new Error('not implemented');
+    async deleteResource(id: string) {
+      if (!store.delete(id)) {
+        throw new Error(`camera "${id}" not found`);
+      }
     }
   };
 }
