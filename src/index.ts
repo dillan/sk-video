@@ -21,6 +21,9 @@ import { DiscoveryService } from "./discovery/discovery-service";
 import { createWsDiscoveryProbe } from "./discovery/ws-discovery-probe";
 import { createMdnsProbe } from "./discovery/mdns-probe";
 import { registerDiscoveryRoutes } from "./discovery/discovery-routes";
+import { AssetStore } from "./uploads/asset-store";
+import { createFileAssetStore } from "./uploads/file-asset-store";
+import { registerUploadRoutes } from "./uploads/upload-routes";
 
 const PLUGIN_ID = "sk-video";
 const SYNC_DEBOUNCE_MS = 500;
@@ -31,6 +34,7 @@ export = function (app: ServerAPI): Plugin {
   let gateway: Go2rtcGateway | null = null;
   let ptz: PtzManager | null = null;
   let discovery: DiscoveryService | null = null;
+  let videos: AssetStore | null = null;
   let syncTimer: ReturnType<typeof setTimeout> | null = null;
 
   const ssrfOptions: ISsrfOptions = { allowPrivate: true };
@@ -88,6 +92,7 @@ export = function (app: ServerAPI): Plugin {
         discovery = new DiscoveryService({
           probes: [createWsDiscoveryProbe(), createMdnsProbe()],
         });
+        videos = createFileAssetStore(dataDir);
 
         const base = createCameraResourceMethods(cameras);
         app.registerResourceProvider({
@@ -139,6 +144,7 @@ export = function (app: ServerAPI): Plugin {
       gateway = null;
       ptz = null;
       discovery = null;
+      videos = null;
       return stopping;
     },
 
@@ -163,11 +169,9 @@ export = function (app: ServerAPI): Plugin {
           scheduleSync();
           res.status(204).end();
         } catch (err) {
-          res
-            .status(400)
-            .json({
-              error: err instanceof Error ? err.message : "invalid credentials",
-            });
+          res.status(400).json({
+            error: err instanceof Error ? err.message : "invalid credentials",
+          });
         }
       });
       router.delete(
@@ -199,6 +203,9 @@ export = function (app: ServerAPI): Plugin {
 
       // Camera auto-discovery (WS-Discovery + mDNS), rate-limited.
       registerDiscoveryRoutes(router, () => discovery);
+
+      // Uploaded video library: store + Range-served playback.
+      registerUploadRoutes(router, () => videos);
     },
   };
 
