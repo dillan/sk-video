@@ -69,4 +69,20 @@ describe('parseRange', () => {
   it('reports unsatisfiable for any range against an empty file', () => {
     expect(parseRange('bytes=0-0', 0)).toEqual({ type: 'unsatisfiable' });
   });
+
+  it('falls back to full when the spec has no dash', () => {
+    expect(parseRange('bytes=abc', 1000)).toEqual({ type: 'full' });
+  });
+
+  it('falls back to full when the start is not an integer', () => {
+    expect(parseRange('bytes=10.5-100', 1000)).toEqual({ type: 'full' });
+  });
+
+  it('reports unsatisfiable when the suffix is not an integer', () => {
+    expect(parseRange('bytes=-12.5', 1000)).toEqual({ type: 'unsatisfiable' });
+  });
+
+  it('reports unsatisfiable for a suffix range against an empty file', () => {
+    expect(parseRange('bytes=-100', 0)).toEqual({ type: 'unsatisfiable' });
+  });
 });

@@ -49,6 +49,12 @@ describe('sniffVideoType', () => {
     expect(sniffVideoType(bytes(SIZE_BOX, 'ftypXXXX', [0, 0, 0, 0]))).toBeNull();
   });
 
+  it('rejects an EBML container whose doctype is neither webm nor matroska', () => {
+    expect(
+      sniffVideoType(bytes([0x1a, 0x45, 0xdf, 0xa3], 'header doctype other stuff')),
+    ).toBeNull();
+  });
+
   it('rejects a too-short buffer', () => {
     expect(sniffVideoType(bytes([0x1a, 0x45]))).toBeNull();
   });

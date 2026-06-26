@@ -24,6 +24,19 @@ describe('DiscoveryService', () => {
     expect(found[0].onvifUrl).toBe('http://10.0.0.5:80/onvif/device_service'); // richer hit wins
   });
 
+  it('skips a hit that fails to normalize while keeping the normalizable ones', async () => {
+    const svc = new DiscoveryService({
+      probes: [
+        // First hit has neither xaddr nor hostname, so normalizeDiscovery returns null.
+        probeOf({ name: 'No Address Cam' }, { hostname: '10.0.0.7', name: 'Good Cam' }),
+      ],
+    });
+    const found = await svc.scan();
+    expect(found).toHaveLength(1); // the un-normalizable hit is dropped
+    expect(found.map((c) => c.host)).toEqual(['10.0.0.7']);
+    expect(found[0].name).toBe('Good Cam');
+  });
+
   it('passes the per-scan timeout to each probe', async () => {
     const probe = vi.fn<DiscoveryProbe>().mockResolvedValue([]);
     await new DiscoveryService({ probes: [probe], timeoutMs: 1234 }).scan();

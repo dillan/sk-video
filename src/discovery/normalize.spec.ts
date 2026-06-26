@@ -51,4 +51,28 @@ describe('normalizeDiscovery', () => {
     expect(normalizeDiscovery({ xaddr: 'javascript:alert(1)' })).toBeNull();
     expect(normalizeDiscovery({ xaddr: 'file:///etc/passwd' })).toBeNull();
   });
+
+  it('skips scopes without the name marker and uses a later matching scope', () => {
+    const c = normalizeDiscovery({
+      hostname: 'cam.local',
+      scopes: ['onvif://www.onvif.org/hardware/IPC', 'onvif://www.onvif.org/name/Side%20Deck'],
+    });
+    expect(c?.name).toBe('Side Deck');
+  });
+
+  it('skips a scope whose name value is empty and uses a later valid scope', () => {
+    const c = normalizeDiscovery({
+      hostname: 'cam.local',
+      scopes: ['onvif://www.onvif.org/name/', 'onvif://www.onvif.org/name/Galley'],
+    });
+    expect(c?.name).toBe('Galley');
+  });
+
+  it('falls back to the raw value when the scope name has a malformed percent escape', () => {
+    const c = normalizeDiscovery({
+      hostname: 'cam.local',
+      scopes: ['onvif://www.onvif.org/name/%ZZ'],
+    });
+    expect(c?.name).toBe('%ZZ'); // decodeURIComponent throws; raw kept (then sanitized)
+  });
 });

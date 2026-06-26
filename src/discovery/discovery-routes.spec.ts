@@ -79,4 +79,19 @@ describe('registerDiscoveryRoutes', () => {
     await vi.waitFor(() => expect(res.statusCode).toBe(429));
     expect(res.headers['Retry-After']).toBe('8');
   });
+
+  it('returns 500 with the error message when the scan fails generically', async () => {
+    const svc = {
+      scan: vi.fn().mockRejectedValue(new Error('network unreachable')),
+    };
+    const { router } = fakeRouter();
+    let captured!: (req: Request, res: Response) => void;
+    (router.get as unknown as (p: string, h: typeof captured) => void) = (_p, h) => (captured = h);
+    registerDiscoveryRoutes(router, () => svc as unknown as DiscoveryService);
+    const res = makeRes();
+    captured({} as Request, res);
+    await vi.waitFor(() => expect(res.statusCode).toBe(500));
+    expect(res.body).toEqual({ error: 'network unreachable' });
+    expect(res.headers['Retry-After']).toBeUndefined();
+  });
 });

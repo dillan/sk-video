@@ -69,4 +69,27 @@ describe('PtzManager', () => {
     await mgr.controllerFor('cam');
     expect(connectFactory).toHaveBeenCalledTimes(2);
   });
+
+  it('disposeAll disposes every cached controller and clears the cache', async () => {
+    const connectFactory = vi.fn(() => async () => fakeCam());
+    const mgr = new PtzManager(makeDeps({ connectFactory }));
+
+    const a = await mgr.controllerFor('cam-a');
+    const b = await mgr.controllerFor('cam-b');
+    expect(a).not.toBe(b);
+    expect(connectFactory).toHaveBeenCalledTimes(2);
+
+    const disposeA = vi.spyOn(a, 'dispose');
+    const disposeB = vi.spyOn(b, 'dispose');
+
+    mgr.disposeAll();
+
+    expect(disposeA).toHaveBeenCalledTimes(1);
+    expect(disposeB).toHaveBeenCalledTimes(1);
+
+    // Cache was cleared, so the next request rebuilds a brand-new controller.
+    const rebuilt = await mgr.controllerFor('cam-a');
+    expect(rebuilt).not.toBe(a);
+    expect(connectFactory).toHaveBeenCalledTimes(3);
+  });
 });

@@ -101,4 +101,47 @@ describe('Go2rtcBinaryManager', () => {
     });
     await expect(mgr.ensure()).rejects.toThrow(/SHA-256/);
   });
+
+  it('throws and writes nothing when the download responds with HTTP 404', async () => {
+    const mgr = new Go2rtcBinaryManager({
+      dataDir: dir,
+      platform: 'linux',
+      arch: 'x64',
+      fetchImpl: fakeFetch('not found', false, 404),
+    });
+    await expect(mgr.ensure()).rejects.toThrow(/download failed: HTTP 404/);
+    expect(existsSync(mgr.binaryPath)).toBe(false);
+  });
+
+  it('throws when the download responds with HTTP 500', async () => {
+    const mgr = new Go2rtcBinaryManager({
+      dataDir: dir,
+      platform: 'linux',
+      arch: 'x64',
+      fetchImpl: fakeFetch('boom', false, 500),
+    });
+    await expect(mgr.ensure()).rejects.toThrow(/download failed: HTTP 500/);
+    expect(existsSync(mgr.binaryPath)).toBe(false);
+  });
+
+  it('throws when the downloaded zip lacks a go2rtc binary entry', async () => {
+    const zip = new AdmZip();
+    zip.addFile('README.txt', Buffer.from('no binary here'));
+    const zipBuf = zip.toBuffer();
+    const fetchImpl = (async () => ({
+      ok: true,
+      status: 200,
+      arrayBuffer: async () =>
+        zipBuf.buffer.slice(zipBuf.byteOffset, zipBuf.byteOffset + zipBuf.byteLength),
+    })) as unknown as typeof fetch;
+
+    const mgr = new Go2rtcBinaryManager({
+      dataDir: dir,
+      platform: 'darwin',
+      arch: 'arm64',
+      fetchImpl,
+    });
+    await expect(mgr.ensure()).rejects.toThrow(/binary not found in the downloaded archive/);
+    expect(existsSync(mgr.binaryPath)).toBe(false);
+  });
 });

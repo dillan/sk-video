@@ -123,6 +123,19 @@ describe('AssetStore', () => {
     expect(store.delete(a.id)).toBe(false); // already gone
   });
 
+  it('rejects an invalid generated id before writing the blob or index', () => {
+    const f = fakes();
+    const store = new AssetStore({
+      index: f.index,
+      blobs: f.blobStore,
+      idGen: () => '../bad',
+    });
+    expect(() => store.add(mp4(100), 'a.mp4')).toThrow('generated an invalid asset id');
+    expect(f.blobs.size).toBe(0); // nothing written
+    expect(f.getSaved()).toEqual({}); // index untouched
+    expect(store.list()).toHaveLength(0); // not recorded in memory
+  });
+
   it('reloads existing assets from the index on construction', () => {
     const f = fakes();
     new AssetStore({
