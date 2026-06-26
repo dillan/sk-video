@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, rmSync, existsSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import AdmZip from 'adm-zip';
 import { Go2rtcBinaryManager } from './go2rtc-binary-manager';
 
 function fakeFetch(body: string, ok = true, status = 200): typeof fetch {
@@ -36,6 +37,21 @@ describe('Go2rtcBinaryManager', () => {
     expect(calledUrl).toContain('go2rtc_linux_amd64');
     expect(existsSync(path)).toBe(true);
     expect(readFileSync(path, 'utf8')).toBe('BINARY');
+  });
+
+  it('extracts the binary from a zip archive (macOS/Windows assets)', async () => {
+    const zip = new AdmZip();
+    zip.addFile('go2rtc', Buffer.from('MAC-BINARY'));
+    const zipBuf = zip.toBuffer();
+    const fetchImpl = (async () => ({
+      ok: true,
+      status: 200,
+      arrayBuffer: async () => zipBuf.buffer.slice(zipBuf.byteOffset, zipBuf.byteOffset + zipBuf.byteLength)
+    })) as unknown as typeof fetch;
+
+    const mgr = new Go2rtcBinaryManager({ dataDir: dir, platform: 'darwin', arch: 'arm64', fetchImpl });
+    const path = await mgr.ensure();
+    expect(readFileSync(path, 'utf8')).toBe('MAC-BINARY');
   });
 
   it('uses an already-present (manually placed) binary without downloading', async () => {
