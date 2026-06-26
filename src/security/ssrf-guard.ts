@@ -43,3 +43,18 @@ export function isIpAllowed(ip: string, options: ISsrfOptions): boolean {
   }
   return true;
 }
+
+/** Resolves a hostname to its IP addresses. */
+export type HostLookup = (host: string) => Promise<string[]>;
+
+/**
+ * Asserts that a camera host is safe to connect to. An IP literal is checked directly; a hostname is
+ * resolved and EVERY resolved address must be allowed — so a name that resolves (now or via
+ * rebinding) to a blocked address is rejected. Throws on a blocked or unresolvable host.
+ */
+export async function assertHostAllowed(host: string, options: ISsrfOptions, lookup: HostLookup): Promise<void> {
+  void host;
+  void options;
+  void lookup;
+  // RED stub.
+}
