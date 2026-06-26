@@ -129,18 +129,62 @@ validation of uploads, and vetted HTTP Range handling.
 
 ### Develop
 
+You need [Node](https://nodejs.org/) (see [`.nvmrc`](.nvmrc) for the version we use — `nvm use`
+picks it up) and Git. Then:
+
 ```sh
+git clone https://github.com/dillan/sk-video.git
+cd sk-video
 npm install
-npm run build      # tsc → dist/
-npm test           # vitest
-npm run lint
+npm run build      # compile TypeScript to dist/
+npm test           # run the unit tests once
 ```
+
+Common scripts:
+
+| Script                  | What it does                                           |
+| ----------------------- | ------------------------------------------------------ |
+| `npm run dev`           | Recompile automatically as you edit (`tsc --watch`)    |
+| `npm test`              | Run the unit tests once                                |
+| `npm run test:watch`    | Re-run tests as you edit                               |
+| `npm run test:coverage` | Run the tests and report coverage                      |
+| `npm run lint`          | Check for code problems with ESLint                    |
+| `npm run format`        | Auto-format the code with Prettier                     |
+| `npm run format:check`  | Check formatting without changing files (what CI does) |
+
+### Run your changes against a Signal K server
+
+The quickest loop is to link your working copy into a Signal K server so it loads the plugin straight
+from `dist/`:
+
+```sh
+# one time: point the server's plugin folder at this repo
+cd ~/.signalk/node_modules        # create the folder if it doesn't exist
+ln -s /path/to/sk-video sk-video
+
+# then, while developing:
+cd /path/to/sk-video
+npm run dev                        # keep rebuilding dist/ as you edit
+```
+
+Restart the Signal K server (or toggle the plugin off/on in **Server → Plugin Config**) to pick up a
+rebuild. Prefer not to symlink? `npm install /path/to/sk-video` from `~/.signalk` copies it in instead
+— just reinstall after each build.
+
+For a full, throwaway stack (a simulated camera, a real Signal K server and a browser), use the
+end-to-end harness below — it needs nothing installed on your machine except Docker.
 
 ### End-to-end harness
 
 `e2e/` contains a reproducible Docker + Playwright harness (a simulated camera via MediaMTX, the plugin
 under a real Signal K server, and an opt-in virtual ONVIF device). See [`e2e/README.md`](e2e/README.md).
 It also runs in CI on every push and pull request.
+
+## Contributing
+
+Bug reports, ideas, and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for the
+setup, the checks to run, and our commit-message format. Agents (and the curious) can read
+[AGENTS.md](AGENTS.md) for a map of the codebase and its conventions.
 
 ## License
 
