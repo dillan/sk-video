@@ -2,6 +2,10 @@
 
 **See your boat's cameras in your browser.**
 
+[![CI](https://github.com/dillan/sk-video/actions/workflows/ci.yml/badge.svg)](https://github.com/dillan/sk-video/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![code style: prettier](https://img.shields.io/badge/code_style-prettier-ff69b4.svg)](https://prettier.io)
+
 SK Video is a free add-on (a "plugin") for the [Signal K](https://signalk.org/) server that lets you
 watch your onboard IP cameras and saved video clips in [KIP](https://github.com/mxtommy/Kip) and other
 Signal K apps — no separate camera app, no cloud account.

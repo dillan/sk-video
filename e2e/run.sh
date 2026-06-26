@@ -50,6 +50,6 @@ Stack is up.
   Plugin status:   http://localhost:3000/plugins/sk-video/status
   Camera HLS:      http://localhost:3000/plugins/sk-video/cameras/testcam/stream.m3u8
 
-Run the e2e tests:   npm install && npx playwright install && npm test
+Run the e2e tests:   npm install && npm test   (browsers install automatically)
 Stop the stack:      ./run.sh --down
 EOF

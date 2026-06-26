@@ -4,6 +4,7 @@
   "version": "0.0.0",
   "description": "End-to-end harness for the SK Video plugin and KIP video widget",
   "scripts": {
+    "pretest": "playwright install chromium webkit",
     "test": "playwright test",
     "test:chromium": "playwright test --project=chromium",
     "stack:up": "./run.sh",
