@@ -17,14 +17,14 @@ export default defineConfig({
         'src/gateway/go2rtc-process.ts',
         'src/onvif/onvif-connect.ts',
       ],
-      // A regression ratchet, not an aspiration: set just below current coverage so it can't slip.
-      // Branches/functions sit high because the extracted logic is unit-tested; lines/statements are
-      // lower because Express route wiring is exercised by the e2e harness. Raise these as we add tests.
+      // A regression ratchet, not an aspiration: set a few points below current coverage
+      // (~96% lines / 94% branches / 100% functions) so a meaningful drop fails CI without
+      // breaking on a small, well-tested addition. Raise further as coverage climbs.
       thresholds: {
-        statements: 70,
-        branches: 80,
-        functions: 85,
-        lines: 70,
+        statements: 92,
+        branches: 88,
+        functions: 95,
+        lines: 92,
       },
     },
   },
