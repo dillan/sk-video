@@ -13,36 +13,49 @@ export interface ICredentialPersistence {
  * clients.
  */
 export class CredentialStore {
-  private credentials: Record<string, ICameraCredentials> = {};
+  private credentials: Record<string, ICameraCredentials>;
 
   constructor(private readonly persistence: ICredentialPersistence) {
-    void persistence;
-    // RED stub.
+    this.credentials = { ...persistence.load() };
   }
 
   get(id: string): ICameraCredentials | null {
-    void id;
-    // RED stub.
-    return null;
+    return this.credentials[id] ?? null;
   }
 
   /** All credentials, for building the go2rtc config. */
   all(): Record<string, ICameraCredentials> {
-    // RED stub.
-    return {};
+    return { ...this.credentials };
   }
 
   /** Validates id + credential shape and upserts; throws on invalid input. */
   set(id: string, credentials: unknown): void {
-    void id;
-    void credentials;
-    // RED stub.
-    throw new Error('not implemented');
+    if (!isValidCameraId(id)) {
+      throw new Error(`invalid camera id: ${id}`);
+    }
+    if (typeof credentials !== 'object' || credentials === null || Array.isArray(credentials)) {
+      throw new Error('credentials must be an object');
+    }
+    const c = credentials as Record<string, unknown>;
+    if (c.username !== undefined && typeof c.username !== 'string') {
+      throw new Error('username must be a string');
+    }
+    if (c.password !== undefined && typeof c.password !== 'string') {
+      throw new Error('password must be a string');
+    }
+    const clean: ICameraCredentials = {};
+    if (typeof c.username === 'string') clean.username = c.username;
+    if (typeof c.password === 'string') clean.password = c.password;
+    this.credentials[id] = clean;
+    this.persistence.save({ ...this.credentials });
   }
 
   delete(id: string): boolean {
-    void id;
-    // RED stub.
-    return false;
+    if (!(id in this.credentials)) {
+      return false;
+    }
+    delete this.credentials[id];
+    this.persistence.save({ ...this.credentials });
+    return true;
   }
 }
