@@ -9,7 +9,9 @@ import type { ICameraCredentials } from '../gateway/go2rtc-source';
 function readJsonObject<T>(file: string): Record<string, T> {
   try {
     const parsed = JSON.parse(readFileSync(file, 'utf8')) as unknown;
-    return parsed && typeof parsed === 'object' ? (parsed as Record<string, T>) : {};
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? (parsed as Record<string, T>)
+      : {};
   } catch {
     return {};
   }
