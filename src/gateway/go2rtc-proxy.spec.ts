@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { go2rtcApiUrl } from './go2rtc-proxy';
+import { go2rtcApiUrl, go2rtcHlsUrl } from './go2rtc-proxy';
 
 describe('go2rtcApiUrl', () => {
   it('maps each transport to the loopback go2rtc API URL keyed by camera id', () => {
@@ -17,5 +17,31 @@ describe('go2rtcApiUrl', () => {
     expect(() => go2rtcApiUrl(1984, 'webrtc', '../evil')).toThrow();
     expect(() => go2rtcApiUrl(1984, 'webrtc', 'a b')).toThrow();
     expect(() => go2rtcApiUrl(1984, 'webrtc', '')).toThrow();
+  });
+});
+
+describe('go2rtcHlsUrl', () => {
+  it('builds the loopback HLS sub-resource URL, preserving go2rtc query params', () => {
+    expect(go2rtcHlsUrl(1984, 'foredeck', 'playlist.m3u8', 'id=abc')).toBe(
+      'http://127.0.0.1:1984/api/hls/playlist.m3u8?id=abc'
+    );
+    expect(go2rtcHlsUrl(1984, 'foredeck', 'segment.ts', 'id=abc&n=5')).toBe(
+      'http://127.0.0.1:1984/api/hls/segment.ts?id=abc&n=5'
+    );
+    expect(go2rtcHlsUrl(1984, 'foredeck', 'init.mp4', '')).toBe(
+      'http://127.0.0.1:1984/api/hls/init.mp4'
+    );
+  });
+
+  it('strips a client-supplied src param', () => {
+    expect(go2rtcHlsUrl(1984, 'foredeck', 'segment.ts', 'src=evil&id=abc')).toBe(
+      'http://127.0.0.1:1984/api/hls/segment.ts?id=abc'
+    );
+  });
+
+  it('rejects an invalid id or resource (no traversal)', () => {
+    expect(() => go2rtcHlsUrl(1984, '../x', 'playlist.m3u8')).toThrow();
+    expect(() => go2rtcHlsUrl(1984, 'cam', '../config')).toThrow();
+    expect(() => go2rtcHlsUrl(1984, 'cam', 'a/b')).toThrow();
   });
 });
