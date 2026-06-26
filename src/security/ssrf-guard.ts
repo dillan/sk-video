@@ -53,8 +53,19 @@ export type HostLookup = (host: string) => Promise<string[]>;
  * rebinding) to a blocked address is rejected. Throws on a blocked or unresolvable host.
  */
 export async function assertHostAllowed(host: string, options: ISsrfOptions, lookup: HostLookup): Promise<void> {
-  void host;
-  void options;
-  void lookup;
-  // RED stub.
+  if (isIP(host) !== 0) {
+    if (!isIpAllowed(host, options)) {
+      throw new Error(`host ${host} is not an allowed address`);
+    }
+    return;
+  }
+  const addresses = await lookup(host);
+  if (addresses.length === 0) {
+    throw new Error(`could not resolve host ${host}`);
+  }
+  for (const ip of addresses) {
+    if (!isIpAllowed(ip, options)) {
+      throw new Error(`host ${host} resolves to a blocked address`);
+    }
+  }
 }
