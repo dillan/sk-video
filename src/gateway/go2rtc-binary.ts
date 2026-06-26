@@ -5,11 +5,8 @@ export const GO2RTC_VERSION = '1.9.9';
 
 /** Verifies a downloaded binary against an expected SHA-256 hex digest (case-insensitive). */
 export function verifySha256(data: Buffer, expectedHex: string): boolean {
-  void data;
-  void expectedHex;
-  void createHash;
-  // RED stub.
-  return false;
+  const actual = createHash('sha256').update(data).digest('hex');
+  return actual.toLowerCase() === expectedHex.toLowerCase();
 }
 
 /**
