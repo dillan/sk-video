@@ -1,0 +1,33 @@
+version: 2
+updates:
+  # Plugin dependencies
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      # One PR for routine dev-tooling bumps instead of many.
+      dev-dependencies:
+        dependency-type: development
+        update-types: ['minor', 'patch']
+
+  # End-to-end harness dependencies
+  - package-ecosystem: npm
+    directory: /e2e
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      e2e-dependencies:
+        patterns: ['*']
+        update-types: ['minor', 'patch']
+
+  # GitHub Actions versions
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      github-actions:
+        patterns: ['*']
