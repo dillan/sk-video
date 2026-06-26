@@ -180,6 +180,29 @@ describe('registerUploadRoutes', () => {
     expect(missing.statusCode).toBe(404);
   });
 
+  it('responds 400 (upload failed) when the request stream errors mid-body', async () => {
+    const { handlers } = setup();
+    const res = new FakeRes();
+    const req = new Readable({ read() {} }) as unknown as Request & Readable;
+    (req as unknown as { params: unknown }).params = {};
+    (req as unknown as { headers: unknown }).headers = {};
+    handlers.get('POST /videos')!(req as never, res as never);
+    // No data has been buffered yet; a mid-body stream error must settle the
+    // request as a failed (non-too-large) upload rather than hang.
+    req.emit('error', new Error('boom'));
+    await once(res, 'finish');
+    expect(res.statusCode).toBe(400);
+    expect((res.body as { error: string }).error).toBe('upload failed');
+  });
+
+  it('rejects a DELETE with an invalid id (400)', () => {
+    const { handlers } = setup();
+    const res = new FakeRes();
+    handlers.get('DELETE /videos/:id')!(fakeReq({ params: { id: 'bad/../id' } }), res as never);
+    expect(res.statusCode).toBe(400);
+    expect((res.body as { error: string }).error).toBe('invalid id');
+  });
+
   it('deletes an asset (204) then reports 404', () => {
     const store = makeStore();
     const asset = store.add(new Uint8Array(mp4()), 'a.mp4');

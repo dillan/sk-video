@@ -72,6 +72,24 @@ describe('validateCamera', () => {
     ).toBe(false);
   });
 
+  it('rejects a non-boolean enabled flag', () => {
+    const r = validateCamera({
+      name: 'c',
+      enabled: 'true',
+      source: { scheme: 'rtsp', host: 'x' },
+    });
+    expect(r.valid).toBe(false);
+    expect(r.errors).toContain('enabled must be a boolean');
+  });
+
+  it('rejects a source that is not a plain object', () => {
+    for (const source of [null, ['rtsp', 'x'], 'rtsp://x']) {
+      const r = validateCamera({ name: 'c', source });
+      expect(r.valid, JSON.stringify(source)).toBe(false);
+      expect(r.errors, JSON.stringify(source)).toContain('source is required');
+    }
+  });
+
   it('rejects credentials embedded in the camera definition', () => {
     const r = validateCamera({
       name: 'c',

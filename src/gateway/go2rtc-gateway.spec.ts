@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { Go2rtcGateway, type IProcessController } from './go2rtc-gateway';
+import { DEFAULT_GO2RTC_PORTS } from './go2rtc-config';
 import type { ICamera } from '../cameras/camera-validation';
 
 class FakeProcess implements IProcessController {
@@ -64,5 +65,43 @@ describe('Go2rtcGateway.sync', () => {
     await gateway.sync({ b: disabledCam }, {});
     expect(writes).toHaveLength(0);
     expect(proc.calls).toEqual(['stop']);
+  });
+});
+
+describe('Go2rtcGateway.stop', () => {
+  it('tears down the running process when called directly', async () => {
+    const proc = new FakeProcess();
+    const { gateway } = makeGateway(proc);
+    // Bring go2rtc up first so there is a live process (and bound ports) to tear down.
+    await gateway.sync({ a: enabledCam }, {});
+    expect(proc.running).toBe(true);
+
+    await gateway.stop();
+
+    // The injected controller's stop() ran and the process is no longer running
+    // (the controller releases its ports as part of stopping).
+    expect(proc.calls).toEqual(['start', 'stop']);
+    expect(proc.running).toBe(false);
+  });
+});
+
+describe('Go2rtcGateway.apiPort', () => {
+  it('returns the custom api port when constructed with non-default ports', () => {
+    const proc = new FakeProcess();
+    const customApi = DEFAULT_GO2RTC_PORTS.api + 1000;
+    const gateway = new Go2rtcGateway({
+      dataDir: '/data',
+      binary: { ensure: async () => '/bin/go2rtc' },
+      process: proc,
+      ports: { api: customApi, rtsp: 9554, webrtc: 9555 },
+      writeConfig: () => {},
+    });
+    expect(gateway.apiPort).toBe(customApi);
+    expect(gateway.apiPort).not.toBe(DEFAULT_GO2RTC_PORTS.api);
+  });
+
+  it('falls back to the default api port when no ports are provided', () => {
+    const { gateway } = makeGateway(new FakeProcess());
+    expect(gateway.apiPort).toBe(DEFAULT_GO2RTC_PORTS.api);
   });
 });

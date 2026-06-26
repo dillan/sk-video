@@ -62,6 +62,50 @@ describe('OnvifPtzController', () => {
     expect(await c.getPresets()).toEqual({ Preset1: 'token-1' });
   });
 
+  it('propagates a camera error from stop', async () => {
+    const cam: IOnvifCam = {
+      continuousMove: (_o, cb) => cb(null),
+      stop: (_o, cb) => cb(new Error('stop failed')),
+      getPresets: (cb) => cb(null, {}),
+      gotoPreset: (_o, cb) => cb(null),
+    };
+    await expect(new OnvifPtzController(async () => cam).stop()).rejects.toThrow(/stop failed/);
+  });
+
+  it('propagates a camera error from getPresets', async () => {
+    const cam: IOnvifCam = {
+      continuousMove: (_o, cb) => cb(null),
+      stop: (_o, cb) => cb(null),
+      getPresets: (cb) => cb(new Error('presets failed')),
+      gotoPreset: (_o, cb) => cb(null),
+    };
+    await expect(new OnvifPtzController(async () => cam).getPresets()).rejects.toThrow(
+      /presets failed/,
+    );
+  });
+
+  it('returns an empty map when the device reports no presets', async () => {
+    const cam: IOnvifCam = {
+      continuousMove: (_o, cb) => cb(null),
+      stop: (_o, cb) => cb(null),
+      getPresets: (cb) => cb(null, undefined),
+      gotoPreset: (_o, cb) => cb(null),
+    };
+    expect(await new OnvifPtzController(async () => cam).getPresets()).toEqual({});
+  });
+
+  it('propagates a camera error from gotoPreset', async () => {
+    const cam: IOnvifCam = {
+      continuousMove: (_o, cb) => cb(null),
+      stop: (_o, cb) => cb(null),
+      getPresets: (cb) => cb(null, {}),
+      gotoPreset: (_o, cb) => cb(new Error('goto failed')),
+    };
+    await expect(new OnvifPtzController(async () => cam).gotoPreset('token-1')).rejects.toThrow(
+      /goto failed/,
+    );
+  });
+
   it('auto-stops a continuous move after the timeout', async () => {
     vi.useFakeTimers();
     const cam = new FakeCam();

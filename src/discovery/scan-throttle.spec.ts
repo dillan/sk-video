@@ -41,4 +41,28 @@ describe('ScanThrottle', () => {
     const t = new ScanThrottle(5000, clock().now);
     expect(t.retryAfterMs()).toBe(0);
   });
+
+  it('throws from begin() during the cooldown window after a scan completes', () => {
+    const c = clock();
+    const t = new ScanThrottle(5000, c.now);
+    t.begin();
+    t.end();
+
+    c.advance(2000);
+    expect(t.canScan()).toBe(false);
+    expect(() => t.begin()).toThrow('discovery is cooling down; retry in 3000ms');
+  });
+
+  it('stops throwing from begin() once the cooldown has fully elapsed', () => {
+    const c = clock();
+    const t = new ScanThrottle(5000, c.now);
+    t.begin();
+    t.end();
+
+    c.advance(4999);
+    expect(() => t.begin()).toThrow('discovery is cooling down; retry in 1ms');
+
+    c.advance(1);
+    expect(() => t.begin()).not.toThrow();
+  });
 });
