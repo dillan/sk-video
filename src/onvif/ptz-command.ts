@@ -11,10 +11,16 @@ export interface IPtzVelocity {
  * Clamps a PTZ velocity command to the ONVIF normalized range [-1, 1] per axis, coercing missing or
  * non-finite values to 0. This bounds what can be sent to a camera regardless of client input.
  */
+const axis = (v: unknown): number => {
+  const n = typeof v === 'number' ? v : NaN;
+  if (!Number.isFinite(n)) {
+    return 0;
+  }
+  return Math.max(-1, Math.min(1, n));
+};
+
 export function clampPtzVelocity(input: Partial<IPtzVelocity> | null | undefined): IPtzVelocity {
-  void input;
-  // RED stub.
-  return { pan: 0, tilt: 0, zoom: 0 };
+  return { pan: axis(input?.pan), tilt: axis(input?.tilt), zoom: axis(input?.zoom) };
 }
 
 /**
@@ -22,7 +28,5 @@ export function clampPtzVelocity(input: Partial<IPtzVelocity> | null | undefined
  * identifiers; anything else is rejected to avoid SOAP/XML injection.
  */
 export function isValidPtzToken(token: unknown): token is string {
-  void token;
-  // RED stub.
-  return false;
+  return typeof token === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(token);
 }
