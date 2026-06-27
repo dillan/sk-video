@@ -23,6 +23,8 @@ import { createSsdpProbe } from './discovery/ssdp-probe';
 import { registerDiscoveryRoutes } from './discovery/discovery-routes';
 import { registerIntrospectRoute } from './discovery/introspect-routes';
 import { introspectOnvifCamera } from './onvif/onvif-introspect';
+import { MobController } from './safety/mob-controller';
+import { toMobCamera, ownShipFromSelfState, findMobBeacon } from './safety/mob-wiring';
 import { AssetStore } from './uploads/asset-store';
 import { createFileAssetStore } from './uploads/file-asset-store';
 import { registerUploadRoutes } from './uploads/upload-routes';
@@ -56,6 +58,7 @@ export = function (app: ServerAPI): Plugin {
   let hardware: IHardwareInfo | null = null;
   let bridge: SignalKBridge | null = null;
   let snapshots: SnapshotService | null = null;
+  let mob: MobController | null = null;
   let syncTimer: ReturnType<typeof setTimeout> | null = null;
 
   const ssrfOptions: ISsrfOptions = { allowPrivate: true };
@@ -69,6 +72,14 @@ export = function (app: ServerAPI): Plugin {
     return records.map((a) => a.address);
   };
   const log = (msg: string) => app.debug?.(redactUrl(msg));
+  /** Read a path from the full data model, tolerating servers/versions that don't expose getPath. */
+  const safeGetPath = (path: string): unknown => {
+    try {
+      return app.getPath?.(path);
+    } catch {
+      return undefined;
+    }
+  };
 
   // One limiter shared by the brute-force-able routes, keyed by client address.
   const limiter = new RateLimiter({ max: SENSITIVE_MAX_PER_MINUTE, windowMs: 60_000 });
@@ -165,6 +176,47 @@ export = function (app: ServerAPI): Plugin {
           store: new FileSnapshotStore(dataDir),
         });
 
+        // Man-overboard: aim every capable PTZ camera at the MOB position (live beacon, else the
+        // dead-reckoned datum), recomputed as the boat drifts. Aids — never replaces — MOB procedure.
+        mob = new MobController({
+          getOwnShip: () => (bridge ? ownShipFromSelfState(bridge.getSelfState()) : null),
+          getBeaconTarget: () => findMobBeacon(safeGetPath('vessels')),
+          getCameras: () =>
+            Object.entries(cameras?.list() ?? {})
+              .filter(([, camera]) => camera.enabled)
+              .map(([id, camera]) => toMobCamera(id, camera)),
+          aimCamera: (id, pan, tilt) => {
+            void ptz
+              ?.controllerFor(id)
+              .then((controller) => controller.moveAbsolute({ pan, tilt }))
+              .catch(() => undefined);
+          },
+          raiseNotification: (message, position) =>
+            void bridge?.raiseNotification('mob', {
+              state: 'emergency',
+              message,
+              ...(position ? { data: { position } } : {}),
+            }),
+          clearNotification: () => void bridge?.clearNotification('mob'),
+          emitMarker: (target) =>
+            void bridge?.emit({ path: 'navigation.mob.position', value: target }),
+          snapshotAll: () => {
+            for (const id of Object.keys(cameras?.list() ?? {})) {
+              void snapshots?.capture(id).catch(() => undefined);
+            }
+          },
+        });
+
+        // A Signal K PUT action so any client (a KIP button, a mapped hardware key) can trigger MOB.
+        bridge.registerAction('cameras.mob.activate', (value) => {
+          if (value === false) {
+            mob?.deactivate();
+          } else {
+            mob?.activate();
+          }
+          return { state: 'COMPLETED', statusCode: 200 };
+        });
+
         const base = createCameraResourceMethods(cameras);
         app.registerResourceProvider({
           type: 'cameras',
@@ -215,9 +267,11 @@ export = function (app: ServerAPI): Plugin {
       ptz = null;
       discovery = null;
       videos = null;
+      mob?.deactivate();
       hardware = null;
       bridge = null;
       snapshots = null;
+      mob = null;
       return stopping;
     },
 
@@ -279,6 +333,20 @@ export = function (app: ServerAPI): Plugin {
           scheduleSync();
         }
         res.status(existed ? 204 : 404).end();
+      });
+
+      // Man-overboard activate/deactivate (also exposed as a Signal K PUT action).
+      router.post('/mob', (req: Request, res: Response) => {
+        if (!mob) {
+          res.status(503).json({ error: 'plugin not started' });
+          return;
+        }
+        if ((req.body as { active?: unknown })?.active === false) {
+          mob.deactivate();
+          res.json({ active: false });
+          return;
+        }
+        res.json(mob.activate());
       });
 
       // Same-origin transport proxy to go2rtc (WHEP / frame.jpeg / HLS).
