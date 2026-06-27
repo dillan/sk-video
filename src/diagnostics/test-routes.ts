@@ -1,6 +1,7 @@
 import type { IRouter, Request, Response } from 'express';
 import { validateCamera } from '../cameras/camera-validation';
 import { buildGo2rtcSource, type ICameraCredentials } from '../gateway/go2rtc-source';
+import type { IRateLimitResult } from '../security/rate-limit';
 import {
   buildFfprobeArgs,
   evaluateFfprobe,
@@ -17,6 +18,8 @@ export interface ITestContext {
   runFfprobe: TFfprobeRunner;
   tcpProbe: TTcpProbe;
   timeoutMs?: number;
+  /** Optional brute-force guard; when it reports not-ok the probe is refused with 429. */
+  rateLimit?: (req: Request) => IRateLimitResult;
 }
 
 const DEFAULT_TIMEOUT_MS = 8000;

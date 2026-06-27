@@ -15,6 +15,9 @@ function makeRes() {
       this.body = payload;
       return this;
     },
+    setHeader(_k: string, _v: string) {
+      return this;
+    },
   };
   return res as unknown as Response & { statusCode: number; body: unknown };
 }
@@ -54,6 +57,17 @@ describe('registerTestRoutes', () => {
     const { call } = setup({ ready: () => false });
     const res = await call(RTSP);
     expect(res.statusCode).toBe(503);
+  });
+
+  it('returns 429 when rate-limited and never probes', async () => {
+    const runFfprobe = vi.fn();
+    const { call } = setup({
+      rateLimit: () => ({ ok: false, retryAfterMs: 5000 }),
+      runFfprobe,
+    });
+    const res = await call(RTSP);
+    expect(res.statusCode).toBe(429);
+    expect(runFfprobe).not.toHaveBeenCalled();
   });
 
   it('rejects an unsafe scheme (no exec:/ffmpeg: RCE) with 400 and never probes', async () => {
