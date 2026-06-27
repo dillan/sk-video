@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { sniffVideoType } from './video-sniff';
+import { sniffVideoType, sniffImageType } from './video-sniff';
 
 /** Builds bytes from a mix of ascii strings and raw byte arrays. */
 function bytes(...parts: Array<string | number[]>): Uint8Array {
@@ -57,5 +57,24 @@ describe('sniffVideoType', () => {
 
   it('rejects a too-short buffer', () => {
     expect(sniffVideoType(bytes([0x1a, 0x45]))).toBeNull();
+  });
+});
+
+describe('sniffImageType', () => {
+  it('accepts a JPEG (FF D8 FF) as image/jpeg', () => {
+    expect(sniffImageType(bytes([0xff, 0xd8, 0xff, 0xe0], 'JFIF'))).toEqual({
+      contentType: 'image/jpeg',
+    });
+  });
+
+  it('accepts a PNG as image/png', () => {
+    expect(sniffImageType(bytes([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))).toEqual({
+      contentType: 'image/png',
+    });
+  });
+
+  it('rejects non-image and too-short buffers', () => {
+    expect(sniffImageType(bytes('<!DOCTYPE html>'))).toBeNull();
+    expect(sniffImageType(bytes([0xff, 0xd8]))).toBeNull();
   });
 });

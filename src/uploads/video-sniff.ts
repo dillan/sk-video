@@ -38,6 +38,33 @@ function ascii(bytes: Uint8Array, start: number, length: number): string {
   return s;
 }
 
+/**
+ * Identifies an image by its magic bytes, for the snapshot path (which stores JPEG/PNG frames rather
+ * than video containers). Kept separate from {@link sniffVideoType} so the video-upload route's
+ * container allow-list is not widened to accept images. Returns null for anything else.
+ */
+export function sniffImageType(bytes: Uint8Array): ISniffResult | null {
+  // JPEG: SOI marker FF D8 followed by another FF (start of the first marker segment).
+  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
+    return { contentType: 'image/jpeg' };
+  }
+  // PNG: the 8-byte signature.
+  if (
+    bytes.length >= 8 &&
+    bytes[0] === 0x89 &&
+    bytes[1] === 0x50 &&
+    bytes[2] === 0x4e &&
+    bytes[3] === 0x47 &&
+    bytes[4] === 0x0d &&
+    bytes[5] === 0x0a &&
+    bytes[6] === 0x1a &&
+    bytes[7] === 0x0a
+  ) {
+    return { contentType: 'image/png' };
+  }
+  return null;
+}
+
 export function sniffVideoType(bytes: Uint8Array): ISniffResult | null {
   if (bytes.length < 12) {
     return null;

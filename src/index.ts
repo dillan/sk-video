@@ -35,6 +35,10 @@ import {
   type THardwareTier,
   type IHardwareInfo,
 } from './hardware/tier-detect';
+import { SignalKBridge, type ISignalKApp } from './signalk/sk-bridge';
+import { SnapshotService } from './recording/snapshot-service';
+import { FileSnapshotStore } from './recording/file-snapshot-store';
+import { go2rtcApiUrl } from './gateway/go2rtc-proxy';
 
 const PLUGIN_ID = 'sk-video';
 const SYNC_DEBOUNCE_MS = 500;
@@ -50,6 +54,8 @@ export = function (app: ServerAPI): Plugin {
   let discovery: DiscoveryService | null = null;
   let videos: AssetStore | null = null;
   let hardware: IHardwareInfo | null = null;
+  let bridge: SignalKBridge | null = null;
+  let snapshots: SnapshotService | null = null;
   let syncTimer: ReturnType<typeof setTimeout> | null = null;
 
   const ssrfOptions: ISsrfOptions = { allowPrivate: true };
@@ -144,6 +150,21 @@ export = function (app: ServerAPI): Plugin {
         });
         videos = createFileAssetStore(dataDir);
 
+        // The Signal K bridge speaks plain Signal K JSON; the server's branded delta/notification
+        // types are a structural superset, so we adapt at this single boundary.
+        bridge = new SignalKBridge(app as unknown as ISignalKApp, PLUGIN_ID);
+        snapshots = new SnapshotService({
+          capture: async (id: string) => {
+            const upstream = await fetch(go2rtcApiUrl(gateway?.apiPort ?? 1984, 'frame', id));
+            if (!upstream.ok) {
+              throw new Error(`frame fetch failed (${upstream.status})`);
+            }
+            return new Uint8Array(await upstream.arrayBuffer());
+          },
+          selfSource: bridge,
+          store: new FileSnapshotStore(dataDir),
+        });
+
         const base = createCameraResourceMethods(cameras);
         app.registerResourceProvider({
           type: 'cameras',
@@ -195,6 +216,8 @@ export = function (app: ServerAPI): Plugin {
       discovery = null;
       videos = null;
       hardware = null;
+      bridge = null;
+      snapshots = null;
       return stopping;
     },
 
@@ -283,6 +306,27 @@ export = function (app: ServerAPI): Plugin {
 
       // Uploaded video library: store + Range-served playback.
       registerUploadRoutes(router, () => videos);
+
+      // Capture a telemetry-stamped snapshot (position/heading/… from the Signal K bus burned into
+      // the stored frame's sidecar). Same-origin and keyed by a known camera id.
+      router.post('/cameras/:id/snapshot', async (req: Request, res: Response) => {
+        if (!snapshots || !cameras) {
+          res.status(503).json({ error: 'plugin not started' });
+          return;
+        }
+        const id = String(req.params.id);
+        if (!cameras.get(id)) {
+          res.status(404).json({ error: 'unknown camera' });
+          return;
+        }
+        try {
+          res.status(201).json(await snapshots.capture(id));
+        } catch (err) {
+          res.status(502).json({
+            error: redactUrl(err instanceof Error ? err.message : 'snapshot failed'),
+          });
+        }
+      });
 
       // Connection test for an unsaved camera (ffprobe / TCP reachability, SSRF-guarded).
       registerTestRoutes(router, {
