@@ -116,11 +116,40 @@ test.describe('sk-video plugin live contract', () => {
     expect(cam.ok()).toBeTruthy();
     expect(await cam.text()).not.toContain(secret);
 
+    // The presence endpoint reports which fields are set, but never the secret itself.
+    const presence = await request.get(`${BASE}/plugins/sk-video/cameras/${CAMERA}/credentials`);
+    expect(presence.status()).toBe(200);
+    const presenceBody = await presence.json();
+    expect(presenceBody).toEqual({ hasUsername: true, hasPassword: true });
+    expect(JSON.stringify(presenceBody)).not.toContain(secret);
+
     // Delete returns 204 the first time and 404 once the credentials are gone.
     const first = await request.delete(`${BASE}/plugins/sk-video/cameras/${CAMERA}/credentials`);
     expect(first.status()).toBe(204);
     const second = await request.delete(`${BASE}/plugins/sk-video/cameras/${CAMERA}/credentials`);
     expect(second.status()).toBe(404);
+
+    // After clearing, presence reports nothing set.
+    const gone = await request.get(`${BASE}/plugins/sk-video/cameras/${CAMERA}/credentials`);
+    expect(await gone.json()).toEqual({ hasUsername: false, hasPassword: false });
+  });
+
+  test('deleting a camera also clears its stored credentials', async ({ request }) => {
+    const id = 'cleanup-cam';
+    await request.put(`${BASE}/signalk/v2/api/resources/cameras/${id}`, {
+      data: { name: 'Cleanup', enabled: false, source: { scheme: 'rtsp', host: 'mediamtx' } },
+    });
+    const post = await request.post(`${BASE}/plugins/sk-video/cameras/${id}/credentials`, {
+      data: { username: 'u', password: 'temp-secret' },
+    });
+    expect(post.status()).toBe(204);
+
+    // Removing the camera resource must also drop its credentials server-side.
+    await request.delete(`${BASE}/signalk/v2/api/resources/cameras/${id}`);
+
+    // If the credentials were cleared with the camera, a delete now finds nothing (404).
+    const after = await request.delete(`${BASE}/plugins/sk-video/cameras/${id}/credentials`);
+    expect(after.status()).toBe(404);
   });
 
   test('proxies the HLS sub-resources referenced by the master playlist', async ({ request }) => {

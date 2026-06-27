@@ -242,6 +242,17 @@ describe('registerPtzRoutes', () => {
     expect(res.body).toEqual({ error: 'camera offline' });
   });
 
+  it('redacts a credential URL in a 502 error message before returning it to the client', async () => {
+    const controller = makeController();
+    controller.move.mockRejectedValue(
+      new Error('connect rtsp://admin:secret@cam.local:554 failed'),
+    );
+    const handlers = setup(() => makeManager(controller));
+    const res = await invoke(handlers.get('POST /cameras/:id/ptz')!, fakeReq({ body: {} }));
+    expect(res.statusCode).toBe(502);
+    expect(res.body).toEqual({ error: 'connect rtsp://***@cam.local:554 failed' });
+  });
+
   it('returns 502 with the message when controller.gotoPreset rejects', async () => {
     const controller = makeController();
     controller.gotoPreset.mockRejectedValue(new Error('invalid preset token'));

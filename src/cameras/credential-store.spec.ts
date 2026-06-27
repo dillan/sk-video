@@ -57,4 +57,39 @@ describe('CredentialStore', () => {
     expect(store.get('foredeck')).toBeNull();
     expect(store.delete('foredeck')).toBe(false);
   });
+
+  it('rejects an over-long username or password and does not persist it', () => {
+    const tooLong = 'x'.repeat(1025);
+    expect(() => store.set('a', { username: tooLong })).toThrow();
+    expect(() => store.set('a', { password: tooLong })).toThrow();
+    expect(persistence.saves).toBe(0);
+    expect(store.get('a')).toBeNull();
+  });
+
+  it('accepts a username and password at the length limit', () => {
+    const max = 'x'.repeat(1024);
+    store.set('a', { username: max, password: max });
+    expect(store.get('a')).toEqual({ username: max, password: max });
+  });
+
+  describe('presence', () => {
+    it('reports no credentials for an unknown camera', () => {
+      expect(store.presence('nope')).toEqual({ hasUsername: false, hasPassword: false });
+    });
+
+    it('reports which fields are set without revealing the values', () => {
+      store.set('a', { username: 'admin', password: 's3cret' });
+      expect(store.presence('a')).toEqual({ hasUsername: true, hasPassword: true });
+    });
+
+    it('reports a username-only credential', () => {
+      store.set('a', { username: 'admin' });
+      expect(store.presence('a')).toEqual({ hasUsername: true, hasPassword: false });
+    });
+
+    it('treats an empty string as not set', () => {
+      store.set('a', { username: '', password: '' });
+      expect(store.presence('a')).toEqual({ hasUsername: false, hasPassword: false });
+    });
+  });
 });

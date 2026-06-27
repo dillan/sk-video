@@ -1,4 +1,5 @@
 import type { IRouter, Request, Response } from 'express';
+import { redactUrl } from '../security/redact';
 import { CameraNotFoundError, type PtzManager } from './ptz-manager';
 
 function handleError(err: unknown, res: Response): void {
@@ -6,7 +7,10 @@ function handleError(err: unknown, res: Response): void {
     res.status(404).json({ error: 'unknown camera' });
     return;
   }
-  res.status(502).json({ error: err instanceof Error ? err.message : 'PTZ command failed' });
+  // Redact in case an upstream/ONVIF error message ever carries a credential-bearing URL.
+  res
+    .status(502)
+    .json({ error: redactUrl(err instanceof Error ? err.message : 'PTZ command failed') });
 }
 
 /**

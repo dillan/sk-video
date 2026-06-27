@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import type { ICamera } from '../cameras/camera-validation';
 import type { ICameraCredentials } from './go2rtc-source';
@@ -24,6 +24,8 @@ export interface IGo2rtcGatewayOptions {
   ports?: IGo2rtcPorts;
   /** Injectable config writer for testing. */
   writeConfig?: (path: string, config: Record<string, unknown>) => void;
+  /** Injectable config remover for testing. */
+  removeConfig?: (path: string) => void;
   log?: (msg: string) => void;
 }
 
@@ -49,8 +51,11 @@ export class Go2rtcGateway {
   ): Promise<void> {
     const anyEnabled = Object.values(cameras).some((c) => c.enabled);
     if (!anyEnabled) {
-      // Never run go2rtc with no cameras configured.
+      // Never run go2rtc with no cameras configured. Also drop the on-disk config: it still holds
+      // the previous cameras' credential-bearing stream URLs, and there is no reason to leave that
+      // secret at rest once nothing is using it.
       await this.opts.process.stop();
+      this.remove();
       return;
     }
 
@@ -77,5 +82,10 @@ export class Go2rtcGateway {
         writeFileSync(path, JSON.stringify(cfg, null, 2), { mode: 0o600 });
       });
     writer(this.configPath, config);
+  }
+
+  private remove(): void {
+    const remover = this.opts.removeConfig ?? ((path: string) => rmSync(path, { force: true }));
+    remover(this.configPath);
   }
 }

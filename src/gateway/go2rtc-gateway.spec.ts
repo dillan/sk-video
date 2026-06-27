@@ -28,14 +28,16 @@ const disabledCam: ICamera = {
 
 function makeGateway(proc: IProcessController) {
   const writes: Record<string, unknown>[] = [];
+  const removes: string[] = [];
   const binary = { ensure: async () => '/bin/go2rtc' };
   const gateway = new Go2rtcGateway({
     dataDir: '/data',
     binary,
     process: proc,
     writeConfig: (_path, cfg) => writes.push(cfg),
+    removeConfig: (path) => removes.push(path),
   });
-  return { gateway, writes };
+  return { gateway, writes, removes };
 }
 
 describe('Go2rtcGateway.sync', () => {
@@ -65,6 +67,21 @@ describe('Go2rtcGateway.sync', () => {
     await gateway.sync({ b: disabledCam }, {});
     expect(writes).toHaveLength(0);
     expect(proc.calls).toEqual(['stop']);
+  });
+
+  // SECURITY: when the last camera is removed, the on-disk config still holds credential-bearing
+  // stream URLs. Stopping go2rtc isn't enough — the stale config must be removed so no secret is
+  // left at rest.
+  it('removes the stale config file when no camera is enabled', async () => {
+    const { gateway, removes } = makeGateway(proc);
+    await gateway.sync({ b: disabledCam }, {});
+    expect(removes).toEqual(['/data/go2rtc.yaml']);
+  });
+
+  it('does not remove the config while a camera is still enabled', async () => {
+    const { gateway, removes } = makeGateway(proc);
+    await gateway.sync({ a: enabledCam }, {});
+    expect(removes).toEqual([]);
   });
 });
 

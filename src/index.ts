@@ -48,7 +48,9 @@ export = function (app: ServerAPI): Plugin {
     try {
       await gateway.sync(cameras.list(), credentials.all());
     } catch (err) {
-      app.setPluginError(`Gateway error: ${err instanceof Error ? err.message : String(err)}`);
+      app.setPluginError(
+        redactUrl(`Gateway error: ${err instanceof Error ? err.message : String(err)}`),
+      );
     }
   }
 
@@ -103,6 +105,9 @@ export = function (app: ServerAPI): Plugin {
             },
             async deleteResource(id: string) {
               await base.deleteResource(id);
+              // Drop the camera's stored credentials too, so a deleted camera never leaves an
+              // orphaned secret behind (and a later camera reusing the id can't inherit it).
+              credentials?.delete(id);
               ptz?.invalidate(id);
               scheduleSync();
             },
@@ -113,7 +118,7 @@ export = function (app: ServerAPI): Plugin {
         app.setPluginStatus(`Ready — ${count} camera${count === 1 ? '' : 's'} configured`);
         scheduleSync(); // start go2rtc if cameras are already configured
       } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
+        const message = redactUrl(err instanceof Error ? err.message : String(err));
         app.error?.(`[sk-video] failed to start: ${message}`);
         app.setPluginError(`Failed to start: ${message}`);
       }
@@ -141,6 +146,15 @@ export = function (app: ServerAPI): Plugin {
           ready: cameras !== null,
           cameras: cameras ? Object.keys(cameras.list()).length : 0,
         });
+      });
+
+      // Credential presence — booleans only, never the secret — so the UI can show a saved state.
+      router.get('/cameras/:id/credentials', (req: Request, res: Response) => {
+        if (!credentials) {
+          res.status(503).json({ error: 'plugin not started' });
+          return;
+        }
+        res.json(credentials.presence(String(req.params.id)));
       });
 
       // Write-only camera credentials.
