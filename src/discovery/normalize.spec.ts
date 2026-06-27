@@ -30,7 +30,8 @@ describe('normalizeDiscovery', () => {
       port: 80,
       name: 'Aft Cam',
     });
-    expect(c).toEqual({ name: 'Aft Cam', host: 'cam.local', port: 80 });
+    // "Aft" suggests a stern mount — an editable hint alongside the basic fields.
+    expect(c).toEqual({ name: 'Aft Cam', host: 'cam.local', port: 80, suggestedMount: 'stern' });
   });
 
   it('falls back to the host as the name when none is given', () => {
