@@ -71,6 +71,18 @@ describe('SnapshotService', () => {
     expect(telemetry.oldestReadingAgeMs).toBeNull();
   });
 
+  it('defaults the id and timestamp when not injected', async () => {
+    const store = fakeStore();
+    const svc = new SnapshotService({
+      capture: async () => JPEG,
+      selfSource: bridgeWith({}),
+      store,
+    });
+    const meta = await svc.capture('bow');
+    expect(meta.id).toMatch(/[0-9a-f-]{36}/);
+    expect(typeof meta.createdAt).toBe('number');
+  });
+
   it('rejects a captured frame that is not an image and stores nothing', async () => {
     const store = fakeStore();
     const svc = new SnapshotService({
