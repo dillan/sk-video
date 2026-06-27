@@ -23,6 +23,13 @@ import { createFileAssetStore } from './uploads/file-asset-store';
 import { registerUploadRoutes } from './uploads/upload-routes';
 import { registerTestRoutes } from './diagnostics/test-routes';
 import { runFfprobe, tcpProbe } from './diagnostics/probe-runner';
+import {
+  detectHardware,
+  describeTier,
+  TIER_ORDER,
+  type THardwareTier,
+  type IHardwareInfo,
+} from './hardware/tier-detect';
 
 const PLUGIN_ID = 'sk-video';
 const SYNC_DEBOUNCE_MS = 500;
@@ -34,6 +41,7 @@ export = function (app: ServerAPI): Plugin {
   let ptz: PtzManager | null = null;
   let discovery: DiscoveryService | null = null;
   let videos: AssetStore | null = null;
+  let hardware: IHardwareInfo | null = null;
   let syncTimer: ReturnType<typeof setTimeout> | null = null;
 
   const ssrfOptions: ISsrfOptions = { allowPrivate: true };
@@ -67,11 +75,28 @@ export = function (app: ServerAPI): Plugin {
     name: 'SK Video',
     description: 'IP cameras for the browser: gateway, ONVIF PTZ, discovery and uploads.',
 
-    schema: () => ({ type: 'object', properties: {} }),
+    schema: () => ({
+      type: 'object',
+      properties: {
+        hardwareTier: {
+          type: 'string',
+          title: 'Hardware tier (override)',
+          description:
+            'Leave on Auto-detect unless the detected tier is wrong. Controls which heavier features (recording, hardware snapshots, on-device analytics) are offered.',
+          enum: ['auto', ...TIER_ORDER],
+          default: 'auto',
+        },
+      },
+    }),
 
-    start() {
+    start(options?: { hardwareTier?: string }) {
       try {
         const dataDir = app.getDataDirPath();
+        const override =
+          options?.hardwareTier && options.hardwareTier !== 'auto'
+            ? (options.hardwareTier as THardwareTier)
+            : undefined;
+        hardware = detectHardware({ override });
         cameras = new CameraStore(new FileCameraPersistence(dataDir));
         credentials = new CredentialStore(new FileCredentialPersistence(dataDir));
         gateway = new Go2rtcGateway({
@@ -115,7 +140,9 @@ export = function (app: ServerAPI): Plugin {
         });
 
         const count = Object.keys(cameras.list()).length;
-        app.setPluginStatus(`Ready — ${count} camera${count === 1 ? '' : 's'} configured`);
+        app.setPluginStatus(
+          `Ready — ${count} camera${count === 1 ? '' : 's'} · ${describeTier(hardware)}`,
+        );
         scheduleSync(); // start go2rtc if cameras are already configured
       } catch (err) {
         const message = redactUrl(err instanceof Error ? err.message : String(err));
@@ -137,6 +164,7 @@ export = function (app: ServerAPI): Plugin {
       ptz = null;
       discovery = null;
       videos = null;
+      hardware = null;
       return stopping;
     },
 
@@ -145,6 +173,7 @@ export = function (app: ServerAPI): Plugin {
         res.json({
           ready: cameras !== null,
           cameras: cameras ? Object.keys(cameras.list()).length : 0,
+          hardware,
         });
       });
 
