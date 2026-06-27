@@ -103,9 +103,6 @@ export interface IOnvifControllerOptions {
  * Drives ONVIF PTZ + imaging + media for one camera. Velocities/positions are clamped, preset tokens
  * validated, and every continuous move arms an auto-stop so the camera can't run away if the client
  * never sends Stop. Absolute/relative moves are self-completing and need no auto-stop.
- *
- * NOTE: the absolute/relative/status/imaging/media/capability methods are stubbed — behaviour is
- * added in the GREEN step.
  */
 export class OnvifPtzController {
   private autoStop: ReturnType<typeof setTimeout> | null = null;
@@ -154,49 +151,114 @@ export class OnvifPtzController {
     });
   }
 
-  // --- stubs (GREEN adds behaviour) ---
-
-  async moveAbsolute(_position: Partial<IPtzPosition>): Promise<void> {
-    void clampPtzPosition;
+  /** Drive the camera to an absolute position (self-completing; no auto-stop needed). */
+  async moveAbsolute(position: Partial<IPtzPosition>): Promise<void> {
+    const p = clampPtzPosition(position);
+    const cam = await this.connect();
+    await new Promise<void>((resolve, reject) => {
+      cam.absoluteMove({ x: p.pan, y: p.tilt, zoom: p.zoom }, (err) =>
+        err ? reject(err) : resolve(),
+      );
+    });
   }
 
-  async moveRelative(_delta: Partial<IPtzVelocity>): Promise<void> {
-    // no-op stub
+  /** Nudge the camera by a relative delta (normalized -1..1 per axis; self-completing). */
+  async moveRelative(delta: Partial<IPtzVelocity>): Promise<void> {
+    const d = clampPtzVelocity(delta);
+    const cam = await this.connect();
+    await new Promise<void>((resolve, reject) => {
+      cam.relativeMove({ x: d.pan, y: d.tilt, zoom: d.zoom }, (err) =>
+        err ? reject(err) : resolve(),
+      );
+    });
   }
 
   async getStatus(): Promise<IPtzStatus> {
-    return { pan: 0, tilt: 0, zoom: 0 };
+    const cam = await this.connect();
+    return new Promise((resolve, reject) => {
+      cam.getStatus({}, (err, status) => {
+        if (err) {
+          reject(err);
+          return;
+        }
+        const pos = status?.position ?? {};
+        resolve({ pan: pos.x ?? 0, tilt: pos.y ?? 0, zoom: pos.zoom ?? 0 });
+      });
+    });
   }
 
   async getImaging(): Promise<IImagingSettings> {
-    return {};
+    const cam = await this.connect();
+    return new Promise((resolve, reject) => {
+      cam.getImagingSettings({}, (err, settings) => (err ? reject(err) : resolve(settings ?? {})));
+    });
   }
 
-  async setImaging(_update: IImagingUpdate): Promise<void> {
-    // no-op stub
+  /** Write the supported imaging fields that were provided (capability-gated by the caller). */
+  async setImaging(update: IImagingUpdate): Promise<void> {
+    const options: Record<string, unknown> = {};
+    for (const key of SETTABLE_IMAGING) {
+      if (update[key] !== undefined) {
+        options[key] = update[key];
+      }
+    }
+    const cam = await this.connect();
+    await new Promise<void>((resolve, reject) => {
+      cam.setImagingSettings(options, (err) => (err ? reject(err) : resolve()));
+    });
   }
 
-  async getStreamUri(_protocol?: string): Promise<string> {
-    return '';
+  async getStreamUri(protocol = 'RTSP'): Promise<string> {
+    const cam = await this.connect();
+    return new Promise((resolve, reject) => {
+      cam.getStreamUri({ protocol }, (err, uri) => (err ? reject(err) : resolve(uri?.uri ?? '')));
+    });
   }
 
   async getSnapshotUri(): Promise<string> {
-    return '';
+    const cam = await this.connect();
+    return new Promise((resolve, reject) => {
+      cam.getSnapshotUri({}, (err, uri) => (err ? reject(err) : resolve(uri?.uri ?? '')));
+    });
   }
 
   async getDeviceInformation(): Promise<IDeviceInformation> {
-    return { manufacturer: '', model: '', firmwareVersion: '', serialNumber: '', hardwareId: '' };
+    const cam = await this.connect();
+    return new Promise((resolve, reject) => {
+      cam.getDeviceInformation((err, info) =>
+        err ? reject(err) : resolve(info ?? EMPTY_DEVICE_INFO),
+      );
+    });
   }
 
+  private async getAudioOutputs(): Promise<unknown[]> {
+    const cam = await this.connect();
+    return new Promise((resolve, reject) => {
+      cam.getAudioOutputs((err, outputs) => (err ? reject(err) : resolve(outputs ?? [])));
+    });
+  }
+
+  /**
+   * Probe what this specific camera actually supports. Each optional feature is attempted and any
+   * error is treated as "unsupported" — capabilities are detected, never assumed.
+   */
   async probeCapabilities(): Promise<IDetectedCapabilities> {
+    const [device, streamUri, snapshotUri, imaging, status, audio] = await Promise.all([
+      this.getDeviceInformation().catch(() => null),
+      this.getStreamUri().catch(() => null),
+      this.getSnapshotUri().catch(() => null),
+      this.getImaging().catch(() => null),
+      this.getStatus().catch(() => null),
+      this.getAudioOutputs().catch(() => null),
+    ]);
     return {
-      deviceInformation: null,
-      streamUri: null,
-      snapshotUri: null,
-      absolutePtz: false,
-      imaging: false,
-      imagingControls: [],
-      audioOutput: false,
+      deviceInformation: device,
+      streamUri: streamUri || null,
+      snapshotUri: snapshotUri || null,
+      absolutePtz: status !== null,
+      imaging: imaging !== null,
+      imagingControls: imaging ? imagingControlsOf(imaging) : [],
+      audioOutput: Array.isArray(audio) && audio.length > 0,
     };
   }
 
@@ -218,4 +280,38 @@ export class OnvifPtzController {
       this.autoStop = null;
     }
   }
+}
+
+/** The imaging fields onvif@0.8.1 lets us write (no WDR/defog/backlight in this library version). */
+const SETTABLE_IMAGING = [
+  'irCutFilter',
+  'brightness',
+  'contrast',
+  'colorSaturation',
+  'sharpness',
+] as const satisfies readonly (keyof IImagingUpdate)[];
+
+const EMPTY_DEVICE_INFO: IDeviceInformation = {
+  manufacturer: '',
+  model: '',
+  firmwareVersion: '',
+  serialNumber: '',
+  hardwareId: '',
+};
+
+/** Maps the imaging settings a camera returned to the control names it actually exposes. */
+const IMAGING_CONTROL_KEYS: readonly [keyof IImagingSettings, string][] = [
+  ['irCutFilter', 'irCut'],
+  ['brightness', 'brightness'],
+  ['contrast', 'contrast'],
+  ['colorSaturation', 'colorSaturation'],
+  ['sharpness', 'sharpness'],
+  ['focus', 'focus'],
+  ['exposure', 'exposure'],
+];
+
+function imagingControlsOf(settings: IImagingSettings): string[] {
+  return IMAGING_CONTROL_KEYS.filter(([key]) => settings[key] !== undefined).map(
+    ([, name]) => name,
+  );
 }

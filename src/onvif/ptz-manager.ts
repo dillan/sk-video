@@ -33,18 +33,16 @@ export class PtzManager {
 
   /**
    * Detected capabilities for a camera, probed once on first use and cached until the camera changes.
-   * NOTE: stubbed — behaviour is added in the GREEN step.
    */
-  async capabilitiesFor(_id: string): Promise<IDetectedCapabilities> {
-    return {
-      deviceInformation: null,
-      streamUri: null,
-      snapshotUri: null,
-      absolutePtz: false,
-      imaging: false,
-      imagingControls: [],
-      audioOutput: false,
-    };
+  async capabilitiesFor(id: string): Promise<IDetectedCapabilities> {
+    const cached = this.capabilities.get(id);
+    if (cached) {
+      return cached;
+    }
+    const controller = await this.controllerFor(id);
+    const caps = await controller.probeCapabilities();
+    this.capabilities.set(id, caps);
+    return caps;
   }
 
   async controllerFor(id: string): Promise<OnvifPtzController> {
@@ -74,6 +72,7 @@ export class PtzManager {
   invalidate(id: string): void {
     this.controllers.get(id)?.dispose();
     this.controllers.delete(id);
+    this.capabilities.delete(id);
   }
 
   disposeAll(): void {
@@ -81,5 +80,6 @@ export class PtzManager {
       controller.dispose();
     }
     this.controllers.clear();
+    this.capabilities.clear();
   }
 }

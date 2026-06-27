@@ -33,13 +33,22 @@ export interface IPtzPosition {
   zoom: number;
 }
 
+/** Clamps a one-sided axis (absolute zoom) to [0, 1], coercing missing/non-finite values to 0. */
+const unitAxis = (v: unknown): number => {
+  const n = typeof v === 'number' ? v : NaN;
+  if (!Number.isFinite(n)) {
+    return 0;
+  }
+  return Math.max(0, Math.min(1, n));
+};
+
 /**
  * Clamps an absolute PTZ position to the ONVIF normalized generic space: pan/tilt to [-1, 1] and
  * zoom to [0, 1] (absolute zoom is one-sided, unlike a zoom velocity). Missing or non-finite values
- * coerce to 0. NOTE: stubbed — behaviour is added in the GREEN step.
+ * coerce to 0.
  */
-export function clampPtzPosition(_input: Partial<IPtzPosition> | null | undefined): IPtzPosition {
-  return { pan: 0, tilt: 0, zoom: 0 };
+export function clampPtzPosition(input: Partial<IPtzPosition> | null | undefined): IPtzPosition {
+  return { pan: axis(input?.pan), tilt: axis(input?.tilt), zoom: unitAxis(input?.zoom) };
 }
 
 /**
