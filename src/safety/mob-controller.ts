@@ -32,6 +32,10 @@ export interface IMobControllerDeps {
   clearNotification: () => void;
   emitMarker: (target: ILatLon) => void;
   snapshotAll: () => void;
+  /** Start recording the given cameras (best-effort; tier may decline). */
+  recordCameras?: (cameraIds: string[]) => void;
+  /** Stop the recordings this MOB event started. */
+  stopRecording?: () => void;
   reaimIntervalMs?: number;
   setIntervalImpl?: (cb: () => void, ms: number) => ReturnType<typeof setInterval>;
   clearIntervalImpl?: (token: ReturnType<typeof setInterval>) => void;
@@ -69,6 +73,7 @@ export class MobController {
       this.deps.emitMarker(target);
     }
     this.deps.snapshotAll();
+    this.deps.recordCameras?.(this.deps.getCameras().map((camera) => camera.id));
 
     const aimed = this.reaim();
     if (this.timer === null) {
@@ -85,6 +90,7 @@ export class MobController {
     }
     this.active = false;
     this.datum = null;
+    this.deps.stopRecording?.();
     this.deps.clearNotification();
   }
 

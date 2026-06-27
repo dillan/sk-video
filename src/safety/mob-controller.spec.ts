@@ -18,6 +18,8 @@ function setup(over: Partial<IMobControllerDeps> = {}) {
     markers: [] as unknown[],
     snapshots: 0,
     clearedInterval: 0,
+    recorded: [] as string[][],
+    stoppedRecording: 0,
   };
   const deps: IMobControllerDeps = {
     getOwnShip: () => ({ position: { latitude: 0, longitude: 0 }, headingDeg: 0 }),
@@ -28,6 +30,8 @@ function setup(over: Partial<IMobControllerDeps> = {}) {
     clearNotification: () => calls.cleared++,
     emitMarker: (t) => calls.markers.push(t),
     snapshotAll: () => calls.snapshots++,
+    recordCameras: (ids) => calls.recorded.push(ids),
+    stopRecording: () => calls.stoppedRecording++,
     setIntervalImpl: (cb) => {
       intervalCb = cb;
       return 1 as unknown as ReturnType<typeof setInterval>;
@@ -82,6 +86,14 @@ describe('MobController', () => {
     expect(calls.markers).toHaveLength(0);
     expect(calls.aims).toHaveLength(0);
     expect(status).toMatchObject({ targetSource: 'none', aimedCameras: 0 });
+  });
+
+  it('starts recording every camera on activate and stops on deactivate', () => {
+    const { mob, calls } = setup();
+    mob.activate();
+    expect(calls.recorded).toEqual([['bow', 'engine']]); // both cameras, not just PTZ ones
+    mob.deactivate();
+    expect(calls.stoppedRecording).toBe(1);
   });
 
   it('deactivate clears the notification and stops re-aiming', () => {
