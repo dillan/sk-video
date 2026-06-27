@@ -21,6 +21,8 @@ import { createWsDiscoveryProbe } from './discovery/ws-discovery-probe';
 import { createMdnsProbe } from './discovery/mdns-probe';
 import { createSsdpProbe } from './discovery/ssdp-probe';
 import { registerDiscoveryRoutes } from './discovery/discovery-routes';
+import { registerIntrospectRoute } from './discovery/introspect-routes';
+import { introspectOnvifCamera } from './onvif/onvif-introspect';
 import { AssetStore } from './uploads/asset-store';
 import { createFileAssetStore } from './uploads/file-asset-store';
 import { registerUploadRoutes } from './uploads/upload-routes';
@@ -267,6 +269,17 @@ export = function (app: ServerAPI): Plugin {
 
       // Camera auto-discovery (WS-Discovery + mDNS), rate-limited.
       registerDiscoveryRoutes(router, () => discovery);
+
+      // Zero-typing onboarding: introspect a discovered ONVIF camera to pre-fill the add form.
+      registerIntrospectRoute(router, {
+        ready: () => cameras !== null,
+        assertHostAllowed: (host) => assertHostAllowed(host, ssrfOptions, lookup),
+        introspect: (input) =>
+          introspectOnvifCamera(input, {
+            assertHostAllowed: (host) => assertHostAllowed(host, ssrfOptions, lookup),
+          }),
+        rateLimit,
+      });
 
       // Uploaded video library: store + Range-served playback.
       registerUploadRoutes(router, () => videos);
