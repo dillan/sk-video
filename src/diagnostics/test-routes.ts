@@ -1,6 +1,7 @@
 import type { IRouter, Request, Response } from 'express';
 import { validateCamera } from '../cameras/camera-validation';
 import { buildGo2rtcSource, type ICameraCredentials } from '../gateway/go2rtc-source';
+import type { IRateLimitResult } from '../security/rate-limit';
 import {
   buildFfprobeArgs,
   evaluateFfprobe,
@@ -17,6 +18,8 @@ export interface ITestContext {
   runFfprobe: TFfprobeRunner;
   tcpProbe: TTcpProbe;
   timeoutMs?: number;
+  /** Optional brute-force guard; when it reports not-ok the probe is refused with 429. */
+  rateLimit?: (req: Request) => IRateLimitResult;
 }
 
 const DEFAULT_TIMEOUT_MS = 8000;
@@ -30,6 +33,12 @@ const DEFAULT_ONVIF_PORT = 80;
  */
 export function registerTestRoutes(router: IRouter, ctx: ITestContext): void {
   router.post('/cameras/test', async (req: Request, res: Response) => {
+    const limited = ctx.rateLimit?.(req);
+    if (limited && !limited.ok) {
+      res.setHeader('Retry-After', String(Math.ceil(limited.retryAfterMs / 1000)));
+      res.status(429).json({ ok: false, message: 'Too many attempts. Please wait and try again.' });
+      return;
+    }
     if (!ctx.ready()) {
       res.status(503).json({ ok: false, message: 'plugin not started' });
       return;

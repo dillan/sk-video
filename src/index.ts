@@ -8,6 +8,8 @@ import { createCameraResourceMethods } from './cameras/resource-provider';
 import { validateCamera } from './cameras/camera-validation';
 import { assertHostAllowed, type ISsrfOptions } from './security/ssrf-guard';
 import { redactUrl } from './security/redact';
+import { RateLimiter } from './security/rate-limit';
+import { withTimeout } from './security/with-timeout';
 import { Go2rtcBinaryManager } from './gateway/go2rtc-binary-manager';
 import { Go2rtcProcess } from './gateway/go2rtc-process';
 import { Go2rtcGateway } from './gateway/go2rtc-gateway';
@@ -34,6 +36,9 @@ import {
 
 const PLUGIN_ID = 'sk-video';
 const SYNC_DEBOUNCE_MS = 500;
+const DNS_TIMEOUT_MS = 5000;
+// Brute-force / enumeration guard for the credential and connection-test endpoints.
+const SENSITIVE_MAX_PER_MINUTE = 20;
 
 export = function (app: ServerAPI): Plugin {
   let cameras: CameraStore | null = null;
@@ -46,9 +51,31 @@ export = function (app: ServerAPI): Plugin {
   let syncTimer: ReturnType<typeof setTimeout> | null = null;
 
   const ssrfOptions: ISsrfOptions = { allowPrivate: true };
-  const lookup = async (host: string): Promise<string[]> =>
-    (await dns.lookup(host, { all: true })).map((a) => a.address);
+  // Cap DNS resolution so an unresponsive resolver on a flaky boat network can't stall the plugin.
+  const lookup = async (host: string): Promise<string[]> => {
+    const records = await withTimeout(
+      dns.lookup(host, { all: true }),
+      DNS_TIMEOUT_MS,
+      'DNS lookup timed out',
+    );
+    return records.map((a) => a.address);
+  };
   const log = (msg: string) => app.debug?.(redactUrl(msg));
+
+  // One limiter shared by the brute-force-able routes, keyed by client address.
+  const limiter = new RateLimiter({ max: SENSITIVE_MAX_PER_MINUTE, windowMs: 60_000 });
+  const clientKey = (req: Request): string => req.ip ?? req.socket?.remoteAddress ?? 'unknown';
+  const rateLimit = (req: Request) => limiter.check(clientKey(req));
+  /** Writes a 429 and returns true when the caller is over the limit. */
+  const tooManyRequests = (req: Request, res: Response): boolean => {
+    const result = rateLimit(req);
+    if (!result.ok) {
+      res.setHeader('Retry-After', String(Math.ceil(result.retryAfterMs / 1000)));
+      res.status(429).json({ error: 'too many requests', retryAfterMs: result.retryAfterMs });
+      return true;
+    }
+    return false;
+  };
 
   async function runSync(): Promise<void> {
     if (!gateway || !cameras || !credentials) {
@@ -179,7 +206,11 @@ export = function (app: ServerAPI): Plugin {
       });
 
       // Credential presence — booleans only, never the secret — so the UI can show a saved state.
+      // Rate-limited so it can't be used to enumerate which cameras have credentials.
       router.get('/cameras/:id/credentials', (req: Request, res: Response) => {
+        if (tooManyRequests(req, res)) {
+          return;
+        }
         if (!credentials) {
           res.status(503).json({ error: 'plugin not started' });
           return;
@@ -189,6 +220,9 @@ export = function (app: ServerAPI): Plugin {
 
       // Write-only camera credentials.
       router.post('/cameras/:id/credentials', (req: Request, res: Response) => {
+        if (tooManyRequests(req, res)) {
+          return;
+        }
         if (!credentials) {
           res.status(503).json({ error: 'plugin not started' });
           return;
@@ -206,6 +240,9 @@ export = function (app: ServerAPI): Plugin {
         }
       });
       router.delete('/cameras/:id/credentials', (req: Request, res: Response) => {
+        if (tooManyRequests(req, res)) {
+          return;
+        }
         if (!credentials) {
           res.status(503).json({ error: 'plugin not started' });
           return;
@@ -240,6 +277,7 @@ export = function (app: ServerAPI): Plugin {
         assertHostAllowed: (host) => assertHostAllowed(host, ssrfOptions, lookup),
         runFfprobe,
         tcpProbe,
+        rateLimit,
       });
     },
   };
