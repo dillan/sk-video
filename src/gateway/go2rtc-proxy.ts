@@ -26,6 +26,17 @@ export function go2rtcApiUrl(
   return `${scheme}://127.0.0.1:${apiPort}${path}?src=${cameraId}`;
 }
 
+/**
+ * Builds the loopback go2rtc /api/streams introspection URL for a camera, validating the id so a
+ * client-supplied src can never be injected.
+ */
+export function go2rtcStreamsUrl(apiPort: number, cameraId: string): string {
+  if (!isValidCameraId(cameraId)) {
+    throw new Error(`invalid camera id: ${cameraId}`);
+  }
+  return `http://127.0.0.1:${apiPort}/api/streams?src=${cameraId}`;
+}
+
 /** HLS sub-resource names the master/media playlists reference (media playlist, segments, init). */
 const HLS_RESOURCE = /^[A-Za-z0-9._-]+$/;
 

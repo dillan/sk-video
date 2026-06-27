@@ -1,5 +1,20 @@
 import { describe, it, expect } from 'vitest';
-import { go2rtcApiUrl, go2rtcHlsUrl } from './go2rtc-proxy';
+import { go2rtcApiUrl, go2rtcHlsUrl, go2rtcStreamsUrl } from './go2rtc-proxy';
+
+describe('go2rtcStreamsUrl', () => {
+  it('builds the loopback /api/streams URL keyed by camera id', () => {
+    expect(go2rtcStreamsUrl(1984, 'foredeck')).toBe(
+      'http://127.0.0.1:1984/api/streams?src=foredeck',
+    );
+    expect(go2rtcStreamsUrl(9999, 'cam')).toBe('http://127.0.0.1:9999/api/streams?src=cam');
+  });
+
+  it('rejects an invalid camera id (no client-supplied src injection)', () => {
+    expect(() => go2rtcStreamsUrl(1984, '../evil')).toThrow();
+    expect(() => go2rtcStreamsUrl(1984, 'a b')).toThrow();
+    expect(() => go2rtcStreamsUrl(1984, '')).toThrow();
+  });
+});
 
 describe('go2rtcApiUrl', () => {
   it('maps each transport to the loopback go2rtc API URL keyed by camera id', () => {

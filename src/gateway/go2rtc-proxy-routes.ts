@@ -1,5 +1,6 @@
 import type { IRouter, Request, Response } from 'express';
 import { go2rtcApiUrl, go2rtcHlsUrl } from './go2rtc-proxy';
+import { fetchStreamHealth } from './stream-health';
 
 export interface IProxyContext {
   /** Current go2rtc API port. */
@@ -81,6 +82,25 @@ export function registerProxyRoutes(router: IRouter, ctx: IProxyContext): void {
       }
       const body = Buffer.from(await upstream.arrayBuffer());
       res.status(upstream.status).send(body);
+    } catch {
+      res.status(502).json({ error: 'gateway unavailable' });
+    }
+  });
+
+  // Stream health: a diagnostic DTO derived from go2rtc /api/streams (source URLs redacted).
+  router.get('/cameras/:id/health', async (req: Request, res: Response) => {
+    const id = String(req.params.id);
+    if (!ctx.hasCamera(id)) {
+      res.status(404).json({ error: 'unknown camera' });
+      return;
+    }
+    try {
+      const health = await fetchStreamHealth({
+        apiPort: ctx.apiPort(),
+        cameraId: id,
+        fetchImpl: doFetch,
+      });
+      res.json(health);
     } catch {
       res.status(502).json({ error: 'gateway unavailable' });
     }
