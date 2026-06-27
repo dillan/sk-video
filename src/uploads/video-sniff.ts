@@ -38,6 +38,17 @@ function ascii(bytes: Uint8Array, start: number, length: number): string {
   return s;
 }
 
+/**
+ * Identifies an image by its magic bytes, for the snapshot path (which stores JPEG/PNG frames rather
+ * than video containers). Kept separate from {@link sniffVideoType} so the video-upload route's
+ * container allow-list is not widened to accept images. Returns null for anything else.
+ *
+ * NOTE: stubbed implementation — behaviour is added in the GREEN step.
+ */
+export function sniffImageType(_bytes: Uint8Array): ISniffResult | null {
+  return null;
+}
+
 export function sniffVideoType(bytes: Uint8Array): ISniffResult | null {
   if (bytes.length < 12) {
     return null;
