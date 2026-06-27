@@ -58,6 +58,15 @@ describe('PtzManager', () => {
     expect(assertHostAllowed).toHaveBeenCalledTimes(1);
   });
 
+  it('threads the camera allowSelfSigned opt-in into the connect target', async () => {
+    const connectFactory = vi.fn(() => async () => fakeCam());
+    const mgr = new PtzManager(
+      makeDeps({ getCamera: () => ({ ...camera, allowSelfSigned: true }), connectFactory }),
+    );
+    await mgr.controllerFor('cam');
+    expect(connectFactory).toHaveBeenCalledWith(expect.objectContaining({ allowSelfSigned: true }));
+  });
+
   it('throws CameraNotFoundError for an unknown camera', async () => {
     const mgr = new PtzManager(makeDeps({ getCamera: () => null }));
     await expect(mgr.controllerFor('nope')).rejects.toBeInstanceOf(CameraNotFoundError);

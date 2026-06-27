@@ -105,6 +105,12 @@ export interface ICamera {
   capabilities?: ICameraCapabilities;
   media?: ICameraMedia;
   calibration?: ICameraCalibration;
+  /**
+   * Opt in to trusting a self-signed TLS certificate for this one camera (marine gear often ships
+   * them). Honoured for ONVIF-over-HTTPS connections; stream-level (rtsps) trust is handled by the
+   * gateway and is best-effort. Never a global TLS-off.
+   */
+  allowSelfSigned?: boolean;
 }
 
 export interface IValidationResult {
@@ -130,6 +136,7 @@ const ALLOWED_TOP_KEYS = new Set([
   'capabilities',
   'media',
   'calibration',
+  'allowSelfSigned',
 ]);
 const ALLOWED_SOURCE_KEYS = new Set(['scheme', 'host', 'port', 'path']);
 const PLACEMENT_KEYS = new Set(['mount', 'bearingRelativeDeg', 'heightM']);
@@ -394,6 +401,15 @@ export function validateCamera(input: unknown): IValidationResult {
   const calibration =
     obj.calibration !== undefined ? validateCalibration(obj.calibration, errors) : undefined;
 
+  let allowSelfSigned: boolean | undefined;
+  if (obj.allowSelfSigned !== undefined) {
+    if (typeof obj.allowSelfSigned === 'boolean') {
+      allowSelfSigned = obj.allowSelfSigned;
+    } else {
+      errors.push('allowSelfSigned must be a boolean');
+    }
+  }
+
   if (errors.length > 0 || !normalizedSource) {
     return { valid: false, errors: errors.length ? errors : ['invalid camera'] };
   }
@@ -409,6 +425,7 @@ export function validateCamera(input: unknown): IValidationResult {
       ...(capabilities && Object.keys(capabilities).length ? { capabilities } : {}),
       ...(media && Object.keys(media).length ? { media } : {}),
       ...(calibration ? { calibration } : {}),
+      ...(allowSelfSigned !== undefined ? { allowSelfSigned } : {}),
     },
   };
 }

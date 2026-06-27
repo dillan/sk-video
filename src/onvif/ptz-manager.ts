@@ -63,6 +63,7 @@ export class PtzManager {
       port,
       username: creds?.username,
       password: creds?.password,
+      allowSelfSigned: camera.allowSelfSigned,
     });
     const controller = new OnvifPtzController(connect);
     this.controllers.set(id, controller);

@@ -7,6 +7,8 @@ export interface IOnvifTarget {
   username?: string;
   password?: string;
   timeoutMs?: number;
+  /** Trust a self-signed certificate on an ONVIF-over-HTTPS connection to this camera. */
+  allowSelfSigned?: boolean;
 }
 
 /**
@@ -25,6 +27,8 @@ export function createOnvifConnect(target: IOnvifTarget): OnvifConnect {
             username: target.username,
             password: target.password,
             timeout: target.timeoutMs ?? 5000,
+            // Accept a self-signed cert only when the operator opted in for this camera (https ONVIF).
+            ...(target.allowSelfSigned ? { secureOpts: { rejectUnauthorized: false } } : {}),
           },
           (err) => (err ? reject(err) : resolve(cam as unknown as IOnvifCam)),
         );
