@@ -45,6 +45,11 @@ export class Go2rtcGateway {
     return (this.opts.ports ?? DEFAULT_GO2RTC_PORTS).api;
   }
 
+  /** go2rtc's loopback RTSP server port — the DVR recorder reads camera streams from here. */
+  get rtspPort(): number {
+    return (this.opts.ports ?? DEFAULT_GO2RTC_PORTS).rtsp;
+  }
+
   async sync(
     cameras: Record<string, ICamera>,
     credentials: Record<string, ICameraCredentials>,
