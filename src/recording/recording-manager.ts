@@ -11,8 +11,6 @@ import {
  * host) and channel-capped so a Pi can't be overwhelmed, and a periodic sweep prunes segments past
  * the byte/age budget so a full disk can't brick the server. The ffmpeg spawn is injected so the
  * orchestration is unit-testable.
- *
- * NOTE: stubbed implementation — behaviour is added in the GREEN step.
  */
 
 export interface IRecorderProcess {
@@ -35,35 +33,58 @@ export interface IRecordingManagerDeps {
 }
 
 export class RecordingManager {
+  private readonly active = new Map<string, IRecorderProcess>();
+  private readonly segmentSeconds: number;
+
   constructor(private readonly deps: IRecordingManagerDeps) {
-    void this.deps;
-    void recordArgs;
-    void segmentsToPrune;
+    this.segmentSeconds = deps.segmentSeconds ?? 60;
   }
 
   /** Start recording a camera. Returns false if recording is disabled by tier or at the channel cap. */
-  start(_cameraId: string): boolean {
-    return false;
+  start(cameraId: string): boolean {
+    if (this.active.has(cameraId)) {
+      return true;
+    }
+    const max = this.deps.maxChannels();
+    if (max <= 0 || this.active.size >= max) {
+      return false;
+    }
+    const url = `${this.deps.rtspBase()}/${cameraId}`;
+    const proc = this.deps.spawnRecorder(
+      recordArgs(url, this.deps.dir, cameraId, this.segmentSeconds),
+    );
+    this.active.set(cameraId, proc);
+    return true;
   }
 
-  stop(_cameraId: string): void {
-    // stub
+  stop(cameraId: string): void {
+    const proc = this.active.get(cameraId);
+    if (proc) {
+      proc.stop();
+      this.active.delete(cameraId);
+    }
   }
 
   stopAll(): void {
-    // stub
+    for (const id of [...this.active.keys()]) {
+      this.stop(id);
+    }
   }
 
-  isRecording(_cameraId: string): boolean {
-    return false;
+  isRecording(cameraId: string): boolean {
+    return this.active.has(cameraId);
   }
 
   activeCameras(): string[] {
-    return [];
+    return [...this.active.keys()];
   }
 
   /** Delete segments past the retention budget; returns how many were removed. */
-  sweep(_now: number): number {
-    return 0;
+  sweep(now: number): number {
+    const prune = segmentsToPrune(this.deps.listSegments(), this.deps.limits(), now);
+    for (const segment of prune) {
+      this.deps.removeFile(segment.path);
+    }
+    return prune.length;
   }
 }

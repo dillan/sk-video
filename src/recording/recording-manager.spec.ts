@@ -74,9 +74,10 @@ describe('RecordingManager', () => {
     ];
     const { mgr, removed } = setup({
       listSegments: () => segs,
-      limits: () => ({ maxBytes: 1e9, maxAgeMs: 1000 }),
+      limits: () => ({ maxBytes: 1e9, maxAgeMs: 5_000_000 }),
     });
-    expect(mgr.sweep(10_000_000)).toBe(1); // only the old one is past max age
+    // old is 10_000_000 ms old (pruned); new is 1_000_000 ms old (kept).
+    expect(mgr.sweep(10_000_000)).toBe(1);
     expect(removed).toEqual(['/rec/old.mp4']);
   });
 });
