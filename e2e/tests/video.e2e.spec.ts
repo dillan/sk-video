@@ -174,6 +174,23 @@ test.describe('sk-video plugin live contract', () => {
     });
     expect(whep.status()).toBe(404);
   });
+
+  test('tests an unsaved camera and reports it is reachable with a codec', async ({ request }) => {
+    const res = await request.post(`${BASE}/plugins/sk-video/cameras/test`, {
+      data: { source: { scheme: 'rtsp', host: 'mediamtx', port: 8554, path: '/cam' } },
+    });
+    expect(res.status()).toBe(200);
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+    expect(typeof body.codec).toBe('string');
+  });
+
+  test('the connection test refuses a loopback address (SSRF guard)', async ({ request }) => {
+    const res = await request.post(`${BASE}/plugins/sk-video/cameras/test`, {
+      data: { source: { scheme: 'rtsp', host: '127.0.0.1', port: 554, path: '/x' } },
+    });
+    expect(res.status()).toBe(403);
+  });
 });
 
 test.describe('KIP webapp', () => {

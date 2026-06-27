@@ -21,6 +21,8 @@ import { registerDiscoveryRoutes } from './discovery/discovery-routes';
 import { AssetStore } from './uploads/asset-store';
 import { createFileAssetStore } from './uploads/file-asset-store';
 import { registerUploadRoutes } from './uploads/upload-routes';
+import { registerTestRoutes } from './diagnostics/test-routes';
+import { runFfprobe, tcpProbe } from './diagnostics/probe-runner';
 
 const PLUGIN_ID = 'sk-video';
 const SYNC_DEBOUNCE_MS = 500;
@@ -187,6 +189,14 @@ export = function (app: ServerAPI): Plugin {
 
       // Uploaded video library: store + Range-served playback.
       registerUploadRoutes(router, () => videos);
+
+      // Connection test for an unsaved camera (ffprobe / TCP reachability, SSRF-guarded).
+      registerTestRoutes(router, {
+        ready: () => cameras !== null,
+        assertHostAllowed: (host) => assertHostAllowed(host, ssrfOptions, lookup),
+        runFfprobe,
+        tcpProbe,
+      });
     },
   };
 

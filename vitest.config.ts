@@ -16,6 +16,7 @@ export default defineConfig({
         // not unit-testable without the real binary/device.
         'src/gateway/go2rtc-process.ts',
         'src/onvif/onvif-connect.ts',
+        'src/diagnostics/probe-runner.ts',
       ],
       // A regression ratchet, not an aspiration: set a few points below current coverage
       // (~96% lines / 94% branches / 100% functions) so a meaningful drop fails CI without
