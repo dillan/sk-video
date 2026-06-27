@@ -88,14 +88,15 @@ test('capture documentation screenshots', async ({ page }) => {
 
   await bootstrapKip(page);
 
-  // Resolve the real uploaded MP4 so the hero shot shows actual moving video.
+  // Resolve the uploaded MP4 for the hero shot. Prefer the Annapolis harbour clip (real footage that
+  // reads as a boat camera); fall back to the largest uploaded video if it isn't present.
   const assetId = await page.evaluate(async () => {
     try {
       const r = await fetch('/plugins/sk-video/videos');
       const { videos } = await r.json();
-      return (
-        (videos as { id: string; size: number }[]).sort((a, b) => b.size - a.size)[0]?.id ?? null
-      );
+      const list = videos as { id: string; size: number; name?: string }[];
+      const annapolis = list.find((v) => /annapolis/i.test(v.name ?? ''));
+      return (annapolis ?? [...list].sort((a, b) => b.size - a.size)[0])?.id ?? null;
     } catch {
       return null;
     }
