@@ -40,13 +40,25 @@ import {
 import { SignalKBridge, type ISignalKApp } from './signalk/sk-bridge';
 import { SnapshotService } from './recording/snapshot-service';
 import { FileSnapshotStore } from './recording/file-snapshot-store';
+import { RecordingManager } from './recording/recording-manager';
+import { registerRecordingRoutes } from './recording/recording-routes';
+import { scanRecordings } from './recording/file-recordings';
 import { go2rtcApiUrl } from './gateway/go2rtc-proxy';
+import { spawn } from 'node:child_process';
+import { rmSync } from 'node:fs';
+import { join } from 'node:path';
 
 const PLUGIN_ID = 'sk-video';
 const SYNC_DEBOUNCE_MS = 500;
 const DNS_TIMEOUT_MS = 5000;
 // Brute-force / enumeration guard for the credential and connection-test endpoints.
 const SENSITIVE_MAX_PER_MINUTE = 20;
+// DVR retention: a global budget across all cameras' segments, pruned oldest-first so a full disk
+// can never brick the Signal K server. Conservative defaults; tier/quota tuning is future work.
+const RECORDING_SEGMENT_SECONDS = 60;
+const RECORDING_MAX_BYTES = 10 * 1024 * 1024 * 1024; // 10 GiB
+const RECORDING_MAX_AGE_MS = 48 * 60 * 60 * 1000; // 48 hours
+const RECORDING_SWEEP_MS = 5 * 60 * 1000; // prune every 5 minutes
 
 export = function (app: ServerAPI): Plugin {
   let cameras: CameraStore | null = null;
@@ -58,6 +70,12 @@ export = function (app: ServerAPI): Plugin {
   let hardware: IHardwareInfo | null = null;
   let bridge: SignalKBridge | null = null;
   let snapshots: SnapshotService | null = null;
+  let recordings: RecordingManager | null = null;
+  let recordingsDir: string | null = null;
+  let recordingSweep: ReturnType<typeof setInterval> | null = null;
+  // Cameras this MOB event started recording, so deactivation stops exactly those (and not a
+  // camera the operator was already manually recording).
+  let mobRecording: string[] = [];
   let mob: MobController | null = null;
   let syncTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -176,6 +194,36 @@ export = function (app: ServerAPI): Plugin {
           store: new FileSnapshotStore(dataDir),
         });
 
+        // DVR: per-camera ffmpeg recorders remux go2rtc's loopback RTSP restream into rotating MP4
+        // segments. Channel-capped to the hardware tier and pruned to a byte/age budget. Credentials
+        // live only in go2rtc's source config — the recorder reads the unauthenticated loopback
+        // restream, so no secret ever lands in a segment path or filename.
+        recordingsDir = join(dataDir, 'recordings');
+        recordings = new RecordingManager({
+          dir: recordingsDir,
+          rtspBase: () => `rtsp://127.0.0.1:${gateway?.rtspPort ?? 8554}`,
+          spawnRecorder: (args) => {
+            const child = spawn('ffmpeg', args, { stdio: 'ignore' });
+            child.on('error', (err) =>
+              app.error?.(`[sk-video] recorder failed: ${redactUrl(err.message)}`),
+            );
+            return { stop: () => child.kill('SIGINT') };
+          },
+          maxChannels: () => hardware?.capabilities.maxRecordingChannels ?? 0,
+          limits: () => ({ maxBytes: RECORDING_MAX_BYTES, maxAgeMs: RECORDING_MAX_AGE_MS }),
+          listSegments: () => (recordingsDir ? scanRecordings(recordingsDir) : []),
+          removeFile: (path) => rmSync(path, { force: true }),
+          segmentSeconds: RECORDING_SEGMENT_SECONDS,
+        });
+        recordingSweep = setInterval(() => {
+          try {
+            recordings?.sweep(Date.now());
+          } catch {
+            // a transient FS error during prune must not crash the plugin; next sweep retries
+          }
+        }, RECORDING_SWEEP_MS);
+        recordingSweep.unref?.();
+
         // Man-overboard: aim every capable PTZ camera at the MOB position (live beacon, else the
         // dead-reckoned datum), recomputed as the boat drifts. Aids — never replaces — MOB procedure.
         mob = new MobController({
@@ -204,6 +252,15 @@ export = function (app: ServerAPI): Plugin {
             for (const id of Object.keys(cameras?.list() ?? {})) {
               void snapshots?.capture(id).catch(() => undefined);
             }
+          },
+          recordCameras: (ids) => {
+            mobRecording = ids.filter((id) => recordings?.start(id));
+          },
+          stopRecording: () => {
+            for (const id of mobRecording) {
+              recordings?.stop(id);
+            }
+            mobRecording = [];
           },
         });
 
@@ -259,7 +316,13 @@ export = function (app: ServerAPI): Plugin {
         clearTimeout(syncTimer);
         syncTimer = null;
       }
+      if (recordingSweep) {
+        clearInterval(recordingSweep);
+        recordingSweep = null;
+      }
       ptz?.disposeAll();
+      mob?.deactivate(); // stops MOB-started recorders before we tear the manager down
+      recordings?.stopAll();
       const stopping = gateway?.stop();
       cameras = null;
       credentials = null;
@@ -267,10 +330,12 @@ export = function (app: ServerAPI): Plugin {
       ptz = null;
       discovery = null;
       videos = null;
-      mob?.deactivate();
       hardware = null;
       bridge = null;
       snapshots = null;
+      recordings = null;
+      recordingsDir = null;
+      mobRecording = [];
       mob = null;
       return stopping;
     },
@@ -394,6 +459,13 @@ export = function (app: ServerAPI): Plugin {
             error: redactUrl(err instanceof Error ? err.message : 'snapshot failed'),
           });
         }
+      });
+
+      // DVR recording: per-camera start/stop, segment listing, and Range-served segment playback.
+      registerRecordingRoutes(router, {
+        getManager: () => recordings,
+        hasCamera: (id: string) => cameras?.get(id) !== null && cameras?.get(id) !== undefined,
+        listSegments: () => (recordingsDir ? scanRecordings(recordingsDir) : []),
       });
 
       // Connection test for an unsaved camera (ffprobe / TCP reachability, SSRF-guarded).
