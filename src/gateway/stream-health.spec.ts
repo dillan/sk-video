@@ -46,6 +46,8 @@ describe('parseStreamHealth', () => {
       {},
       { producers: 'nope' },
       { cam: { producers: [{}] } },
+      // non-object producers, non-object medias, and a non-string codec name
+      { producers: [5, { medias: [7, { codecs: [9, { name: 42 }] }] }] },
     ]) {
       expect(() => parseStreamHealth(raw, 'cam')).not.toThrow();
     }
