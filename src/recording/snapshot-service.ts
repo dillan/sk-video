@@ -89,7 +89,7 @@ export class SnapshotService {
 }
 
 /** Flattens a bridge self-state snapshot into the stamp, tracking the oldest reading age used. */
-function toTelemetry(s: ISelfState): ISnapshotTelemetry {
+export function toTelemetry(s: ISelfState): ISnapshotTelemetry {
   const ages: number[] = [];
   const val = <T>(r: ISelfReading<T>): T | null => {
     if (r.ageMs !== undefined) {
