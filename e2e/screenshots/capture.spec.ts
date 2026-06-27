@@ -107,8 +107,9 @@ test('capture documentation screenshots', async ({ page }) => {
 
   if (dialogOpen) {
     await page.waitForTimeout(800);
-    await shot(page, 'camera-setup', DIALOG);
-    await shot(page, 'source-tabs', DIALOG);
+    // Note: source-tabs / camera-setup / uploaded (the dialog shots that show the Quality & Latency
+    // presets) are owned by recapture-docs.spec.ts, which frames them deterministically. Capturing
+    // them here too would just fight over the same filenames with worse framing.
 
     try {
       await page.locator('mat-button-toggle:has-text("Camera")').click();
@@ -117,14 +118,6 @@ test('capture documentation screenshots', async ({ page }) => {
       await shot(page, 'scan', DIALOG);
     } catch (e) {
       console.log('  scan: ' + (e as Error).message.split('\n')[0]);
-    }
-
-    try {
-      await page.locator('mat-button-toggle:has-text("Uploaded")').click();
-      await page.waitForTimeout(900);
-      await shot(page, 'uploaded', DIALOG);
-    } catch (e) {
-      console.log('  uploaded: ' + (e as Error).message.split('\n')[0]);
     }
 
     try {
