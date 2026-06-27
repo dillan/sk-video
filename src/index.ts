@@ -17,6 +17,7 @@ import { registerPtzRoutes } from './onvif/ptz-routes';
 import { DiscoveryService } from './discovery/discovery-service';
 import { createWsDiscoveryProbe } from './discovery/ws-discovery-probe';
 import { createMdnsProbe } from './discovery/mdns-probe';
+import { createSsdpProbe } from './discovery/ssdp-probe';
 import { registerDiscoveryRoutes } from './discovery/discovery-routes';
 import { AssetStore } from './uploads/asset-store';
 import { createFileAssetStore } from './uploads/file-asset-store';
@@ -85,7 +86,7 @@ export = function (app: ServerAPI): Plugin {
           assertHostAllowed: (host) => assertHostAllowed(host, ssrfOptions, lookup),
         });
         discovery = new DiscoveryService({
-          probes: [createWsDiscoveryProbe(), createMdnsProbe()],
+          probes: [createWsDiscoveryProbe(), createMdnsProbe(), createSsdpProbe()],
         });
         videos = createFileAssetStore(dataDir);
 

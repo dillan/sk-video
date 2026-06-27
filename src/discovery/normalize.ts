@@ -1,3 +1,5 @@
+import { suggestPlacement } from './placement-hints';
+
 /** A raw discovery hit from WS-Discovery or mDNS. */
 export interface IRawDiscovery {
   /** ONVIF device service URL (WS-Discovery XAddr). */
@@ -15,6 +17,9 @@ export interface ICameraCandidate {
   host: string;
   port?: number;
   onvifUrl?: string;
+  /** Suggested vessel mount/role derived from the device's own name/scopes (editable hints). */
+  suggestedMount?: string;
+  suggestedRole?: string;
 }
 
 // eslint-disable-next-line no-control-regex -- stripping control chars is the point
@@ -88,5 +93,19 @@ export function normalizeDiscovery(raw: IRawDiscovery): ICameraCandidate | null 
   if (onvifUrl !== undefined) {
     candidate.onvifUrl = onvifUrl;
   }
+
+  // Suggest a marine mount/role from what the device calls itself (name + location/hardware scopes).
+  const hint = suggestPlacement(
+    [rawName, scopeValue(raw.scopes, 'location'), scopeValue(raw.scopes, 'hardware')]
+      .filter(Boolean)
+      .join(' '),
+  );
+  if (hint.mount) {
+    candidate.suggestedMount = hint.mount;
+  }
+  if (hint.role) {
+    candidate.suggestedRole = hint.role;
+  }
+
   return candidate;
 }
