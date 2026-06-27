@@ -12,6 +12,10 @@ describe('withTimeout', () => {
     await expect(withTimeout(Promise.reject(new Error('boom')), 1000)).rejects.toThrow(/boom/);
   });
 
+  it('coerces a non-Error rejection into an Error', async () => {
+    await expect(withTimeout(Promise.reject('plain'), 1000)).rejects.toThrow('plain');
+  });
+
   it('rejects with a timeout error when the promise hangs past the deadline', async () => {
     vi.useFakeTimers();
     const assertion = expect(

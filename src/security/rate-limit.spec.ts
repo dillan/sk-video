@@ -22,6 +22,12 @@ describe('RateLimiter', () => {
     expect(rl.check('ip1').ok).toBe(true);
   });
 
+  it('uses the real clock by default', () => {
+    const rl = new RateLimiter({ max: 1, windowMs: 1000 });
+    expect(rl.check('x').ok).toBe(true);
+    expect(rl.check('x').ok).toBe(false);
+  });
+
   it('tracks keys independently', () => {
     const now = 0;
     const rl = new RateLimiter({ max: 1, windowMs: 1000, now: () => now });
