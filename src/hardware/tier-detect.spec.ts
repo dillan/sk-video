@@ -94,4 +94,29 @@ describe('describeTier', () => {
     const info = detect({ arch: 'arm', cores: 1, totalMemMB: 512 }, [], 'x86');
     expect(describeTier(info)).toContain('overridden');
   });
+
+  it('says "streaming only" for a minimal tier with no features or accelerator', () => {
+    const text = describeTier(detect({ arch: 'arm', cores: 1, totalMemMB: 512 }));
+    expect(text).toContain('minimal');
+    expect(text).toContain('streaming only');
+    expect(text).not.toContain('overridden');
+  });
+
+  it('names the accelerator and HW snapshots when present', () => {
+    const text = describeTier(
+      detect({ arch: 'arm64', cores: 4, totalMemMB: 8192 }, ['/dev/hailo0', '/dev/dri/renderD128']),
+    );
+    expect(text).toContain('hailo');
+    expect(text).toContain('HW snapshots');
+    expect(text).toContain('analytics');
+  });
+});
+
+describe('detectHardware (real host)', () => {
+  it('reads node:os and fs by default without throwing', () => {
+    const info = detectHardware();
+    expect(typeof info.arch).toBe('string');
+    expect(info.cores).toBeGreaterThan(0);
+    expect(info.totalMemMB).toBeGreaterThan(0);
+  });
 });
