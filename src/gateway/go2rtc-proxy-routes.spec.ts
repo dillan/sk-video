@@ -262,6 +262,57 @@ describe('registerProxyRoutes', () => {
     });
   });
 
+  describe('GET /cameras/:id/health', () => {
+    const streams = {
+      producers: [
+        {
+          url: 'rtsp://admin:secret@192.168.1.50:554/h264',
+          medias: [{ kind: 'video', codecs: [{ name: 'H264' }] }],
+        },
+      ],
+      consumers: [],
+    };
+
+    it('returns 404 for an unknown camera and never fetches', async () => {
+      const fetchImpl = vi.fn();
+      const { handlers } = setup({ hasCamera: () => false, fetchImpl });
+      const res = makeRes();
+      await handlers.get('GET /cameras/:id/health')!(
+        fakeReq({ params: { id: 'ghost' } as never }),
+        res,
+      );
+      expect(res.statusCode).toBe(404);
+      expect(res.body).toEqual({ error: 'unknown camera' });
+      expect(fetchImpl).not.toHaveBeenCalled();
+    });
+
+    it('returns the parsed health from go2rtc /api/streams with credentials redacted', async () => {
+      const fetchImpl = vi.fn().mockResolvedValue({ json: () => Promise.resolve(streams) });
+      const { handlers } = setup({ fetchImpl });
+      const res = makeRes();
+      await handlers.get('GET /cameras/:id/health')!(
+        fakeReq({ params: { id: 'foredeck' } as never }),
+        res,
+      );
+      expect(fetchImpl).toHaveBeenCalledWith('http://127.0.0.1:1984/api/streams?src=foredeck');
+      expect(res.statusCode).toBe(200);
+      expect(res.body).toMatchObject({ online: true, producers: 1, codecs: ['H264'] });
+      expect(JSON.stringify(res.body)).not.toContain('secret');
+    });
+
+    it('returns 502 when go2rtc is unreachable', async () => {
+      const fetchImpl = vi.fn().mockRejectedValue(new Error('down'));
+      const { handlers } = setup({ fetchImpl });
+      const res = makeRes();
+      await handlers.get('GET /cameras/:id/health')!(
+        fakeReq({ params: { id: 'foredeck' } as never }),
+        res,
+      );
+      expect(res.statusCode).toBe(502);
+      expect(res.body).toEqual({ error: 'gateway unavailable' });
+    });
+  });
+
   describe('GET passthrough routes (frame.jpeg / stream.m3u8)', () => {
     const cases: Array<{ name: string; key: string; expectedUrl: string }> = [
       {
