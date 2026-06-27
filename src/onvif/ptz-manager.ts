@@ -1,6 +1,10 @@
 import type { ICamera } from '../cameras/camera-validation';
 import type { ICameraCredentials } from '../gateway/go2rtc-source';
-import { OnvifPtzController, type OnvifConnect } from './onvif-controller';
+import {
+  OnvifPtzController,
+  type OnvifConnect,
+  type IDetectedCapabilities,
+} from './onvif-controller';
 import { createOnvifConnect, type IOnvifTarget } from './onvif-connect';
 
 export class CameraNotFoundError extends Error {}
@@ -20,10 +24,27 @@ export interface IPtzManagerDeps {
  */
 export class PtzManager {
   private readonly controllers = new Map<string, OnvifPtzController>();
+  private readonly capabilities = new Map<string, IDetectedCapabilities>();
   private readonly connectFactory: (target: IOnvifTarget) => OnvifConnect;
 
   constructor(private readonly deps: IPtzManagerDeps) {
     this.connectFactory = deps.connectFactory ?? createOnvifConnect;
+  }
+
+  /**
+   * Detected capabilities for a camera, probed once on first use and cached until the camera changes.
+   * NOTE: stubbed — behaviour is added in the GREEN step.
+   */
+  async capabilitiesFor(_id: string): Promise<IDetectedCapabilities> {
+    return {
+      deviceInformation: null,
+      streamUri: null,
+      snapshotUri: null,
+      absolutePtz: false,
+      imaging: false,
+      imagingControls: [],
+      audioOutput: false,
+    };
   }
 
   async controllerFor(id: string): Promise<OnvifPtzController> {

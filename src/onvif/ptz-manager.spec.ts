@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { PtzManager, CameraNotFoundError, type IPtzManagerDeps } from './ptz-manager';
 import type { ICamera } from '../cameras/camera-validation';
-import type { IOnvifCam } from './onvif-controller';
+import { OnvifPtzController, type IOnvifCam } from './onvif-controller';
 
 const camera: ICamera = {
   name: 'PTZ',
@@ -15,6 +15,22 @@ function fakeCam(): IOnvifCam {
     stop: (_o, cb) => cb(null),
     getPresets: (cb) => cb(null, {}),
     gotoPreset: (_o, cb) => cb(null),
+    absoluteMove: (_o, cb) => cb(null),
+    relativeMove: (_o, cb) => cb(null),
+    getStatus: (_o, cb) => cb(null, { position: { x: 0, y: 0, zoom: 0 } }),
+    getImagingSettings: (_o, cb) => cb(null, { irCutFilter: 'AUTO' }),
+    setImagingSettings: (_o, cb) => cb(null),
+    getStreamUri: (_o, cb) => cb(null, { uri: 'rtsp://cam/stream' }),
+    getSnapshotUri: (_o, cb) => cb(null, { uri: 'http://cam/snap.jpg' }),
+    getDeviceInformation: (cb) =>
+      cb(null, {
+        manufacturer: 'Acme',
+        model: 'X',
+        firmwareVersion: '1',
+        serialNumber: 'S',
+        hardwareId: 'H',
+      }),
+    getAudioOutputs: (cb) => cb(null, []),
   };
 }
 
@@ -59,6 +75,21 @@ describe('PtzManager', () => {
     );
     await expect(mgr.controllerFor('cam')).rejects.toThrow(/blocked/);
     expect(connectFactory).not.toHaveBeenCalled();
+  });
+
+  it('probes capabilities once, caches them, and re-probes after invalidate', async () => {
+    const probe = vi.spyOn(OnvifPtzController.prototype, 'probeCapabilities');
+    const mgr = new PtzManager(makeDeps());
+    const a = await mgr.capabilitiesFor('cam');
+    const b = await mgr.capabilitiesFor('cam');
+    expect(a).toBe(b); // same cached object, probed once
+    expect(probe).toHaveBeenCalledTimes(1);
+    expect(a).toMatchObject({ absolutePtz: true, snapshotUri: 'http://cam/snap.jpg' });
+
+    mgr.invalidate('cam');
+    await mgr.capabilitiesFor('cam');
+    expect(probe).toHaveBeenCalledTimes(2);
+    probe.mockRestore();
   });
 
   it('invalidate forgets the cached controller', async () => {
