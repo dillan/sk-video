@@ -52,6 +52,22 @@ describe('normalizeDiscovery', () => {
     expect(normalizeDiscovery({ xaddr: 'file:///etc/passwd' })).toBeNull();
   });
 
+  it('suggests a mount/role from the name and location scope', () => {
+    const c = normalizeDiscovery({
+      hostname: 'cam.local',
+      name: 'Foredeck',
+      scopes: ['onvif://www.onvif.org/location/bow'],
+    });
+    expect(c?.suggestedMount).toBe('bow');
+  });
+
+  it('suggests a role from an engine-room camera and leaves opaque names unset', () => {
+    expect(normalizeDiscovery({ hostname: 'h', name: 'Engine Room' })?.suggestedRole).toBe(
+      'engine',
+    );
+    expect(normalizeDiscovery({ hostname: 'h', name: 'IPC-9000' })?.suggestedMount).toBeUndefined();
+  });
+
   it('skips scopes without the name marker and uses a later matching scope', () => {
     const c = normalizeDiscovery({
       hostname: 'cam.local',

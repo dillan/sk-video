@@ -15,6 +15,9 @@ export interface ICameraCandidate {
   host: string;
   port?: number;
   onvifUrl?: string;
+  /** Suggested vessel mount/role derived from the device's own name/scopes (editable hints). */
+  suggestedMount?: string;
+  suggestedRole?: string;
 }
 
 // eslint-disable-next-line no-control-regex -- stripping control chars is the point
