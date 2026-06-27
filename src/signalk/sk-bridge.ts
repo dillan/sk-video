@@ -6,8 +6,6 @@ import { redactUrl } from '../security/redact';
  * each feature-detected against the (version-varying) server API and degrading gracefully when a
  * capability is missing. Camera, snapshot, MOB and watch features consume this rather than touching
  * `app` directly.
- *
- * NOTE: stubbed implementation — behaviour is added in the GREEN step.
  */
 
 export type AlarmState = 'nominal' | 'normal' | 'alert' | 'warn' | 'alarm' | 'emergency';
@@ -95,56 +93,199 @@ export interface ISignalKBridgeOptions {
   now?: () => number;
 }
 
-const NULL_READING: ISelfReading<never> = { value: null };
+/** The vessel self paths the bridge reads for a telemetry snapshot. */
+const SELF_PATHS = {
+  position: 'navigation.position',
+  headingTrue: 'navigation.headingTrue',
+  speedOverGround: 'navigation.speedOverGround',
+  courseOverGroundTrue: 'navigation.courseOverGroundTrue',
+  depth: 'environment.depth.belowTransducer',
+  windSpeedApparent: 'environment.wind.speedApparent',
+  windAngleApparent: 'environment.wind.angleApparent',
+} as const;
 
 export class SignalKBridge {
+  /** Notification ids keyed by our stable notification key, so a raise can later update/clear. */
+  private readonly notificationIds = new Map<string, string>();
+  private readonly now: () => number;
+
   constructor(
     private readonly app: ISignalKApp,
     private readonly pluginId: string,
-    _options: ISignalKBridgeOptions = {},
+    options: ISignalKBridgeOptions = {},
   ) {
-    void this.app;
-    void this.pluginId;
+    this.now = options.now ?? (() => Date.now());
   }
 
   /** True when the server exposes delta emission. */
   get canEmit(): boolean {
-    return false;
+    return typeof this.app.handleMessage === 'function';
   }
 
   /** Emit one or more Signal K path/value updates as a single delta. */
-  emit(_values: IDeltaValue | IDeltaValue[]): boolean {
-    return false;
+  emit(values: IDeltaValue | IDeltaValue[]): boolean {
+    if (typeof this.app.handleMessage !== 'function') {
+      this.log('handleMessage unavailable; delta dropped');
+      return false;
+    }
+    const list = Array.isArray(values) ? values : [values];
+    if (list.length === 0) {
+      return false;
+    }
+    this.app.handleMessage(this.pluginId, { updates: [{ values: list }] });
+    return true;
   }
 
   /** Snapshot of vessel self-state, each field normalised to a value plus optional age. */
   getSelfState(): ISelfState {
     return {
-      position: NULL_READING,
-      headingTrue: NULL_READING,
-      speedOverGround: NULL_READING,
-      courseOverGroundTrue: NULL_READING,
-      depth: NULL_READING,
-      wind: { speedApparent: NULL_READING, angleApparent: NULL_READING },
+      position: this.readSelf(SELF_PATHS.position),
+      headingTrue: this.readSelf(SELF_PATHS.headingTrue),
+      speedOverGround: this.readSelf(SELF_PATHS.speedOverGround),
+      courseOverGroundTrue: this.readSelf(SELF_PATHS.courseOverGroundTrue),
+      depth: this.readSelf(SELF_PATHS.depth),
+      wind: {
+        speedApparent: this.readSelf(SELF_PATHS.windSpeedApparent),
+        angleApparent: this.readSelf(SELF_PATHS.windAngleApparent),
+      },
     };
   }
 
-  /** Raise (or update) a notification keyed by `key`. */
-  raiseNotification(_key: string, _options: INotificationOptions): boolean {
-    return false;
+  /** Raise (or, if already raised under `key`, update) a notification. */
+  raiseNotification(key: string, options: INotificationOptions): boolean {
+    const n = this.app.notifications;
+    if (n?.raise) {
+      const existing = this.notificationIds.get(key);
+      if (existing !== undefined) {
+        n.update?.(existing, {
+          state: options.state,
+          message: options.message,
+          data: options.data,
+        });
+      } else {
+        this.notificationIds.set(
+          key,
+          n.raise({
+            state: options.state,
+            message: options.message,
+            path: this.notifPath(key),
+            data: options.data,
+          }),
+        );
+      }
+      return true;
+    }
+    // No notifications API on this server: fall back to a notifications.* delta.
+    return this.emit(this.notificationDelta(key, options));
   }
 
   /** Clear a previously raised notification keyed by `key`. */
-  clearNotification(_key: string): boolean {
-    return false;
+  clearNotification(key: string): boolean {
+    const n = this.app.notifications;
+    const id = this.notificationIds.get(key);
+    if (n?.clear && id !== undefined) {
+      n.clear(id);
+      this.notificationIds.delete(key);
+      return true;
+    }
+    if (!n?.clear) {
+      // No notifications API: clear by emitting a normal-state delta on the same path.
+      this.notificationIds.delete(key);
+      return this.emit(this.notificationDelta(key, { state: 'normal', message: '' }));
+    }
+    return false; // API present, but nothing was raised under this key.
   }
 
-  /** Register a PUT/action handler on `vessels.self` for `path` (server auth is inherited). */
-  registerAction(_path: string, _handler: ActionHandler): boolean {
-    return false;
+  /**
+   * Register a PUT/action handler on `vessels.self` for `path`. The server enforces its own auth on
+   * PUT requests, so registering here inherits that — there is no unauthenticated trigger.
+   */
+  registerAction(path: string, handler: ActionHandler): boolean {
+    const reg = this.app.registerPutHandler;
+    if (typeof reg !== 'function') {
+      this.log(`registerPutHandler unavailable; action ${path} not registered`);
+      return false;
+    }
+    reg.call(
+      this.app,
+      'vessels.self',
+      path,
+      (_context, _path, value, callback) => {
+        try {
+          const result = handler(value);
+          if (result instanceof Promise) {
+            result
+              .then(callback)
+              .catch((err) =>
+                callback({ state: 'FAILED', statusCode: 500, message: errMessage(err) }),
+              );
+            return { state: 'PENDING' };
+          }
+          return result;
+        } catch (err) {
+          return { state: 'FAILED', statusCode: 500, message: errMessage(err) };
+        }
+      },
+      this.pluginId,
+    );
+    return true;
+  }
+
+  private readSelf<T>(path: string): ISelfReading<T> {
+    const get = this.app.getSelfPath;
+    if (typeof get !== 'function') {
+      return { value: null };
+    }
+    let raw: unknown;
+    try {
+      raw = get.call(this.app, path);
+    } catch (err) {
+      this.log(`getSelfPath(${path}) failed: ${errMessage(err)}`);
+      return { value: null };
+    }
+    if (raw === undefined || raw === null) {
+      return { value: null };
+    }
+    // The full data model may return either the raw value or a { value, timestamp } wrapper.
+    if (typeof raw === 'object' && 'value' in raw) {
+      const w = raw as { value: unknown; timestamp?: unknown };
+      const reading: ISelfReading<T> = { value: (w.value ?? null) as T | null };
+      if (typeof w.timestamp === 'string') {
+        reading.timestamp = w.timestamp;
+        const t = Date.parse(w.timestamp);
+        if (!Number.isNaN(t)) {
+          reading.ageMs = this.now() - t;
+        }
+      }
+      return reading;
+    }
+    return { value: raw as T };
+  }
+
+  private notifPath(key: string): string {
+    return `${this.pluginId}.${key}`;
+  }
+
+  private notificationDelta(key: string, options: INotificationOptions): IDeltaValue {
+    return {
+      path: `notifications.${this.notifPath(key)}`,
+      value: {
+        state: options.state,
+        message: options.message,
+        method:
+          options.state === 'alarm' || options.state === 'emergency'
+            ? ['visual', 'sound']
+            : ['visual'],
+        ...(options.data ? { data: options.data } : {}),
+      },
+    };
   }
 
   private log(msg: string): void {
     this.app.debug?.(redactUrl(`[${this.pluginId}] ${msg}`));
   }
+}
+
+function errMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }

@@ -218,4 +218,65 @@ describe('SignalKBridge — actions', () => {
       new SignalKBridge(h.app, 'sk-video').registerAction('x', () => ({ state: 'COMPLETED' })),
     ).toBe(false);
   });
+
+  it('maps a rejected async handler to a FAILED result via the callback', async () => {
+    const h = makeApp();
+    new SignalKBridge(h.app, 'sk-video').registerAction('x', () =>
+      Promise.reject(new Error('async boom')),
+    );
+    const cb = vi.fn();
+    h.puts[0].cb('vessels.self', 'x', 1, cb);
+    await vi.waitFor(() =>
+      expect(cb).toHaveBeenCalledWith(
+        expect.objectContaining({ state: 'FAILED', message: expect.stringMatching(/async boom/) }),
+      ),
+    );
+  });
+
+  it('stringifies a non-Error throw in the FAILED message', () => {
+    const h = makeApp();
+    new SignalKBridge(h.app, 'sk-video').registerAction('x', () => {
+      throw 'plain string failure';
+    });
+    const result = h.puts[0].cb('vessels.self', 'x', 1, () => {}) as IActionResult;
+    expect(result).toMatchObject({ state: 'FAILED', message: 'plain string failure' });
+  });
+});
+
+describe('SignalKBridge — edge cases', () => {
+  it('does not emit an empty value list', () => {
+    const h = makeApp();
+    expect(new SignalKBridge(h.app, 'sk-video').emit([])).toBe(false);
+    expect(h.deltas).toEqual([]);
+  });
+
+  it('keeps a string timestamp but omits age when it is unparseable', () => {
+    const h = makeApp(
+      {},
+      { 'environment.depth.belowTransducer': { value: 12.3, timestamp: 'not-a-date' } },
+    );
+    const depth = new SignalKBridge(h.app, 'sk-video', { now: () => 10_000 }).getSelfState().depth;
+    expect(depth.value).toBe(12.3);
+    expect(depth.timestamp).toBe('not-a-date');
+    expect(depth.ageMs).toBeUndefined();
+  });
+
+  it('returns false when clearing a notification that was never raised (API present)', () => {
+    const h = makeApp();
+    expect(new SignalKBridge(h.app, 'sk-video').clearNotification('never-raised')).toBe(false);
+    expect(h.cleared).toEqual([]);
+  });
+
+  it('tolerates a notifications API that can raise but not update', () => {
+    const raised: { state: string; message: string }[] = [];
+    const bridge = new SignalKBridge(
+      { handleMessage: () => {}, notifications: { raise: (o) => (raised.push(o), 'id-1') } },
+      'sk-video',
+    );
+    expect(bridge.raiseNotification('mob', { state: 'emergency', message: 'first' })).toBe(true);
+    expect(
+      bridge.raiseNotification('mob', { state: 'alarm', message: 'second (no update fn)' }),
+    ).toBe(true);
+    expect(raised).toHaveLength(1); // second raise has nothing to update, and must not throw
+  });
 });
