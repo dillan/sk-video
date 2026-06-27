@@ -126,7 +126,7 @@ through the plugin proxy — the browser never reaches go2rtc or a camera direct
 
 ### Security
 
-Built-in defences include a stream-scheme allow-list (blocks go2rtc `exec:`/`ffmpeg:` sources), an
+Built-in defenses include a stream-scheme allow-list (blocks go2rtc `exec:`/`ffmpeg:` sources), an
 SSRF egress guard with DNS-rebinding protection, the go2rtc API bound to loopback, owner-only
 credential/config files, redaction of credentials from logs, PTZ velocity/token validation, magic-byte
 validation of uploads, and vetted HTTP Range handling.
