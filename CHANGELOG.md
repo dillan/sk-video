@@ -1,3 +1,17 @@
+# [1.1.0](https://github.com/dillan/sk-video/compare/v1.0.1...v1.1.0) (2026-06-27)
+
+
+### Bug Fixes
+
+* clean up credentials on delete and harden at-rest writes ([e82cf21](https://github.com/dillan/sk-video/commit/e82cf21701afe5c0acb0498e7d0886f5c82c2e97))
+* redact credential URLs anywhere in a log or error message ([7599dfd](https://github.com/dillan/sk-video/commit/7599dfd212be380a00f07e6f1362ad2f6c78470f))
+
+
+### Features
+
+* add a camera connection test endpoint ([445eb6b](https://github.com/dillan/sk-video/commit/445eb6b9fee5345f78c55d63dcf3e736ae694cd4))
+* add a credential presence endpoint ([e2b8c56](https://github.com/dillan/sk-video/commit/e2b8c56cdfc7ae0c7fd601a2ac52054d58efdd04))
+
 ## [1.0.1](https://github.com/dillan/sk-video/compare/v1.0.0...v1.0.1) (2026-06-26)
 
 
