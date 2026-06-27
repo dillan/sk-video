@@ -182,6 +182,14 @@ describe('validateCamera — vessel-context metadata', () => {
     ).toBe(false);
   });
 
+  it('rejects metadata blocks that are not objects', () => {
+    expect(validateCamera({ ...base, placement: 'mast' }).valid).toBe(false);
+    expect(validateCamera({ ...base, capabilities: [] }).valid).toBe(false);
+    expect(validateCamera({ ...base, media: 5 }).valid).toBe(false);
+    expect(validateCamera({ ...base, calibration: null }).valid).toBe(false);
+    expect(validateCamera({ ...base, calibration: { pan: 'x', tilt: 'y' } }).valid).toBe(false);
+  });
+
   it('still rejects credentials even alongside valid metadata', () => {
     expect(validateCamera({ ...base, role: 'anchor', password: 'secret' }).valid).toBe(false);
   });

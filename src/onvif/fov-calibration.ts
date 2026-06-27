@@ -4,8 +4,6 @@
  * map from degrees to normalised units. A short two-point wizard captures two (degrees, normalised)
  * samples per axis; `solveAxis` turns them into a linear coefficient pair, and `degToNormalized`
  * applies it (clamped to the ONVIF range). This module is pure maths with no ONVIF/camera coupling.
- *
- * NOTE: stubbed implementation — behaviour is added in the GREEN step.
  */
 
 export interface ICalibrationAxis {
@@ -21,11 +19,19 @@ export interface ICalibrationSample {
 }
 
 /** Solve a linear axis calibration from two distinct-angle samples. */
-export function solveAxis(_a: ICalibrationSample, _b: ICalibrationSample): ICalibrationAxis {
-  return { offset: 0, scalePerDeg: 0 };
+export function solveAxis(a: ICalibrationSample, b: ICalibrationSample): ICalibrationAxis {
+  if (a.deg === b.deg) {
+    throw new Error('calibration samples must use two different angles');
+  }
+  const scalePerDeg = (b.normalized - a.normalized) / (b.deg - a.deg);
+  const offset = a.normalized - scalePerDeg * a.deg;
+  return { offset, scalePerDeg };
 }
 
 /** Map a degree offset to a normalised ONVIF value in [-1, 1] using the axis calibration. */
-export function degToNormalized(_deg: number, _axis: ICalibrationAxis): number {
-  return 0;
+export function degToNormalized(deg: number, axis: ICalibrationAxis): number {
+  const v = axis.offset + axis.scalePerDeg * deg;
+  if (v > 1) return 1;
+  if (v < -1) return -1;
+  return v;
 }
