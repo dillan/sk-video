@@ -66,7 +66,8 @@ function stateOf(value: unknown): string {
 
 export class WatchAutomation {
   private readonly active = new Set<string>(); // paths currently in alarm (edge state)
-  private readonly lastFiredAt = new Map<string, number>();
+  private readonly lastCaptureAt = new Map<string, number>(); // capture cooldown, per path
+  private notificationActive = false; // is a consolidated 'anchorWatch' notification outstanding?
   private readonly roles: string[];
   private readonly alarmStates: string[];
   private readonly cooldownMs: number;
@@ -79,21 +80,15 @@ export class WatchAutomation {
     this.now = deps.now ?? (() => Date.now());
   }
 
-  /** Capture on a rising alarm edge; clear the consolidated notification on the falling edge. */
+  /**
+   * Process a notification delta: alert + capture on a rising alarm edge, clear on the falling edge.
+   * Wrapped so a throwing notifications API can never escape into the bus subscription that drives it.
+   */
   onNotification(delta: IWatchDelta): void {
-    if (isAlarmDelta(delta.value, this.alarmStates)) {
-      if (this.active.has(delta.path)) {
-        return; // already alarming on this path — don't re-capture
-      }
-      this.active.add(delta.path);
-      this.fire(delta);
-    } else {
-      if (!this.active.delete(delta.path)) {
-        return; // this path wasn't alarming
-      }
-      if (this.active.size === 0) {
-        this.deps.clearNotification(); // every watched alarm has cleared
-      }
+    try {
+      this.process(delta);
+    } catch (err) {
+      this.deps.log?.(`watch automation error on ${delta.path}: ${errMessage(err)}`);
     }
   }
 
@@ -101,31 +96,66 @@ export class WatchAutomation {
     return [...this.active];
   }
 
-  /** Clear edge state on shutdown so a restart doesn't believe a stale alarm is still active. */
+  /**
+   * Clear edge/cooldown state AND any outstanding consolidated notification, so a clean shutdown
+   * doesn't leave a stale 'anchorWatch' alarm on the bus (at stop() the bridge is still live).
+   */
   reset(): void {
+    this.clearConsolidated();
     this.active.clear();
-    this.lastFiredAt.clear();
+    this.lastCaptureAt.clear();
   }
 
-  private fire(delta: IWatchDelta): void {
-    const now = this.now();
-    const last = this.lastFiredAt.get(delta.path);
-    if (last !== undefined && now - last <= this.cooldownMs) {
-      return; // flapping within the cooldown — skip the duplicate capture
+  private process(delta: IWatchDelta): void {
+    if (isAlarmDelta(delta.value, this.alarmStates)) {
+      if (this.active.has(delta.path)) {
+        return; // already alarming on this path
+      }
+      this.active.add(delta.path);
+      this.onRisingEdge(delta);
+    } else {
+      if (!this.active.delete(delta.path)) {
+        return; // this path wasn't alarming
+      }
+      if (this.active.size === 0) {
+        this.clearConsolidated(); // every watched alarm has cleared
+      }
     }
+  }
+
+  private onRisingEdge(delta: IWatchDelta): void {
     const cameras = selectWatchCameras(this.deps.getCameras(), this.roles);
     if (cameras.length === 0) {
       this.deps.log?.(
         `watch alarm on ${delta.path}, but no anchor/security cameras are configured`,
       );
-      return; // nothing to capture; the user's own alarm stands
+      return; // nothing to capture or consolidate; the user's own alarm stands
     }
-    this.lastFiredAt.set(delta.path, now);
     const state = stateOf(delta.value);
-    const incident = this.deps.captureEvidence(cameras, { path: delta.path, state });
+    // The operator ALERT fires on every rising edge (a re-drag must be visible); the heavy evidence
+    // CAPTURE is throttled per path so a flapping alarm can't spawn repeated recordings.
+    const now = this.now();
+    const last = this.lastCaptureAt.get(delta.path);
+    let incident: string | null = null;
+    if (last === undefined || now - last > this.cooldownMs) {
+      this.lastCaptureAt.set(delta.path, now);
+      incident = this.deps.captureEvidence(cameras, { path: delta.path, state });
+    }
+    this.notificationActive = true;
     this.deps.raiseNotification(
-      `Anchor/geofence alarm — captured evidence on ${cameras.length} camera${cameras.length === 1 ? '' : 's'}.`,
+      `Anchor/geofence alarm — ${cameras.length} camera${cameras.length === 1 ? '' : 's'}${incident ? ' (evidence captured)' : ''}.`,
       { triggerPath: delta.path, state, cameras, ...(incident ? { incident } : {}) },
     );
   }
+
+  private clearConsolidated(): void {
+    if (this.notificationActive) {
+      this.notificationActive = false;
+      this.deps.clearNotification();
+    }
+  }
+}
+
+function errMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }

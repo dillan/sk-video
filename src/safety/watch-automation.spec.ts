@@ -104,24 +104,39 @@ describe('WatchAutomation', () => {
     expect(calls.raised).toHaveLength(0);
   });
 
-  it('absorbs a flapping alarm with the per-path cooldown', () => {
+  it('throttles the heavy capture on a flapping alarm but still re-alerts on each re-drag', () => {
     const h = setup({ cooldownMs: 60_000 });
     const path = 'notifications.navigation.anchor';
-    h.watch.onNotification({ path, value: { state: 'alarm' } }); // fires at t=1000
+    h.watch.onNotification({ path, value: { state: 'alarm' } }); // capture + alert at t=1000
     h.watch.onNotification({ path, value: { state: 'normal' } });
-    h.setClock(20_000); // 19 s later, still within cooldown
+    h.setClock(20_000); // 19 s later, still within the capture cooldown
     h.watch.onNotification({ path, value: { state: 'alarm' } });
-    expect(h.calls.captured).toHaveLength(1); // second capture suppressed
-    h.setClock(100_000); // well past cooldown
+    expect(h.calls.captured).toHaveLength(1); // heavy capture suppressed...
+    expect(h.calls.raised).toHaveLength(2); // ...but the operator is re-alerted
+    expect(h.calls.raised[1].data.incident).toBeUndefined(); // no new bundle on the throttled re-alarm
+    h.setClock(100_000); // well past the cooldown
     h.watch.onNotification({ path, value: { state: 'normal' } });
     h.watch.onNotification({ path, value: { state: 'alarm' } });
     expect(h.calls.captured).toHaveLength(2);
   });
 
-  it('reset() clears edge + cooldown state', () => {
-    const { watch } = setup();
+  it('reset() clears edge/cooldown state AND any outstanding consolidated notification', () => {
+    const { watch, calls } = setup();
     watch.onNotification({ path: 'notifications.navigation.anchor', value: { state: 'alarm' } });
-    watch.reset();
+    expect(calls.cleared).toBe(0);
+    watch.reset(); // e.g. on plugin stop, while an anchor alarm was still active
+    expect(calls.cleared).toBe(1); // the stale on-bus notification is cleared
     expect(watch.activePaths()).toEqual([]);
+  });
+
+  it('swallows a throwing notifications API so it cannot escape into the bus subscription', () => {
+    const { watch } = setup({
+      raiseNotification: () => {
+        throw new Error('notifications API down');
+      },
+    });
+    expect(() =>
+      watch.onNotification({ path: 'notifications.navigation.anchor', value: { state: 'alarm' } }),
+    ).not.toThrow();
   });
 });
