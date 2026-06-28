@@ -106,14 +106,34 @@ describe('FrigateClient', () => {
     expect(raised.some((r) => 'clip' in r.data)).toBe(false);
   });
 
-  it('prunes event ids older than the retention window and clears their alert', () => {
+  it('expires a quiet event id past the retention window on the next message, clearing its alert', () => {
     const h = setup({ retentionMs: 1000 });
     h.client.handleMessage(event('new')); // seen at t=1000
     expect(h.client.activeEvents()).toEqual(['evt-1']);
     h.setClock(5000); // > retention later
     h.client.handleMessage(event('new', { id: 'evt-2' }));
-    expect(h.client.activeEvents()).toEqual(['evt-2']); // evt-1 pruned
+    expect(h.client.activeEvents()).toEqual(['evt-2']); // evt-1 expired
     expect(h.cleared).toEqual(['frigate.evt-1']); // and its alert auto-cleared
+  });
+
+  it('sweep() expires a quiet alert even with no further events (timer-driven)', () => {
+    const h = setup({ retentionMs: 1000 });
+    h.client.handleMessage(event('new'));
+    h.setClock(5000);
+    h.client.sweep(); // a periodic timer fires; no new event arrived
+    expect(h.client.activeEvents()).toEqual([]);
+    expect(h.cleared).toEqual(['frigate.evt-1']);
+  });
+
+  it('keeps a still-tracked object alive (sliding retention) without re-raising', () => {
+    const h = setup({ retentionMs: 1000 });
+    h.client.handleMessage(event('new')); // t=1000, raised once
+    h.setClock(1800);
+    h.client.handleMessage(event('update')); // refreshes seenAt to 1800
+    h.setClock(2500); // 700ms after the last activity, still within retention
+    h.client.handleMessage(event('end', { has_clip: false }));
+    expect(h.raised).toHaveLength(1); // still one notification for evt-1 (no duplicate)
+    expect(h.client.activeEvents()).toEqual(['evt-1']);
   });
 
   it('reset() clears tracking and every outstanding alert', () => {

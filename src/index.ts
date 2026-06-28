@@ -44,6 +44,7 @@ import { FRIGATE_EVENT_TOPIC, frigateSlug } from './analytics/frigate-events';
 import { connectFrigateMqtt, type IMqttConnection } from './analytics/frigate-mqtt';
 import { registerFrigateClipRoutes } from './analytics/frigate-clip-routes';
 import { fetchFrigateClip } from './analytics/frigate-clip-fetch';
+import { cacheFrigateClip } from './analytics/frigate-clip-cache';
 import { registerUploadRoutes } from './uploads/upload-routes';
 import { registerTestRoutes } from './diagnostics/test-routes';
 import { runFfprobe, tcpProbe } from './diagnostics/probe-runner';
@@ -125,6 +126,8 @@ const FRIGATE_CLIP_LIMITS = {
   maxTotalBytes: 2 * 1024 * 1024 * 1024, // 2 GiB of cached clips
   maxFileCount: 200,
 };
+// Expire a quiet Frigate alert (and its bridge notification) even if no further events arrive.
+const FRIGATE_SWEEP_MS = 5 * 60 * 1000;
 function csvList(value: string | undefined, fallback: string[]): string[] {
   const trimmed = value?.trim();
   if (!trimmed) {
@@ -161,6 +164,7 @@ export = function (app: ServerAPI): Plugin {
   let frigateClient: FrigateClient | null = null;
   let frigateMqtt: IMqttConnection | null = null;
   let frigateClips: AssetStore | null = null;
+  let frigatePruneTimer: ReturnType<typeof setInterval> | null = null;
   const triggerState: ITriggerState = { lastFiredAtByKey: {} };
   // Cameras this MOB event started recording, so deactivation stops exactly those (and not a
   // camera the operator was already manually recording).
@@ -280,6 +284,8 @@ export = function (app: ServerAPI): Plugin {
           title: 'Frigate minimum score',
           description: 'Minimum detection score (0–1) to alert on.',
           default: 0.7,
+          minimum: 0,
+          maximum: 1,
         },
         frigateZones: {
           type: 'string',
@@ -595,8 +601,13 @@ export = function (app: ServerAPI): Plugin {
           frigateClient = new FrigateClient({
             config: {
               labels: csvList(options?.frigateLabels, ['person', 'car']),
-              minScore:
-                typeof options?.frigateMinScore === 'number' ? options.frigateMinScore : 0.7,
+              minScore: Math.min(
+                1,
+                Math.max(
+                  0,
+                  typeof options?.frigateMinScore === 'number' ? options.frigateMinScore : 0.7,
+                ),
+              ),
               zones: csvList(options?.frigateZones, []),
             },
             raiseNotification: (key, message, data) =>
@@ -610,13 +621,10 @@ export = function (app: ServerAPI): Plugin {
                     timeoutMs: FRIGATE_FETCH_TIMEOUT_MS,
                   })
                 : Promise.reject(new Error('no Frigate API URL configured')),
-            storeClip: (eventId, bytes) => {
-              try {
-                return frigateClips?.add(bytes, `${frigateSlug(eventId)}.mp4`).id ?? null;
-              } catch {
-                return null; // not a valid clip, or over quota
-              }
-            },
+            storeClip: (eventId, bytes) =>
+              frigateClips
+                ? cacheFrigateClip(frigateClips, bytes, `${frigateSlug(eventId)}.mp4`)
+                : null,
             log,
           });
           try {
@@ -635,6 +643,9 @@ export = function (app: ServerAPI): Plugin {
               `[sk-video] frigate mqtt connect failed: ${redactUrl(err instanceof Error ? err.message : String(err))}`,
             );
           }
+          // Expire quiet alerts even during a fully silent period (the message-driven sweep can't).
+          frigatePruneTimer = setInterval(() => frigateClient?.sweep(), FRIGATE_SWEEP_MS);
+          frigatePruneTimer.unref?.();
         }
 
         const base = createCameraResourceMethods(cameras);
@@ -693,6 +704,10 @@ export = function (app: ServerAPI): Plugin {
       }
       watchdog?.reset(); // clears any outstanding "camera dark" alarms while the bridge is still live
       watchdog = null;
+      if (frigatePruneTimer) {
+        clearInterval(frigatePruneTimer);
+        frigatePruneTimer = null;
+      }
       frigateMqtt?.end(true); // stop consuming events before the client/bridge are torn down
       frigateMqtt = null;
       frigateClient?.reset(); // clears outstanding Frigate alerts while the bridge is still live

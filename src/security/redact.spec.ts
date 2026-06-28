@@ -38,4 +38,8 @@ describe('redactUrl', () => {
   it('leaves an @ in a path (no userinfo) unchanged', () => {
     expect(redactUrl('fetch http://host/path@v2 ok')).toBe('fetch http://host/path@v2 ok');
   });
+
+  it('fully redacts a password containing a literal @', () => {
+    expect(redactUrl('mqtt://user:p@ss@192.168.1.10:1883')).toBe('mqtt://***@192.168.1.10:1883');
+  });
 });

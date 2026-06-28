@@ -54,14 +54,14 @@ export class FrigateClient {
       if (!msg) {
         return;
       }
+      this.sweep(); // age-based expiry runs on every frigate message, not only qualifying ones
       const { object, qualifies } = classifyEvent(msg, this.deps.config);
       if (!qualifies) {
         return;
       }
-      this.prune();
       const key = `frigate.${frigateSlug(object.id)}`;
-
-      if (!this.active.has(object.id)) {
+      const existing = this.active.get(object.id);
+      if (!existing) {
         this.active.set(object.id, { key, seenAt: this.now(), clipHandled: false });
         this.deps.raiseNotification(key, this.detectMessage(object), {
           camera: object.camera,
@@ -69,6 +69,10 @@ export class FrigateClient {
           score: object.score,
           event: object.id,
         });
+      } else {
+        // Sliding retention: a still-tracked object is kept alive (and not re-raised), so it is
+        // forgotten only after going quiet for the retention window — never pruned-then-duplicated.
+        existing.seenAt = this.now();
       }
 
       if (object.ended && object.hasClip) {
@@ -117,8 +121,12 @@ export class FrigateClient {
     return `Frigate: ${object.label} detected on ${object.camera} (${Math.round(object.score * 100)}%).`;
   }
 
-  /** Drop event ids older than the retention window (and clear their alert) so nothing grows unbounded. */
-  private prune(): void {
+  /**
+   * Drop events that have gone quiet for longer than the retention window and clear their alert.
+   * Public so a periodic timer can expire the LAST alert even when no more events arrive (the
+   * message-driven call alone would never fire in a fully quiet period).
+   */
+  sweep(): void {
     const cutoff = this.now() - this.retentionMs;
     for (const [id, entry] of this.active) {
       if (entry.seenAt < cutoff) {
