@@ -22,10 +22,13 @@ export default defineConfig({
       // A regression ratchet, not an aspiration: set a few points below current coverage
       // (~96% lines / 94% branches / 100% functions) so a meaningful drop fails CI without
       // breaking on a small, well-tested addition. Raise further as coverage climbs.
+      // Re-baselined for vitest 4 / coverage-v8 4, which counts functions more granularly than v2
+      // did (no source changed; the measurement did). Still a regression ratchet a few points below
+      // the current actuals (~95 stmts / 88 branches / 94 funcs / 95 lines).
       thresholds: {
         statements: 92,
-        branches: 88,
-        functions: 95,
+        branches: 87,
+        functions: 90,
         lines: 92,
       },
     },

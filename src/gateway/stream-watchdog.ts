@@ -102,7 +102,7 @@ export class StreamWatchdog {
     }
 
     for (const id of monitored) {
-      let online = false;
+      let online: boolean;
       try {
         online = (await this.deps.fetchHealth(id)).online;
       } catch {

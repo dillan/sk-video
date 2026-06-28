@@ -9,9 +9,6 @@ paths:
   cam:
     # Generate a 1280x720 H.264 test pattern with a clock and a tone, and publish it to ourselves.
     runOnInit: >
-      ffmpeg -re -f lavfi -i testsrc2=size=1280x720:rate=15
-      -f lavfi -i sine=frequency=500:sample_rate=48000
-      -c:v libx264 -preset veryfast -tune zerolatency -profile:v baseline -pix_fmt yuv420p -g 30
-      -c:a aac -b:a 64k
-      -f rtsp -rtsp_transport tcp rtsp://localhost:8554/cam
+      ffmpeg -re -f lavfi -i testsrc2=size=1280x720:rate=15 -f lavfi -i sine=frequency=500:sample_rate=48000 -c:v libx264 -preset veryfast -tune zerolatency -profile:v baseline -pix_fmt yuv420p -g 30 -c:a aac -b:a 64k -f rtsp -rtsp_transport tcp rtsp://localhost:8554/cam
+
     runOnInitRestart: yes

@@ -1,8 +1,6 @@
 /** The outcome of parsing a Range request header against a known content size. */
 export type IRangeResult =
-  | { type: 'full' }
-  | { type: 'range'; start: number; end: number }
-  | { type: 'unsatisfiable' };
+  { type: 'full' } | { type: 'range'; start: number; end: number } | { type: 'unsatisfiable' };
 
 /**
  * Parses a single HTTP byte range against a content size. Unrecognized or multi-range requests fall
