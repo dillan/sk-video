@@ -5,6 +5,7 @@ import { CameraStore } from './cameras/camera-store';
 import { CredentialStore } from './cameras/credential-store';
 import { FileCameraPersistence, FileCredentialPersistence } from './cameras/file-persistence';
 import { createCameraResourceMethods } from './cameras/resource-provider';
+import { registerLayoutRoute } from './cameras/layout-routes';
 import { validateCamera } from './cameras/camera-validation';
 import { assertHostAllowed, type ISsrfOptions } from './security/ssrf-guard';
 import { redactUrl } from './security/redact';
@@ -682,6 +683,9 @@ export = function (app: ServerAPI): Plugin {
         hasCamera: (id: string) => cameras?.get(id) !== null && cameras?.get(id) !== undefined,
         hasSubstream: (id: string) => cameras?.get(id)?.media?.substreamPath !== undefined,
       });
+
+      // Read-only role/placement layout hints for the widget to auto-arrange feeds by area.
+      registerLayoutRoute(router, () => (cameras ? cameras.list() : null));
 
       // ONVIF PTZ control.
       registerPtzRoutes(router, () => ptz);
