@@ -9,6 +9,45 @@ export const resource = (id: string): string => `${BASE}/signalk/v2/api/resource
 
 export const CAMERA = 'testcam';
 
+/** Build a Signal K admin (skServer) URL — used to read/update the plugin's own config at runtime. */
+export const skServer = (path: string): string => `${BASE}/skServer${path}`;
+
+/** The current sk-video plugin config: { enabled, enableLogging, configuration }. */
+export async function getPluginConfig(
+  request: APIRequestContext,
+): Promise<{ enabled: boolean; enableLogging: boolean; configuration: Record<string, unknown> }> {
+  const res = await request.get(skServer('/plugins/sk-video/config'));
+  return res.json();
+}
+
+/**
+ * Replace the plugin config and wait for it to restart ready. Signal K restarts the plugin in-process,
+ * re-running start() with the new options. Returns once `/status` reports ready again.
+ */
+export async function setPluginConfig(
+  request: APIRequestContext,
+  configuration: Record<string, unknown>,
+): Promise<void> {
+  await request.post(skServer('/plugins/sk-video/config'), {
+    data: { enabled: true, enableLogging: false, configuration },
+  });
+  await waitForReady(request);
+}
+
+/** Poll `/status` until the plugin reports ready (after a start/restart). */
+export async function waitForReady(request: APIRequestContext, timeoutMs = 20_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const res = await request.get(plugin('/status')).catch(() => null);
+    if (res?.ok()) {
+      const body = (await res.json()) as { ready?: boolean };
+      if (body.ready === true) return;
+    }
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  throw new Error('plugin did not report ready in time');
+}
+
 /** Idempotently register a camera resource (the gateway warms go2rtc from it). */
 export async function ensureCamera(
   request: APIRequestContext,
