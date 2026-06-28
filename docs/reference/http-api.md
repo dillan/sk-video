@@ -59,6 +59,7 @@ Camera definitions are managed through the standard Signal K Resources API at `/
 | --- | --- | --- | --- |
 | `POST` | `/cameras/:id/record` | Start/stop continuous recording (`{ active }`). Tier-gated. | `200`, `404`, `409`, `503` |
 | `GET` | `/recordings` | Active recorders + on-disk segments (newest first). | `200`, `503` |
+| `GET` | `/recordings/timeline` | Scrubbable-DVR timeline: per-camera tracks with segment spans + coverage gaps ([contract](#dvr-timeline-contract)). | `200`, `503` |
 | `GET` | `/recordings/:name` | Stream a segment with HTTP Range. | `200`, `206`, `404`, `416`, `503` |
 | `POST` | `/cameras/:id/snapshot` | Capture a telemetry-stamped still. | `201`, `404`, `502`, `503` |
 | `POST` | `/videos` | Upload a video (magic-byte validated, quota-bounded, streamed to disk). | `201`, `400`, `413`, `415`, `503` |
@@ -86,6 +87,73 @@ Camera definitions are managed through the standard Signal K Resources API at `/
 | `DELETE` | `/incidents/:id` | Delete a bundle (refuses a pinned one). | `204`, `400`, `404`, `409`, `503` |
 | `GET` | `/frigate/clips` | List cached Frigate event clips. | `200`, `503` |
 | `GET` | `/frigate/clips/:id` | Stream a cached clip with Range. | `200`, `206`, `400`, `404`, `416`, `503` |
+
+---
+
+## DVR timeline contract
+
+`GET /recordings/timeline` returns a purpose-built structure for rendering a scrubbable DVR timeline (the KIP Video widget consumes it). The recorder writes fixed-length MP4 segments and stores only each segment's start time and byte size — it never probes per-file durations — so the server derives a best-effort timeline: each segment spans the nominal segment length, capped by the next segment's start, and a **coverage gap** is emitted wherever consecutive segments are further apart than that (a camera disconnect/reconnect). The currently-recording segment grows up to the nominal length using the server's clock. All times are epoch milliseconds; cameras and segments are sorted oldest-first (the camera list is sorted by id). The authoritative types live in `src/recording/recording-timeline.ts`.
+
+```ts
+interface IRecordingTimeline {
+  generatedAt: number; // epoch ms the timeline was built
+  segmentSeconds: number; // nominal length the recorder targets per segment
+  cameras: ICameraTimeline[]; // one track per camera with stored segments, sorted by id
+}
+interface ICameraTimeline {
+  camera: string;
+  recording: boolean; // capturing right now (its last segment is still growing)
+  startedAt: number; // earliest covered instant
+  endedAt: number; // latest covered instant (last segment start + its duration)
+  segments: ITimelineSegment[]; // oldest-first
+  gaps: ITimelineGap[]; // coverage gaps, oldest-first
+}
+interface ITimelineSegment {
+  name: string; // the id for GET /recordings/:name (Range-playable)
+  startedAt: number;
+  durationMs: number; // best-effort span (nominal length, capped to the next segment or now)
+  bytes: number;
+}
+interface ITimelineGap {
+  startedAt: number; // coverage stops
+  endedAt: number; // coverage resumes
+  durationMs: number;
+}
+```
+
+Example:
+
+```json
+{
+  "generatedAt": 1735000200000,
+  "segmentSeconds": 60,
+  "cameras": [
+    {
+      "camera": "foredeck",
+      "recording": true,
+      "startedAt": 1735000000000,
+      "endedAt": 1735000200000,
+      "segments": [
+        {
+          "name": "foredeck_20261224_000000.mp4",
+          "startedAt": 1735000000000,
+          "durationMs": 60000,
+          "bytes": 8421200
+        },
+        {
+          "name": "foredeck_20261224_000300.mp4",
+          "startedAt": 1735000180000,
+          "durationMs": 20000,
+          "bytes": 2810400
+        }
+      ],
+      "gaps": [{ "startedAt": 1735000060000, "endedAt": 1735000180000, "durationMs": 120000 }]
+    }
+  ]
+}
+```
+
+To play a segment, request `GET /recordings/:name` with the segment's `name`; it serves `video/mp4` with HTTP Range so the widget can seek within a segment.
 
 ---
 

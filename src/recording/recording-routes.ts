@@ -5,6 +5,7 @@ import { parseRange } from '../uploads/range';
 import { isValidSegmentName } from './file-recordings';
 import type { RecordingManager } from './recording-manager';
 import type { ISegment } from './recording-segments';
+import { buildRecordingTimeline } from './recording-timeline';
 
 type StreamFactory = (path: string, opts?: { start: number; end: number }) => ReadStream;
 
@@ -101,6 +102,22 @@ export function registerRecordingRoutes(router: IRouter, deps: IRecordingRoutesD
       }))
       .sort((a, b) => b.startedAt - a.startedAt);
     res.json({ recording: manager.activeCameras(), segments });
+  });
+
+  // Scrubbable-timeline contract for the widget: per-camera tracks with derived segment durations and
+  // coverage gaps. Registered before '/recordings/:name' so the literal path isn't taken as a name.
+  router.get('/recordings/timeline', (_req: Request, res: Response) => {
+    const manager = requireManager(res);
+    if (!manager) {
+      return;
+    }
+    res.json(
+      buildRecordingTimeline(listSegments(), {
+        now: now(),
+        activeCameras: manager.activeCameras(),
+        segmentSeconds: manager.segmentLengthSeconds(),
+      }),
+    );
   });
 
   router.get('/recordings/:name', (req: Request, res: Response) => {

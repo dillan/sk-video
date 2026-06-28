@@ -172,6 +172,43 @@ describe('registerRecordingRoutes', () => {
     ]);
   });
 
+  it('GET /recordings/timeline returns a per-camera scrubbable contract', () => {
+    const { handlers, manager } = setup();
+    manager.start('bow');
+    const res = new FakeRes();
+    handlers.get('GET /recordings/timeline')!(fakeReq(), res as unknown as Response);
+    const tl = res.body as {
+      segmentSeconds: number;
+      cameras: {
+        camera: string;
+        recording: boolean;
+        segments: { name: string; durationMs: number }[];
+      }[];
+    };
+    expect(tl.segmentSeconds).toBe(60);
+    expect(tl.cameras).toHaveLength(1);
+    expect(tl.cameras[0].camera).toBe('bow');
+    expect(tl.cameras[0].recording).toBe(true);
+    expect(tl.cameras[0].segments.map((s) => s.name)).toEqual([
+      'bow_20260627_143000.mp4', // oldest-first for the timeline (vs newest-first for the flat list)
+      'bow_20260627_143100.mp4',
+    ]);
+    // First segment's span is capped to the 1s gap to the next; the active last segment grows from now.
+    expect(tl.cameras[0].segments[0].durationMs).toBe(1000);
+  });
+
+  it('GET /recordings/timeline returns 503 before the plugin has started', () => {
+    const { router, handlers } = fakeRouter();
+    registerRecordingRoutes(router, {
+      getManager: () => null,
+      hasCamera: () => false,
+      listSegments: () => [],
+    });
+    const res = new FakeRes();
+    handlers.get('GET /recordings/timeline')!(fakeReq(), res as unknown as Response);
+    expect(res.statusCode).toBe(503);
+  });
+
   it('GET /recordings/:name streams a segment with Range support', () => {
     const { handlers } = setup();
     const res = new FakeRes();

@@ -80,6 +80,11 @@ export class RecordingManager {
     return [...this.active.keys()];
   }
 
+  /** The nominal length the recorder targets per MP4 segment, in seconds (for the timeline contract). */
+  segmentLengthSeconds(): number {
+    return this.segmentSeconds;
+  }
+
   /** Delete segments past the retention budget; returns how many were removed. */
   sweep(now: number): number {
     const prune = segmentsToPrune(this.deps.listSegments(), this.deps.limits(), now);
