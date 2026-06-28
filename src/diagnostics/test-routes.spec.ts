@@ -110,6 +110,33 @@ describe('registerTestRoutes', () => {
     expect(args[args.length - 1]).toBe('rtsp://cam.local:554/stream1');
   });
 
+  it('suggests candidate RTSP paths for a known make/model hint (so the user can verify one before saving)', async () => {
+    const { call } = setup();
+    const res = await call({ ...RTSP, hint: 'Reolink RLC-810A' });
+    expect((res.body as { suggestedPaths?: unknown }).suggestedPaths).toEqual({
+      main: '/h264Preview_01_main',
+      sub: '/h264Preview_01_sub',
+    });
+  });
+
+  it('still suggests paths when the probe of the current path fails (that is when alternatives help)', async () => {
+    const runFfprobe = vi
+      .fn()
+      .mockResolvedValue({ code: 1, timedOut: false, stdout: '', stderr: '404' });
+    const { call } = setup({ runFfprobe });
+    const res = await call({ ...RTSP, hint: 'Hikvision' });
+    expect((res.body as { ok: boolean }).ok).toBe(false);
+    expect((res.body as { suggestedPaths?: { main: string } }).suggestedPaths?.main).toBe(
+      '/Streaming/Channels/101',
+    );
+  });
+
+  it('omits suggestedPaths for an unknown make/model', async () => {
+    const { call } = setup();
+    const res = await call({ ...RTSP, hint: 'NoSuchBrand 9000' });
+    expect((res.body as { suggestedPaths?: unknown }).suggestedPaths).toBeUndefined();
+  });
+
   it('passes write-only credentials into the probe url', async () => {
     const runFfprobe = vi
       .fn()

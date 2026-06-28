@@ -1,5 +1,6 @@
 import type { IRouter, Request, Response } from 'express';
 import { validateCamera } from '../cameras/camera-validation';
+import { guessRtspPaths } from '../discovery/rtsp-paths';
 import { buildGo2rtcSource, type ICameraCredentials } from '../gateway/go2rtc-source';
 import type { IRateLimitResult } from '../security/rate-limit';
 import {
@@ -44,7 +45,19 @@ export function registerTestRoutes(router: IRouter, ctx: ITestContext): void {
       return;
     }
 
-    const body = (req.body ?? {}) as { source?: unknown; username?: unknown; password?: unknown };
+    const body = (req.body ?? {}) as {
+      source?: unknown;
+      username?: unknown;
+      password?: unknown;
+      hint?: unknown;
+    };
+    // A non-ONVIF camera often needs a vendor-specific stream path. When the caller passes a
+    // make/model hint, suggest candidate RTSP paths alongside the probe result so the operator can test
+    // one (re-running this endpoint with that path) BEFORE saving — a wrong guess never persists.
+    const hint = typeof body.hint === 'string' ? body.hint : '';
+    const suggestedPaths = hint ? guessRtspPaths(hint) : null;
+    const withSuggestions = <T extends object>(result: T): T =>
+      suggestedPaths ? { ...result, suggestedPaths } : result;
     const validation = validateCamera({ name: 'probe', enabled: true, source: body.source });
     if (!validation.valid || !validation.value) {
       res
@@ -69,7 +82,7 @@ export function registerTestRoutes(router: IRouter, ctx: ITestContext): void {
           camera.source.port ?? DEFAULT_ONVIF_PORT,
           timeout,
         );
-        res.json(evaluateTcp(reachable));
+        res.json(withSuggestions(evaluateTcp(reachable)));
         return;
       }
       const creds: ICameraCredentials = {
@@ -78,7 +91,7 @@ export function registerTestRoutes(router: IRouter, ctx: ITestContext): void {
       };
       const url = buildGo2rtcSource(camera, creds);
       const outcome = await ctx.runFfprobe(buildFfprobeArgs(url, timeout), timeout);
-      res.json(evaluateFfprobe(outcome));
+      res.json(withSuggestions(evaluateFfprobe(outcome)));
     } catch {
       // ffprobe missing or the runner threw — surface a clear, non-fatal result.
       res.json({
