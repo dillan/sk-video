@@ -17,8 +17,11 @@ export interface ILatLon {
 
 export interface IOwnShip {
   position: ILatLon;
-  /** True heading in degrees [0, 360). */
-  headingDeg: number;
+  /**
+   * Heading reference in degrees [0, 360), or undefined when none is available. Aiming needs it, but
+   * the MOB datum/marker are captured from position alone — so it is optional, not required.
+   */
+  headingDeg?: number;
 }
 
 export interface IAxisCalibration {
@@ -51,6 +54,18 @@ export function bearingTo(from: ILatLon, to: ILatLon): number {
   return (toDeg(Math.atan2(y, x)) + 360) % 360;
 }
 
+const EARTH_RADIUS_M = 6_371_000;
+
+/** Great-circle (haversine) distance between two lat/lons, in metres. */
+export function distanceMeters(from: ILatLon, to: ILatLon): number {
+  const lat1 = toRad(from.latitude);
+  const lat2 = toRad(to.latitude);
+  const dLat = toRad(to.latitude - from.latitude);
+  const dLon = toRad(to.longitude - from.longitude);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
+  return 2 * EARTH_RADIUS_M * Math.asin(Math.min(1, Math.sqrt(a)));
+}
+
 /** Signed difference `bearing - reference`, normalised to (-180, 180]. */
 export function relativeBearing(bearing: number, reference: number): number {
   let diff = (bearing - reference) % 360;
@@ -67,8 +82,8 @@ export function relativeBearing(bearing: number, reference: number): number {
  * calibration needed to geo-point (a fixed, non-PTZ or uncalibrated camera).
  */
 export function computeAim(ship: IOwnShip, target: ILatLon, camera: ICameraAimConfig): IAim | null {
-  if (!camera.calibration) {
-    return null;
+  if (!camera.calibration || ship.headingDeg === undefined) {
+    return null; // no calibration or no heading reference -> cannot compute a bearing-relative pan
   }
   const bearing = bearingTo(ship.position, target);
   const relativeToBow = relativeBearing(bearing, ship.headingDeg);

@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { bearingTo, relativeBearing, computeAim, type ICameraAimConfig } from './mob-geo';
+import {
+  bearingTo,
+  relativeBearing,
+  computeAim,
+  distanceMeters,
+  type ICameraAimConfig,
+} from './mob-geo';
 
 const at = (latitude: number, longitude: number) => ({ latitude, longitude });
 
@@ -69,5 +75,17 @@ describe('computeAim', () => {
     expect(
       computeAim({ position: at(0, 0), headingDeg: 0 }, at(0, 1), { mountBearingDeg: 0 }),
     ).toBeNull();
+  });
+
+  it('returns null when own-ship heading is unknown (no bearing-relative pan is possible)', () => {
+    // Position is captured for the datum/marker without a heading, but aiming requires one.
+    expect(computeAim({ position: at(0, 0) }, at(0, 1), cal)).toBeNull();
+  });
+});
+
+describe('distanceMeters', () => {
+  it('measures great-circle distance (≈ 111 km per degree of latitude)', () => {
+    expect(distanceMeters(at(0, 0), at(0, 0))).toBe(0);
+    expect(distanceMeters(at(0, 0), at(1, 0))).toBeCloseTo(111195, -2); // ~111 km
   });
 });

@@ -96,6 +96,58 @@ describe('MobController', () => {
     expect(calls.stoppedRecording).toBe(1);
   });
 
+  it('does not move the datum when re-triggered while already active (double-press safety)', () => {
+    let ship = { position: { latitude: 1, longitude: 1 }, headingDeg: 0 };
+    const { mob, calls } = setup({ getOwnShip: () => ship });
+    mob.activate();
+    ship = { position: { latitude: 2, longitude: 2 }, headingDeg: 0 }; // boat drifts after the press
+    mob.activate(); // a panicked double-press must NOT recapture the (now drifted) datum
+    expect(calls.markers).toHaveLength(1);
+    expect(calls.markers[0]).toEqual({ latitude: 1, longitude: 1 }); // still the original datum
+  });
+
+  it('captures the datum and drops the marker from position even without a heading', () => {
+    const { mob, calls } = setup({
+      getOwnShip: () => ({ position: { latitude: 5, longitude: 6 } }), // no headingDeg
+    });
+    const status = mob.activate();
+    expect(calls.markers).toEqual([{ latitude: 5, longitude: 6 }]);
+    expect(status.targetSource).toBe('datum');
+    expect(calls.aims).toHaveLength(0); // can't aim without a heading, but the datum/marker survive
+  });
+
+  it('ignores a distress beacon implausibly far from the datum (another vessel’s SART)', () => {
+    const farBeacon = { latitude: 10, longitude: 10 }; // ~1500 km from the datum origin
+    const { mob, calls } = setup({ getBeaconTarget: () => farBeacon });
+    const status = mob.activate();
+    expect(status.targetSource).toBe('datum'); // not hijacked to the unrelated beacon
+    expect(calls.markers[0]).toEqual({ latitude: 0, longitude: 0 });
+  });
+
+  it('uses a distress beacon as the target when there is no datum (best available)', () => {
+    const beacon = { latitude: 10, longitude: 10 };
+    const { mob, calls } = setup({ getOwnShip: () => null, getBeaconTarget: () => beacon });
+    const status = mob.activate();
+    expect(status.targetSource).toBe('beacon');
+    expect(calls.markers[0]).toEqual(beacon);
+  });
+
+  it('does not let a re-aim throw escape the timer (no uncaughtException during an active MOB)', () => {
+    const logs: string[] = [];
+    let boom = false;
+    const { mob, tick } = setup({
+      getCameras: () => {
+        if (boom) throw new Error('boom');
+        return [ptzCam('bow')];
+      },
+      log: (m) => logs.push(m),
+    });
+    mob.activate();
+    boom = true;
+    expect(() => tick()).not.toThrow();
+    expect(logs.some((l) => /re-?aim/i.test(l))).toBe(true);
+  });
+
   it('deactivate clears the notification and stops re-aiming', () => {
     const { mob, calls, tick } = setup();
     mob.activate();

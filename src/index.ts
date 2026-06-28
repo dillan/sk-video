@@ -451,7 +451,11 @@ export = function (app: ServerAPI): Plugin {
             }
           },
           recordCameras: (ids) => {
-            mobRecording = ids.filter((id) => recordings?.start(id));
+            // Only track cameras THIS MOB event newly started — never a recording the operator already
+            // had running manually, or deactivating MOB would stop their recording out from under them.
+            mobRecording = ids.filter(
+              (id) => recordings?.isRecording(id) !== true && recordings?.start(id) === true,
+            );
           },
           stopRecording: () => {
             for (const id of mobRecording) {
@@ -459,6 +463,7 @@ export = function (app: ServerAPI): Plugin {
             }
             mobRecording = [];
           },
+          log,
         });
 
         // A Signal K PUT action so any client (a KIP button, a mapped hardware key) can trigger MOB.

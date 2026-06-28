@@ -59,11 +59,39 @@ describe('ownShipFromSelfState', () => {
     expect(ship?.headingDeg).toBeCloseTo(90, 5);
   });
 
-  it('returns null without a position or heading', () => {
+  it('captures position even when heading is missing, so the MOB datum/marker is never lost', () => {
+    const ship = ownShipFromSelfState(
+      selfState({ position: reading({ latitude: 1, longitude: 2 }) }),
+    );
+    expect(ship?.position).toEqual({ latitude: 1, longitude: 2 });
+    expect(ship?.headingDeg).toBeUndefined(); // no heading -> can't aim, but the datum survives
+  });
+
+  it('uses COG as a heading proxy when making way without a true heading', () => {
+    const ship = ownShipFromSelfState(
+      selfState({
+        position: reading({ latitude: 1, longitude: 2 }),
+        courseOverGroundTrue: reading(Math.PI), // 180°
+        speedOverGround: reading(2), // > 0.5 m/s: making way, so course is a usable heading proxy
+      }),
+    );
+    expect(ship?.headingDeg).toBeCloseTo(180, 5);
+  });
+
+  it('does not treat COG as heading when barely moving (course is noise at rest)', () => {
+    const ship = ownShipFromSelfState(
+      selfState({
+        position: reading({ latitude: 1, longitude: 2 }),
+        courseOverGroundTrue: reading(Math.PI),
+        speedOverGround: reading(0.2), // < 0.5 m/s
+      }),
+    );
+    expect(ship?.position).toBeDefined();
+    expect(ship?.headingDeg).toBeUndefined();
+  });
+
+  it('returns null only when there is no position', () => {
     expect(ownShipFromSelfState(selfState())).toBeNull();
-    expect(
-      ownShipFromSelfState(selfState({ position: reading({ latitude: 1, longitude: 2 }) })),
-    ).toBeNull();
   });
 });
 
