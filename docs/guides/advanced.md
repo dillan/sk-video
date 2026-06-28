@@ -13,6 +13,8 @@ If you have a calibrated pan/tilt camera with absolute positioning, you can tell
 - It needs a **calibrated** absolute-PTZ camera; an uncalibrated or fixed camera can't be aimed.
 - It assumes the AIS data is current — a stale contact may be a vessel that's no longer there.
 
+**Calibrating a camera (one time).** Geo-pointing — both slew-to-cue and man-overboard — needs to know how the camera's pan/tilt numbers map to real-world bearings. You teach it that once with the **calibration wizard** in the widget: aim the camera at two known directions for each axis and save. SK Video works out the mapping and stores it on the camera, so you never type any numbers. Re-run it any time if the camera is remounted.
+
 Great for "what's that ship crossing our bow?" without leaving the helm.
 
 ---

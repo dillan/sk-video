@@ -33,6 +33,7 @@ What to know:
 - **It's tier-gated.** Recording needs a bit of muscle. A low-power **Cerbo-class** device offers no recording channels; a **Pi 4** can record a couple of cameras at once; a **small PC** can do several. See [Hardware & performance](hardware-and-performance.md).
 - **It can never fill the disk.** Recordings are kept to a budget (about 10 GB and 48 hours by default) and the oldest clips are pruned automatically. A full disk can't brick the Signal K server.
 - **Play it back with seeking.** Saved clips stream back to your browser with proper seek/scrub support.
+- **Browse it on a timeline.** The widget shows your recordings as a scrubbable timeline per camera, with any **gaps** (a camera that dropped out and came back) shown honestly rather than papered over, so you can jump straight to the moment you want.
 
 > This is best-effort onboard recording, not a certified marine VDR (voyage data recorder). It's great for "what happened at the dock last night?" — not a legal black box.
 

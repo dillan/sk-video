@@ -109,3 +109,5 @@ An incident is staged under a temp dir and made visible by a **single** rename, 
 ## Serving it back
 
 Stored media (videos, recording segments, incident assets, Frigate clips) is served with **HTTP Range** support (`src/uploads/range.ts`) so a browser can seek without downloading the whole file — `206 Partial Content`, `416` for an unsatisfiable range, `no-store` on the live still frame. The DVR segment listing is cached for a short window so a player's many Range requests don't re-scan the directory each time.
+
+For the DVR scrubber, `GET /recordings/timeline` exposes a derived **timeline contract** (`src/recording/recording-timeline.ts`, types in [the HTTP API reference](../reference/http-api.md#dvr-timeline-contract)). Segments only store a start time + byte size — no per-file duration is probed — so `buildRecordingTimeline()` derives each segment's span (nominal length, capped by the next segment's start, the active one growing from `now`) and emits an explicit **coverage gap** wherever consecutive segments are further apart than that. Pure and unit-tested; the widget mirrors the types.

@@ -14,6 +14,7 @@ When you trigger a man-overboard event (from a button in KIP, or a key mapped to
 2. **Raises an emergency notification** on the boat's network so every screen and alarm hears it.
 3. **Takes a snapshot** and **starts recording** on every camera.
 4. **Points every capable pan/tilt camera** at the man-overboard position — and keeps re-pointing them as the boat drifts, so the cameras stay aimed at the spot in the water even while the boat moves.
+5. **Switches cameras to night mode after dark.** If it's past dusk where you are, any camera that supports it is nudged into its low-light (Night-IR) picture preset, so the recording and the aimed view see as much as the hardware allows. It only does this when the boat has a position fix (so it knows the sun is down) and only on cameras with ONVIF imaging controls; everything else is left untouched, and you can still change the picture by hand.
 
 ### How the pointing actually works (and its honest limits)
 
@@ -55,7 +56,8 @@ If you don't run Frigate, this setting does nothing.
 
 If you already get an **anchor-drag or geofence alarm** — from Signal K's Anchor API or another plugin — SK Video can react to it automatically. The moment that alarm fires, it:
 
-- captures a snapshot and a short recording on your **anchor / security**-role cameras, and
+- captures a snapshot and a short recording on your **anchor / security**-role cameras,
+- after dark, switches those cameras to their low-light (Night-IR) preset first so the evidence is as usable as the hardware allows, and
 - raises **one** consolidated notification linking the evidence.
 
 Important: SK Video **does not compute anchor drag itself.** It _consumes_ the alarm you already produce and turns it into local evidence on the right cameras. It's "automatic evidence when the alarm sounds", not a monitoring service.
