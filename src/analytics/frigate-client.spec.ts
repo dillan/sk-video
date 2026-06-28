@@ -58,6 +58,19 @@ describe('FrigateClient', () => {
     expect(client.activeEvents()).toEqual(['evt-1']);
   });
 
+  it('surfaces the entered zones in the notification data when present', () => {
+    const { client, raised } = setup();
+    client.handleMessage(event('new', { entered_zones: ['foredeck', 'dock'] }));
+    expect(raised[0].data.zones).toEqual(['foredeck', 'dock']);
+    expect(raised[0].data.label).toBe('person');
+  });
+
+  it('omits the zones key when no zone was entered', () => {
+    const { client, raised } = setup();
+    client.handleMessage(event('new'));
+    expect('zones' in raised[0].data).toBe(false);
+  });
+
   it('ignores a non-qualifying event (wrong label / low score / false positive)', () => {
     const { client, raised } = setup();
     client.handleMessage(event('new', { label: 'dog' }));

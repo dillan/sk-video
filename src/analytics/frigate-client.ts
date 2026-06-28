@@ -67,12 +67,7 @@ export class FrigateClient {
       const existing = this.active.get(object.id);
       if (!existing) {
         this.active.set(object.id, { key, seenAt: this.now(), clipHandled: false });
-        this.deps.raiseNotification(key, this.detectMessage(object), {
-          camera: object.camera,
-          label: object.label,
-          score: object.score,
-          event: object.id,
-        });
+        this.deps.raiseNotification(key, this.detectMessage(object), notificationData(object));
       } else {
         // Sliding retention: a still-tracked object is kept alive (and not re-raised), so it is
         // forgotten only after going quiet for the retention window — never pruned-then-duplicated.
@@ -117,13 +112,11 @@ export class FrigateClient {
       const bytes = await this.deps.fetchClip(object.id);
       const assetId = this.deps.storeClip(object.id, bytes);
       if (assetId) {
-        this.deps.raiseNotification(key, `${this.detectMessage(object)} — clip available`, {
-          camera: object.camera,
-          label: object.label,
-          score: object.score,
-          event: object.id,
-          clip: assetId,
-        });
+        this.deps.raiseNotification(
+          key,
+          `${this.detectMessage(object)} — clip available`,
+          notificationData(object, { clip: assetId }),
+        );
       }
     } catch (err) {
       this.deps.log?.(`frigate clip fetch failed for ${object.id}: ${errMessage(err)}`);
@@ -150,6 +143,21 @@ export class FrigateClient {
       }
     }
   }
+}
+
+/** Build the notification payload, surfacing entered zones (when any) and any extra fields (e.g. clip). */
+function notificationData(
+  object: IFrigateNormalized,
+  extra?: Record<string, unknown>,
+): Record<string, unknown> {
+  return {
+    camera: object.camera,
+    label: object.label,
+    score: object.score,
+    event: object.id,
+    ...(object.enteredZones.length > 0 ? { zones: object.enteredZones } : {}),
+    ...extra,
+  };
 }
 
 function errMessage(err: unknown): string {

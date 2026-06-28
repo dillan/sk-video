@@ -45,6 +45,8 @@ import {
 import { FrigateClient } from './analytics/frigate-client';
 import { FRIGATE_EVENT_TOPIC, frigateSlug, parseFrigateEvent } from './analytics/frigate-events';
 import { connectFrigateMqtt, type IMqttConnection } from './analytics/frigate-mqtt';
+import { wireFrigateMqtt } from './analytics/frigate-mqtt-wiring';
+import { validateFrigateConfig } from './analytics/frigate-config';
 import { registerFrigateClipRoutes } from './analytics/frigate-clip-routes';
 import { fetchFrigateClip } from './analytics/frigate-clip-fetch';
 import { cacheFrigateClip } from './analytics/frigate-clip-cache';
@@ -686,21 +688,35 @@ export = function (app: ServerAPI): Plugin {
         // Frigate interop: consume a USER-RUN Frigate's MQTT events (we run no inference) and surface
         // person/car/boat detections as Signal K notifications + cached, same-origin-served clips.
         // Never bundled; close-range COCO-class only. Active only when an MQTT URL is configured.
-        const frigateMqttUrl = options?.frigateMqttUrl?.trim() ?? '';
-        if (options?.mobVisualRefine === true && !frigateMqttUrl) {
+        // Validate the guided connect settings before touching the network: a bad broker URL disables
+        // Frigate (with a credential-free reason), a bad API URL just disables clip caching.
+        const frigateCfg = validateFrigateConfig({
+          mqttUrl: options?.frigateMqttUrl,
+          apiUrl: options?.frigateApiUrl,
+        });
+        const frigateUrlEntered = (options?.frigateMqttUrl?.trim() ?? '') !== '';
+        if (options?.mobVisualRefine === true && !frigateCfg.ok) {
           // The experimental refine has no detection source without Frigate — say so rather than
           // sit silently inert while the operator believes visual refine is armed.
           log(
-            'mobVisualRefine is enabled but no Frigate MQTT URL is configured; the experimental visual refine will not run.',
+            'mobVisualRefine is enabled but no valid Frigate MQTT URL is configured; the experimental visual refine will not run.',
           );
         }
-        if (frigateMqttUrl) {
+        if (!frigateCfg.ok) {
+          // Only nag if the operator actually typed something (blank = intentionally disabled).
+          if (frigateUrlEntered) {
+            log(`Frigate disabled: ${frigateCfg.error}`);
+          }
+        } else {
+          for (const warning of frigateCfg.warnings) {
+            log(`Frigate: ${warning}`);
+          }
           frigateClips = new AssetStore({
             index: new FileAssetIndexPersistence(dataDir, 'frigate-clips.json'),
             blobs: new FileBlobStore(dataDir, 'frigate-clips'),
             limits: FRIGATE_CLIP_LIMITS,
           });
-          const frigateApiUrl = options?.frigateApiUrl?.trim() ?? '';
+          const frigateApiUrl = frigateCfg.apiUrl ?? '';
           frigateClient = new FrigateClient({
             config: {
               labels: csvList(options?.frigateLabels, ['person', 'car']),
@@ -751,18 +767,17 @@ export = function (app: ServerAPI): Plugin {
             visualRefineTimer.unref?.();
           }
           try {
-            frigateMqtt = connectFrigateMqtt({ url: frigateMqttUrl });
-            frigateMqtt.on('error', (err) =>
-              app.error?.(`[sk-video] frigate mqtt: ${redactUrl(err.message)}`),
-            );
-            frigateMqtt.on('message', (topic, payload) => {
-              if (topic !== FRIGATE_EVENT_TOPIC) {
-                return;
-              }
-              frigateClient?.handleMessage(payload);
-              feedVisualRefine(payload);
+            frigateMqtt = connectFrigateMqtt({ url: frigateCfg.mqttUrl });
+            // Subscribes on every (re)connect, so a dropped link resumes event flow cleanly.
+            wireFrigateMqtt(frigateMqtt, {
+              topic: FRIGATE_EVENT_TOPIC,
+              onMessage: (payload) => {
+                frigateClient?.handleMessage(payload);
+                feedVisualRefine(payload);
+              },
+              onError: (err) => app.error?.(`[sk-video] frigate mqtt: ${redactUrl(err.message)}`),
+              log,
             });
-            frigateMqtt.subscribe(FRIGATE_EVENT_TOPIC);
           } catch (err) {
             app.error?.(
               `[sk-video] frigate mqtt connect failed: ${redactUrl(err instanceof Error ? err.message : String(err))}`,
