@@ -14,6 +14,20 @@ Signal K apps — no separate camera app, no cloud account.
   <img src="docs/images/widget-playing.png" alt="A boat camera playing in KIP" width="80%">
 </p>
 
+> ### 📖 Full documentation → **[docs/](docs/README.md)**
+>
+> **Boaters:** [Getting started](docs/guides/getting-started.md) ·
+> [Adding cameras](docs/guides/cameras.md) · [Watching video](docs/guides/viewing.md) ·
+> [Snapshots & recording](docs/guides/snapshots-and-recording.md) ·
+> [Safety features](docs/guides/safety.md) · [Advanced features](docs/guides/advanced.md) ·
+> [Troubleshooting](docs/guides/troubleshooting.md)
+>
+> **Developers:** [Architecture](docs/developers/architecture.md) ·
+> [Streaming pipeline](docs/developers/streaming-pipeline.md) ·
+> [Safety flows](docs/developers/safety-and-awareness.md) ·
+> [Security model](docs/developers/security-model.md) ·
+> [HTTP API](docs/reference/http-api.md)
+
 ## Why you need it
 
 Web browsers can't open the kind of video most IP cameras produce (`rtsp://` and `rtmp://` streams),
@@ -107,6 +121,13 @@ repackage RTSP/RTMP/ONVIF cameras into browser-playable **WebRTC / HLS / MJPEG**
 through the Signal K [Resources API](https://demo.signalk.org/documentation/develop/rest-api/resources_api.html)
 as a custom `cameras` type, proxies **ONVIF PTZ**, runs **WS-Discovery + mDNS**, and stores/serves
 uploaded video with HTTP range requests.
+
+> **New contributor?** The [developer docs](docs/developers/architecture.md) explain how it all fits
+> together with architecture, sequence, and flow diagrams — start with the
+> [architecture overview](docs/developers/architecture.md), then the
+> [streaming pipeline](docs/developers/streaming-pipeline.md) and the
+> [security model](docs/developers/security-model.md). A terse line-level map is in
+> [AGENTS.md](AGENTS.md).
 
 ### HTTP endpoints (under `/plugins/sk-video`)
 
