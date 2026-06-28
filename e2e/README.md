@@ -11,15 +11,25 @@ widget against a simulated camera, plus a Playwright suite (Chromium + WebKit).
 
 ## What it verifies
 
-| Path                                                      | How                                                                       |
-| --------------------------------------------------------- | ------------------------------------------------------------------------- |
-| RTSP camera → browser **HLS** via the gateway             | real go2rtc pulls the mediamtx stream; the e2e fetches `…/stream.m3u8`    |
-| **Snapshot** frame                                        | `…/frame.jpeg` returns a real JPEG                                        |
-| Camera **resource CRUD** + SSRF/scheme validation         | seed script PUTs a `cameras` resource                                     |
-| **Video upload** + magic-byte validation + **HTTP Range** | e2e uploads a tiny MP4 and re-fetches it with a `Range` header (206)      |
-| Plugin **status** / wiring                                | `…/status`                                                                |
-| **KIP webapp** loads (same-origin with the plugin)        | Playwright opens `/@mxtommy/kip`                                          |
-| **ONVIF / PTZ** (opt-in)                                  | the virtual ONVIF device answers the plugin's PTZ proxy over unicast HTTP |
+| Path                                                                                                           | How                                                                                                     |
+| -------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| RTSP camera → browser **HLS** via the gateway                                                                  | real go2rtc pulls the mediamtx stream; the e2e fetches `…/stream.m3u8`                                  |
+| **Snapshot** frame                                                                                             | `…/frame.jpeg` returns a real JPEG                                                                      |
+| Camera **resource CRUD** + SSRF/scheme validation                                                              | seed script PUTs a `cameras` resource                                                                   |
+| **Video upload** + magic-byte validation + **HTTP Range**                                                      | e2e uploads a tiny MP4 and re-fetches it with a `Range` header (206)                                    |
+| Plugin **status** / wiring                                                                                     | `…/status` (also asserts the `hardware.tier` from the plugin config)                                    |
+| **KIP webapp** loads (same-origin with the plugin)                                                             | Playwright opens `/@mxtommy/kip`                                                                        |
+| **ONVIF / PTZ** (opt-in)                                                                                       | the virtual ONVIF device answers the plugin's PTZ proxy over unicast HTTP                               |
+| **DVR recording** (C10) + **health** (F6) + substream variant (C6.2)                                           | `recording.e2e.spec.ts` — start/stop, list, Range-serve a segment; `…/health`; `whep?variant=sub` 404   |
+| **Incident bundles** (C9)                                                                                      | `incidents.e2e.spec.ts` — trigger → finalize → manifest, Range assets, pin (DELETE 409), unpin + delete |
+| **Layout hints** (C7) + **360 projection** (A2) + **onboarding hints** (A3) + **slew** (C8) + **imaging** (C5) | `awareness.e2e.spec.ts`                                                                                 |
+| **Man overboard** (C2) + **Frigate** (C4, unconfigured)                                                        | `safety.e2e.spec.ts` — MOB activate/deactivate + emergency notification; Frigate clip endpoints 503     |
+
+The new feature specs live alongside the original `video.e2e.spec.ts` in `tests/`, sharing
+`tests/helpers.ts`. They run against the same stack — no extra services — except imaging's success
+path, which needs the `--onvif` profile and an ONVIF-backed camera (the RTSP-only `testcam` exercises
+the 502 error path instead). DVR recording is gated on the hardware tier, so the harness pins
+`hardwareTier: "x86"` in `signalk-config/plugin-config-data/sk-video.json`.
 
 ## Prerequisites
 
