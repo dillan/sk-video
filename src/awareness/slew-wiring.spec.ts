@@ -50,6 +50,24 @@ describe('slewOwnShipFromSelfState', () => {
   it('defaults SOG to 0 when absent', () => {
     expect(slewOwnShipFromSelfState(selfState({ speedOverGround: reading(null) }))?.sogMps).toBe(0);
   });
+
+  it('rejects a non-finite (NaN) position rather than aiming a camera at garbage', () => {
+    expect(
+      slewOwnShipFromSelfState(selfState({ position: reading({ latitude: NaN, longitude: 0 }) })),
+    ).toBeNull();
+  });
+
+  it('treats a non-finite heading as absent (falls back to a valid COG when making way)', () => {
+    const own = slewOwnShipFromSelfState(
+      selfState({
+        headingTrue: reading(NaN),
+        courseOverGroundTrue: reading(Math.PI),
+        speedOverGround: reading(3),
+      }),
+    );
+    expect(own?.headingSource).toBe('cog');
+    expect(own?.headingDeg).toBeCloseTo(180, 5);
+  });
 });
 
 describe('slewCameraAimConfig', () => {

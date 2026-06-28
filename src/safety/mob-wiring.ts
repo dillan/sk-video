@@ -28,8 +28,8 @@ export function toMobCamera(id: string, camera: ICamera): IMobCamera {
 
 export function ownShipFromSelfState(self: ISelfState): IOwnShip | null {
   const pos = self.position.value;
-  if (!pos) {
-    return null; // no position -> no datum, no marker; nothing the MOB response can act on
+  if (!pos || !Number.isFinite(pos.latitude) || !Number.isFinite(pos.longitude)) {
+    return null; // missing or garbage (NaN) position -> no datum, no marker; nothing to act on
   }
   // Capture position (so the datum is dropped and the marker emitted) even with no heading. Losing the
   // navigation.mob.position marker just because heading was momentarily null was a safety bug: heading
@@ -42,16 +42,16 @@ export function ownShipFromSelfState(self: ISelfState): IOwnShip | null {
 /** True heading if present; else COG when making way (a course is only a heading proxy under way). */
 function headingReferenceDeg(self: ISelfState): number | null {
   const headingRad = self.headingTrue.value;
-  if (headingRad !== null && headingRad !== undefined) {
+  if (typeof headingRad === 'number' && Number.isFinite(headingRad)) {
     return (headingRad * 180) / Math.PI; // Signal K stores angles in radians
   }
   const cogRad = self.courseOverGroundTrue.value;
   const sog = self.speedOverGround.value;
   if (
-    cogRad !== null &&
-    cogRad !== undefined &&
-    sog !== null &&
-    sog !== undefined &&
+    typeof cogRad === 'number' &&
+    Number.isFinite(cogRad) &&
+    typeof sog === 'number' &&
+    Number.isFinite(sog) &&
     sog >= SOG_MIN_FOR_COG_HEADING
   ) {
     return (cogRad * 180) / Math.PI;

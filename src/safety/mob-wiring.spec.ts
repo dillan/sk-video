@@ -93,6 +93,19 @@ describe('ownShipFromSelfState', () => {
   it('returns null only when there is no position', () => {
     expect(ownShipFromSelfState(selfState())).toBeNull();
   });
+
+  it('rejects a non-finite (NaN) position from flaky NMEA rather than aiming at garbage', () => {
+    expect(
+      ownShipFromSelfState(selfState({ position: reading({ latitude: NaN, longitude: NaN }) })),
+    ).toBeNull();
+  });
+
+  it('ignores a non-finite heading (does not produce a NaN bearing)', () => {
+    const ship = ownShipFromSelfState(
+      selfState({ position: reading({ latitude: 1, longitude: 2 }), headingTrue: reading(NaN) }),
+    );
+    expect(ship?.headingDeg).toBeUndefined();
+  });
 });
 
 describe('findMobBeacon', () => {

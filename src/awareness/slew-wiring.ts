@@ -24,19 +24,19 @@ function norm360(deg: number): number {
  */
 export function slewOwnShipFromSelfState(self: ISelfState): ISlewOwnShip | null {
   const pos = self.position.value;
-  if (!pos) {
-    return null;
+  if (!pos || !Number.isFinite(pos.latitude) || !Number.isFinite(pos.longitude)) {
+    return null; // missing or garbage (NaN from flaky NMEA) position — nothing to aim from
   }
-  const headingRad = self.headingTrue.value;
-  const cogRad = self.courseOverGroundTrue.value;
-  const sogMps = self.speedOverGround.value ?? 0;
+  const headingRad = finiteOrNull(self.headingTrue.value);
+  const cogRad = finiteOrNull(self.courseOverGroundTrue.value);
+  const sogMps = finiteOrNull(self.speedOverGround.value) ?? 0;
 
   let referenceRad: number;
   let headingSource: 'heading' | 'cog';
-  if (headingRad !== null && headingRad !== undefined) {
+  if (headingRad !== null) {
     referenceRad = headingRad;
     headingSource = 'heading';
-  } else if (cogRad !== null && cogRad !== undefined && sogMps >= SOG_MIN_FOR_COG_HEADING) {
+  } else if (cogRad !== null && sogMps >= SOG_MIN_FOR_COG_HEADING) {
     referenceRad = cogRad; // making way, so course is a usable heading proxy
     headingSource = 'cog';
   } else {
@@ -48,9 +48,13 @@ export function slewOwnShipFromSelfState(self: ISelfState): ISlewOwnShip | null 
     headingDeg: norm360(referenceRad * R2D),
     headingSource,
     sogMps,
-    cogDeg:
-      cogRad !== null && cogRad !== undefined ? norm360(cogRad * R2D) : norm360(referenceRad * R2D),
+    cogDeg: cogRad !== null ? norm360(cogRad * R2D) : norm360(referenceRad * R2D),
   };
+}
+
+/** A finite number, or null for null/undefined/NaN/Infinity (flaky NMEA can deliver any of these). */
+function finiteOrNull(value: number | null | undefined): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
 /** A stored camera's PTZ capability + aim config, mirroring the MOB camera mapping. */
