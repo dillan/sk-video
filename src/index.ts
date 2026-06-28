@@ -25,6 +25,7 @@ import { registerIntrospectRoute } from './discovery/introspect-routes';
 import { introspectOnvifCamera } from './onvif/onvif-introspect';
 import { MobController } from './safety/mob-controller';
 import { toMobCamera, ownShipFromSelfState, findMobBeacon } from './safety/mob-wiring';
+import { WatchAutomation } from './safety/watch-automation';
 import { registerSlewRoutes } from './awareness/slew-routes';
 import { slewOwnShipFromSelfState } from './awareness/slew-wiring';
 import { parseAisTargets } from './awareness/ais-targets';
@@ -40,7 +41,7 @@ import {
   type THardwareTier,
   type IHardwareInfo,
 } from './hardware/tier-detect';
-import { SignalKBridge, type ISignalKApp } from './signalk/sk-bridge';
+import { SignalKBridge, type ISignalKApp, type AlarmState } from './signalk/sk-bridge';
 import { SnapshotService } from './recording/snapshot-service';
 import { FileSnapshotStore } from './recording/file-snapshot-store';
 import { RecordingManager } from './recording/recording-manager';
@@ -93,6 +94,13 @@ const INCIDENT_QUOTA: IBundleQuota = {
   maxCount: 200,
   maxAgeMs: 30 * 24 * 60 * 60 * 1000, // 30 days
 };
+const ALARM_STATES = ['alert', 'alarm', 'emergency'];
+/** Coerce an untrusted notification state string into a valid alarm state for the consolidated alert. */
+function asAlarmState(value: unknown): AlarmState {
+  return typeof value === 'string' && ALARM_STATES.includes(value)
+    ? (value as AlarmState)
+    : 'alarm';
+}
 
 export = function (app: ServerAPI): Plugin {
   let cameras: CameraStore | null = null;
@@ -112,6 +120,8 @@ export = function (app: ServerAPI): Plugin {
   let incidentSweep: ReturnType<typeof setInterval> | null = null;
   let incidentUnsub: (() => void) | null = null;
   let incidentClipTmpDir: string | null = null;
+  let watch: WatchAutomation | null = null;
+  let watchUnsub: (() => void) | null = null;
   const triggerState: ITriggerState = { lastFiredAtByKey: {} };
   // Cameras this MOB event started recording, so deactivation stops exactly those (and not a
   // camera the operator was already manually recording).
@@ -198,10 +208,17 @@ export = function (app: ServerAPI): Plugin {
             'Signal K notification subtree to auto-capture an incident bundle from (e.g. "notifications.*"). Leave blank to disable — the manual "mark incident" trigger is the reliable path. Auto-triggers fire only on alert/alarm/emergency and are best-effort.',
           default: '',
         },
+        anchorWatchPath: {
+          type: 'string',
+          title: 'Anchor/geofence watch path',
+          description:
+            'Signal K notification path to watch for an anchor-drag or geofence alarm. On an alarm it auto-captures evidence on your anchor/security-role cameras and raises one consolidated notification. It consumes an alarm you already produce (Anchor API / another plugin) — it does not compute drag itself. Default "notifications.navigation.anchor"; blank to disable.',
+          default: 'notifications.navigation.anchor',
+        },
       },
     }),
 
-    start(options?: { hardwareTier?: string; autoTriggerPath?: string }) {
+    start(options?: { hardwareTier?: string; autoTriggerPath?: string; anchorWatchPath?: string }) {
       try {
         const dataDir = app.getDataDirPath();
         const override =
@@ -425,6 +442,41 @@ export = function (app: ServerAPI): Plugin {
         }, INCIDENT_SWEEP_MS);
         incidentSweep.unref?.();
 
+        // Anchor-watch automation: on the rising edge of an anchor-drag / geofence alarm raised by
+        // another source, capture a (silent) evidence bundle on the anchor/security cameras and raise
+        // one consolidated 'anchorWatch' notification; clear it when the alarm clears. Never computes
+        // drag itself.
+        watch = new WatchAutomation({
+          getCameras: () =>
+            Object.entries(cameras?.list() ?? {}).map(([id, camera]) => ({
+              id,
+              role: camera.role,
+              enabled: camera.enabled,
+            })),
+          captureEvidence: (cameraIds, context) =>
+            incidents?.mark({
+              cameras: cameraIds,
+              source: 'signalk',
+              path: context.path,
+              state: context.state,
+              note: 'anchor/geofence watch',
+              silent: true, // the watch owns the single consolidated notification below
+            })?.id ?? null,
+          raiseNotification: (message, data) =>
+            void skBridge.raiseNotification('anchorWatch', {
+              state: asAlarmState(data.state),
+              message,
+              data,
+            }),
+          clearNotification: () => void skBridge.clearNotification('anchorWatch'),
+          log,
+        });
+        const anchorWatchPath =
+          options?.anchorWatchPath?.trim() ?? 'notifications.navigation.anchor';
+        if (anchorWatchPath) {
+          watchUnsub = skBridge.onDelta(anchorWatchPath, (delta) => watch?.onNotification(delta));
+        }
+
         const base = createCameraResourceMethods(cameras);
         app.registerResourceProvider({
           type: 'cameras',
@@ -477,8 +529,14 @@ export = function (app: ServerAPI): Plugin {
       }
       // Tear down the notification subscription BEFORE the bridge is dropped — a leaked Bacon
       // subscription would survive a plugin restart and double-fire.
+      // Tear down both notification subscriptions BEFORE the bridge is dropped — a leaked Bacon
+      // subscription would survive a plugin restart and double-fire.
       incidentUnsub?.();
       incidentUnsub = null;
+      watchUnsub?.();
+      watchUnsub = null;
+      watch?.reset();
+      watch = null;
       incidents?.cancelAll(); // marks disposed + clears timers so no finalize publishes after stop()
       triggerState.lastFiredAtByKey = {};
       if (incidentClipTmpDir) {

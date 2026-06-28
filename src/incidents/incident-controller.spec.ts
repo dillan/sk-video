@@ -282,6 +282,16 @@ describe('IncidentController finalize robustness', () => {
     expect(t.state).toBe('alarm');
   });
 
+  it('a silent capture raises and clears no incident notification (the caller owns it)', async () => {
+    const h = setup({ relevantCameras: () => ['bow'] });
+    const { id } = h.controller.mark({ source: 'signalk', silent: true });
+    expect(h.calls.raised).toHaveLength(0); // no own notification raised
+    h.fireFinalize();
+    await flush(() => h.published.has(id));
+    expect(h.calls.cleared).toBe(0); // and none cleared
+    expect(h.published.get(id)).toBeTruthy(); // the bundle is still captured + published
+  });
+
   it('names a PNG snapshot asset with a .png extension', async () => {
     const h = setup({
       relevantCameras: () => ['bow'],

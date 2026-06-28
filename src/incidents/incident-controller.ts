@@ -76,6 +76,8 @@ export interface IMarkInput {
   source: 'manual' | 'signalk';
   path?: string;
   state?: string;
+  /** Suppress this capture's own incident notification — the caller owns a consolidated one (C3). */
+  silent?: boolean;
 }
 
 interface IRawSnapshot {
@@ -98,6 +100,7 @@ interface IAssembly {
   snapshots: Promise<IRawSnapshot>[];
   finalizeTimer: Timer | null;
   sampleTimer: Timer | null;
+  silent: boolean;
 }
 
 export class IncidentController {
@@ -140,7 +143,9 @@ export class IncidentController {
       ...(reason ? { reason } : {}),
     };
 
-    this.deps.raiseNotification(this.notifyMessage(cameras, input), { id });
+    if (!input.silent) {
+      this.deps.raiseNotification(this.notifyMessage(cameras, input), { id });
+    }
 
     const sampler = new TelemetrySampler({
       anchorMs: t0,
@@ -167,6 +172,7 @@ export class IncidentController {
       snapshots,
       finalizeTimer: null,
       sampleTimer: null,
+      silent: input.silent === true,
     };
 
     if (this.deps.sampleIntervalMs > 0 && postMs > 0) {
@@ -321,10 +327,13 @@ export class IncidentController {
     } finally {
       // clearNotification reaches the server's notifications API, which may throw; the "finalize
       // never throws" guarantee must hold even then (this runs fire-and-forget as void finalize()).
-      try {
-        this.deps.clearNotification();
-      } catch {
-        /* best effort */
+      // A silent capture never raised its own notification (the C3 watch owns a consolidated one).
+      if (!assembly.silent) {
+        try {
+          this.deps.clearNotification();
+        } catch {
+          /* best effort */
+        }
       }
     }
   }
