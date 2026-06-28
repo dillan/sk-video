@@ -90,6 +90,30 @@ function setup(maxChannels = 2, segments: ISegment[] = SEGMENTS) {
 }
 
 describe('registerRecordingRoutes', () => {
+  it('caches the segment scan so repeated Range requests do not re-scan the directory each time', () => {
+    const { router, handlers } = fakeRouter();
+    const { manager } = makeManager(2);
+    let scans = 0;
+    let clock = 0;
+    registerRecordingRoutes(router, {
+      getManager: () => manager,
+      hasCamera: () => true,
+      listSegments: () => {
+        scans += 1;
+        return SEGMENTS;
+      },
+      streamFactory: () => Readable.from(Buffer.from('MP4DATA!')) as never,
+      segmentCacheTtlMs: 1000,
+      now: () => clock,
+    });
+    handlers.get('GET /recordings')!(fakeReq(), new FakeRes() as unknown as Response);
+    handlers.get('GET /recordings')!(fakeReq(), new FakeRes() as unknown as Response);
+    expect(scans).toBe(1); // second request within the TTL hits the cache
+    clock = 2000; // past the TTL
+    handlers.get('GET /recordings')!(fakeReq(), new FakeRes() as unknown as Response);
+    expect(scans).toBe(2); // re-scanned after the cache expired
+  });
+
   it('POST /cameras/:id/record starts a recorder and reports recording:true', () => {
     const { handlers, manager, spawned } = setup();
     const res = new FakeRes();

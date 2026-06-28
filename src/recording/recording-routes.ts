@@ -17,6 +17,10 @@ export interface IRecordingRoutesDeps {
   listSegments: () => ISegment[];
   /** Injectable for tests; defaults to fs.createReadStream. */
   streamFactory?: StreamFactory;
+  /** Cache window for the segment scan; a video player makes many Range requests per playback. */
+  segmentCacheTtlMs?: number;
+  /** Injectable clock for the cache (tests). */
+  now?: () => number;
 }
 
 /**
@@ -30,6 +34,22 @@ export interface IRecordingRoutesDeps {
  */
 export function registerRecordingRoutes(router: IRouter, deps: IRecordingRoutesDeps): void {
   const openStream = deps.streamFactory ?? (createReadStream as StreamFactory);
+  const cacheTtlMs = deps.segmentCacheTtlMs ?? 1500;
+  const now = deps.now ?? (() => Date.now());
+
+  // A single playback issues many Range requests; without this each one would re-scan the whole
+  // recordings directory synchronously and block the event loop. Cache the scan for a short window.
+  let cachedSegments: ISegment[] | null = null;
+  let cachedAt = -Infinity;
+  const listSegments = (): ISegment[] => {
+    const t = now();
+    if (cachedSegments && t - cachedAt < cacheTtlMs) {
+      return cachedSegments;
+    }
+    cachedSegments = deps.listSegments();
+    cachedAt = t;
+    return cachedSegments;
+  };
 
   const requireManager = (res: Response): RecordingManager | null => {
     const manager = deps.getManager();
@@ -72,8 +92,7 @@ export function registerRecordingRoutes(router: IRouter, deps: IRecordingRoutesD
     if (!manager) {
       return;
     }
-    const segments = deps
-      .listSegments()
+    const segments = listSegments()
       .map((s) => ({
         camera: s.cameraId,
         name: basename(s.path),
@@ -94,7 +113,7 @@ export function registerRecordingRoutes(router: IRouter, deps: IRecordingRoutesD
       res.status(400).json({ error: 'invalid name' });
       return;
     }
-    const segment = deps.listSegments().find((s) => basename(s.path) === name);
+    const segment = listSegments().find((s) => basename(s.path) === name);
     if (!segment) {
       res.status(404).json({ error: 'not found' });
       return;

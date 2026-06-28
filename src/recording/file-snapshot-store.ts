@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ISnapshotMetadata, ISnapshotStore } from './snapshot-service';
 
@@ -7,16 +7,34 @@ export function isValidSnapshotId(id: string): boolean {
   return /^[A-Za-z0-9-]+$/.test(id);
 }
 
+// Bound snapshot growth so a long-running boat (MOB/anchor/incident captures over months) can't fill
+// the disk. Conservative defaults; pruning is oldest-first by capture time.
+const DEFAULT_MAX_COUNT = 1000; // the hard bound on disk growth
+const DEFAULT_MAX_AGE_MS = Infinity; // age pruning is opt-in; count alone bounds growth
+
+export interface IFileSnapshotStoreOptions {
+  maxCount?: number;
+  maxAgeMs?: number;
+  now?: () => number;
+}
+
 /**
  * Stores each snapshot as two owner-only files under a `snapshots/` directory: the JPEG blob and a
  * JSON telemetry sidecar, both named by the opaque snapshot id. Mirrors the hardened uploads store's
- * file conventions (0600, id-as-filename, no client-controlled paths).
+ * file conventions (0600, id-as-filename, no client-controlled paths). Growth is bounded: each save
+ * prunes snapshots past the count/age budget, oldest first.
  */
 export class FileSnapshotStore implements ISnapshotStore {
   private readonly dir: string;
+  private readonly maxCount: number;
+  private readonly maxAgeMs: number;
+  private readonly now: () => number;
 
-  constructor(dataDir: string, subdir = 'snapshots') {
+  constructor(dataDir: string, subdir = 'snapshots', options: IFileSnapshotStoreOptions = {}) {
     this.dir = join(dataDir, subdir);
+    this.maxCount = options.maxCount ?? DEFAULT_MAX_COUNT;
+    this.maxAgeMs = options.maxAgeMs ?? DEFAULT_MAX_AGE_MS;
+    this.now = options.now ?? (() => Date.now());
   }
 
   save(bytes: Uint8Array, meta: ISnapshotMetadata): void {
@@ -26,6 +44,22 @@ export class FileSnapshotStore implements ISnapshotStore {
     mkdirSync(this.dir, { recursive: true });
     writeFileSync(this.blobPath(meta.id), bytes, { mode: 0o600 });
     writeFileSync(this.metaPath(meta.id), JSON.stringify(meta, null, 2), { mode: 0o600 });
+    this.prune();
+  }
+
+  /** Delete snapshots past the age limit, then the oldest beyond the count budget. Best-effort. */
+  private prune(): void {
+    const all = this.list();
+    const cutoff = this.now() - this.maxAgeMs;
+    const tooOld = all.filter((m) => m.createdAt < cutoff);
+    const fresh = all
+      .filter((m) => m.createdAt >= cutoff)
+      .sort((a, b) => b.createdAt - a.createdAt);
+    const overflow = fresh.slice(this.maxCount);
+    for (const meta of [...tooOld, ...overflow]) {
+      rmSync(this.blobPath(meta.id), { force: true });
+      rmSync(this.metaPath(meta.id), { force: true });
+    }
   }
 
   get(id: string): ISnapshotMetadata | null {

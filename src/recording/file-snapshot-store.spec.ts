@@ -57,6 +57,34 @@ describe('FileSnapshotStore', () => {
     expect(store.get('nope')).toBeNull();
     expect(store.list()).toEqual([]);
   });
+
+  const metaAt = (id: string, createdAt: number): ISnapshotMetadata =>
+    ({ id, cameraId: 'bow', createdAt, contentType: 'image/jpeg', size: JPEG.length }) as never;
+
+  it('prunes the oldest snapshots past the count budget', () => {
+    const store = new FileSnapshotStore(tempDir(), 'snapshots', { maxCount: 2 });
+    store.save(JPEG, metaAt('a', 1));
+    store.save(JPEG, metaAt('b', 2));
+    store.save(JPEG, metaAt('c', 3));
+    const ids = store
+      .list()
+      .map((m) => m.id)
+      .sort();
+    expect(ids).toEqual(['b', 'c']); // 'a' (oldest) was evicted
+    expect(existsSync(store.blobPath('a'))).toBe(false);
+  });
+
+  it('prunes snapshots past the age limit', () => {
+    let clock = 10_000;
+    const store = new FileSnapshotStore(tempDir(), 'snapshots', {
+      maxAgeMs: 1000,
+      now: () => clock,
+    });
+    store.save(JPEG, metaAt('old', 1)); // far older than maxAgeMs at the next save
+    clock = 20_000;
+    store.save(JPEG, metaAt('new', 19_500));
+    expect(store.list().map((m) => m.id)).toEqual(['new']);
+  });
 });
 
 describe('snapshot end-to-end (bridge -> service -> disk)', () => {

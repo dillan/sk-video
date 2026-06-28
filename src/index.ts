@@ -94,6 +94,9 @@ const RECORDING_SEGMENT_SECONDS = 60;
 const RECORDING_MAX_BYTES = 10 * 1024 * 1024 * 1024; // 10 GiB
 const RECORDING_MAX_AGE_MS = 48 * 60 * 60 * 1000; // 48 hours
 const RECORDING_SWEEP_MS = 5 * 60 * 1000; // prune every 5 minutes
+// Snapshot retention: bound growth so MOB/anchor/incident captures can't fill the disk over months.
+const SNAPSHOT_MAX_COUNT = 2000;
+const SNAPSHOT_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 // Incident bundles: pre/post-roll clip + telemetry track + snapshots around an event.
 const INCIDENT_DEFAULT_PRE_MS = 15_000;
 const INCIDENT_DEFAULT_POST_MS = 15_000;
@@ -410,7 +413,10 @@ export = function (app: ServerAPI): Plugin {
             return new Uint8Array(await upstream.arrayBuffer());
           },
           selfSource: bridge,
-          store: new FileSnapshotStore(dataDir),
+          store: new FileSnapshotStore(dataDir, 'snapshots', {
+            maxCount: SNAPSHOT_MAX_COUNT,
+            maxAgeMs: SNAPSHOT_MAX_AGE_MS,
+          }),
         });
 
         // DVR: per-camera ffmpeg recorders remux go2rtc's loopback RTSP restream into rotating MP4
