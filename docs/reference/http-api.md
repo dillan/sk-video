@@ -42,6 +42,7 @@ Camera definitions are managed through the standard Signal K Resources API at `/
 | `POST` | `/cameras/:id/ptz/preset` | Go to a preset by token. | `204`, `404`, `502`, `503` |
 | `GET` | `/cameras/:id/imaging` | Current imaging settings + the presets/controls the camera supports. | `200`, `404`, `502`, `503` |
 | `POST` | `/cameras/:id/imaging/preset` | Apply a Day / Night-IR / Fog / Glare preset (capability-gated). | `200`, `400`, `409`, `502`, `503` |
+| `POST` | `/cameras/:id/calibration` | Capture a one-time FOV calibration from two `{deg, normalized}` samples per axis; solved and stored for geo-pointing/slew. | `200`, `400`, `404`, `500`, `503` |
 
 ## Discovery & onboarding
 

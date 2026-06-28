@@ -66,7 +66,7 @@ Filled in by the server when it introspects a camera over ONVIF. These describe 
 | `calibration.pan` | object | `{ offset, scalePerDeg }` (finite numbers) | Maps a bearing in degrees to the camera's normalized pan units. |
 | `calibration.tilt` | object | `{ offset, scalePerDeg }` (finite numbers) | The same for tilt. |
 
-`calibration` is what lets the geo-pointing features (man-overboard, AIS slew-to-cue) aim an absolute-PTZ camera at a real-world position. Without it, the camera can be nudged but not pointed at a target.
+`calibration` is what lets the geo-pointing features (man-overboard, AIS slew-to-cue) aim an absolute-PTZ camera at a real-world position. Without it, the camera can be nudged but not pointed at a target. You don't hand-edit these numbers: `POST /cameras/:id/calibration` captures two `{deg, normalized}` samples per axis and the server solves and stores the `offset`/`scalePerDeg` for you. Re-run it any time to re-calibrate.
 
 ---
 

@@ -20,6 +20,7 @@ import { fetchStreamHealth } from './gateway/stream-health';
 import { PtzManager } from './onvif/ptz-manager';
 import { registerPtzRoutes } from './onvif/ptz-routes';
 import { registerImagingRoutes } from './onvif/imaging-routes';
+import { registerCalibrationRoute } from './onvif/calibration-routes';
 import { DiscoveryService } from './discovery/discovery-service';
 import { createWsDiscoveryProbe } from './discovery/ws-discovery-probe';
 import { createMdnsProbe } from './discovery/mdns-probe';
@@ -1011,6 +1012,22 @@ export = function (app: ServerAPI): Plugin {
             throw new Error('PTZ controller unavailable');
           }
           await controller.moveAbsolute({ pan, tilt });
+        },
+      });
+
+      // One-time FOV calibration capture: solve degrees → normalised-ONVIF from a two-point-per-axis
+      // capture and persist it on the camera, so geo-pointing (MOB) and slew-to-cue can aim it.
+      registerCalibrationRoute(router, {
+        ready: () => cameras !== null,
+        getCamera: (id) => cameras?.get(id) ?? null,
+        setCalibration: async (id, calibration) => {
+          const store = cameras;
+          const camera = store?.get(id);
+          if (!store || !camera) {
+            throw new Error('unknown camera');
+          }
+          // Re-validate the whole record through the store (closed field-set + clamps) before saving.
+          store.set(id, { ...camera, calibration });
         },
       });
 
