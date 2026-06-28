@@ -26,6 +26,7 @@ import { createMdnsProbe } from './discovery/mdns-probe';
 import { createSsdpProbe } from './discovery/ssdp-probe';
 import { registerDiscoveryRoutes } from './discovery/discovery-routes';
 import { registerIntrospectRoute } from './discovery/introspect-routes';
+import { registerOnboardingHintsRoute } from './discovery/device-hints';
 import { introspectOnvifCamera } from './onvif/onvif-introspect';
 import { MobController } from './safety/mob-controller';
 import { toMobCamera, ownShipFromSelfState, findMobBeacon } from './safety/mob-wiring';
@@ -876,6 +877,9 @@ export = function (app: ServerAPI): Plugin {
 
       // Camera auto-discovery (WS-Discovery + mDNS), rate-limited.
       registerDiscoveryRoutes(router, () => discovery);
+
+      // Action-cam / 360 onboarding hints (GoPro / Insta360) — curated, opportunistic, honest.
+      registerOnboardingHintsRoute(router);
 
       // Zero-typing onboarding: introspect a discovered ONVIF camera to pre-fill the add form.
       registerIntrospectRoute(router, {

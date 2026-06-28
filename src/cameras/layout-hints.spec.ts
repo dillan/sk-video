@@ -89,6 +89,25 @@ describe('computeLayoutHints', () => {
     expect(computeLayoutHints({}).suggestedGrid).toEqual({ rows: 0, cols: 0 });
   });
 
+  it('flags a 360 camera as panoramic and offers a panoramic quick-select (A2)', () => {
+    const masthead: Record<string, ICamera> = {
+      mast: cam({
+        name: 'Masthead 360',
+        placement: { mount: 'mast' },
+        media: { projection: 'equirectangular' },
+      }),
+      bow: cam({ name: 'Bow', placement: { mount: 'bow' } }),
+    };
+    const h = computeLayoutHints(masthead);
+    const mastEntry = h.cameras.find((c) => c.id === 'mast');
+    expect(mastEntry).toMatchObject({ projection: 'equirectangular', panoramic: true });
+    expect(h.cameras.find((c) => c.id === 'bow')).toMatchObject({
+      projection: 'standard',
+      panoramic: false,
+    });
+    expect(h.groups.find((g) => g.key === 'panoramic')?.cameraIds).toEqual(['mast']);
+  });
+
   it('maps all sectors, an absolutePtz camera, a bearing entry, and placement-without-mount', () => {
     const mixed: Record<string, ICamera> = {
       p: cam({ name: 'Port', placement: { mount: 'port' } }),

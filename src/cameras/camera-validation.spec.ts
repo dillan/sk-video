@@ -167,6 +167,13 @@ describe('validateCamera — vessel-context metadata', () => {
     expect(validateCamera({ ...base, media: { substreamPath: '/a/../b' } }).valid).toBe(false);
   });
 
+  it('accepts a recognised media.projection (A2 360 flag) and rejects an unknown one', () => {
+    expect(
+      validateCamera({ ...base, media: { projection: 'equirectangular' } }).value,
+    ).toMatchObject({ media: { projection: 'equirectangular' } });
+    expect(validateCamera({ ...base, media: { projection: 'flat' } }).valid).toBe(false);
+  });
+
   it('rejects a calibration missing an axis or with non-finite coefficients', () => {
     expect(
       validateCamera({ ...base, calibration: { pan: { offset: 0, scalePerDeg: 0.01 } } }).valid,

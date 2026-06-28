@@ -48,6 +48,10 @@ export interface ICameraLayoutEntry {
   sector: TLayoutSector;
   ptz: boolean;
   safetyCritical: boolean;
+  /** Stream geometry (A2); "standard" unless a 360/fisheye projection was set. */
+  projection: string;
+  /** True for a 360/dual-fisheye camera — the widget should render it with a WebGL virtual-PTZ. */
+  panoramic: boolean;
 }
 
 export interface ILayoutGroup {
@@ -104,6 +108,10 @@ export function computeLayoutHints(cameras: Record<string, ICamera>): ILayoutHin
       sector: sectorOf(camera),
       ptz: camera.capabilities?.ptz === true || camera.capabilities?.absolutePtz === true,
       safetyCritical: camera.safetyCritical === true,
+      projection: camera.media?.projection ?? 'standard',
+      panoramic:
+        camera.media?.projection === 'equirectangular' ||
+        camera.media?.projection === 'dualfisheye',
     }))
     .sort(
       (a, b) =>
@@ -150,6 +158,11 @@ export function computeLayoutHints(cameras: Record<string, ICamera>): ILayoutHin
     'safety',
     'Safety cameras',
     entries.filter((e) => e.safetyCritical).map((e) => e.id),
+  );
+  add(
+    'panoramic',
+    '360 / panoramic',
+    entries.filter((e) => e.panoramic).map((e) => e.id),
   );
 
   return { cameras: entries, byRole, bySector, groups, suggestedGrid: suggestGrid(entries.length) };

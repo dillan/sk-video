@@ -54,6 +54,19 @@ export type TImagingControl = (typeof IMAGING_CONTROLS)[number];
 export const CAMERA_CODECS = ['h264', 'h265', 'mjpeg'] as const;
 export type TCameraCodec = (typeof CAMERA_CODECS)[number];
 
+/**
+ * The geometric projection of a camera's stream. The server passes the stream through UNCHANGED — it
+ * never dewarps (no ffmpeg v360, which pins a CPU core on a Pi); this flag just tells the client to
+ * render an equirectangular/fisheye feed with a WebGL sphere + virtual-PTZ instead of flat.
+ */
+export const CAMERA_PROJECTIONS = [
+  'standard',
+  'equirectangular',
+  'fisheye',
+  'dualfisheye',
+] as const;
+export type TCameraProjection = (typeof CAMERA_PROJECTIONS)[number];
+
 export interface ICameraSource {
   scheme: TCameraScheme;
   host: string;
@@ -82,6 +95,8 @@ export interface ICameraMedia {
   codec?: TCameraCodec;
   profileToken?: string;
   substreamPath?: string;
+  /** Stream geometry; drives client-side WebGL rendering for 360/panoramic cameras (never server-side). */
+  projection?: TCameraProjection;
 }
 
 /** One axis of a per-camera degrees → normalised ONVIF (-1..1) calibration. */
@@ -149,7 +164,7 @@ const ALLOWED_SOURCE_KEYS = new Set(['scheme', 'host', 'port', 'path']);
 const PLACEMENT_KEYS = new Set(['mount', 'bearingRelativeDeg', 'heightM']);
 const CAPABILITY_BOOLS = ['ptz', 'absolutePtz', 'audio', 'audioBackchannel', 'substreams'] as const;
 const CAPABILITY_KEYS = new Set<string>([...CAPABILITY_BOOLS, 'imaging']);
-const MEDIA_KEYS = new Set(['codec', 'profileToken', 'substreamPath']);
+const MEDIA_KEYS = new Set(['codec', 'profileToken', 'substreamPath', 'projection']);
 const CALIBRATION_KEYS = new Set(['pan', 'tilt']);
 const AXIS_KEYS = new Set(['offset', 'scalePerDeg']);
 
@@ -279,6 +294,16 @@ function validateMedia(input: unknown, errors: string[]): ICameraMedia | undefin
       out.substreamPath = o.substreamPath;
     } else {
       errors.push('media.substreamPath must be a safe absolute path');
+    }
+  }
+  if (o.projection !== undefined) {
+    if (
+      typeof o.projection === 'string' &&
+      (CAMERA_PROJECTIONS as readonly string[]).includes(o.projection)
+    ) {
+      out.projection = o.projection as TCameraProjection;
+    } else {
+      errors.push('media.projection is not a recognised projection');
     }
   }
   return out;
