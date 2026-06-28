@@ -249,7 +249,15 @@ export = function (app: ServerAPI): Plugin {
       return;
     }
     const found = frigatePersonDetection(msg);
-    if (!found || cameras?.get(found.camera)?.capabilities?.absolutePtz !== true) {
+    if (!found) {
+      return;
+    }
+    // Only refine a camera the MOB controller is ACTUALLY geo-aiming — which requires BOTH absolute PTZ
+    // AND calibration (computeAim returns null without calibration). Without that baseline underneath,
+    // a relativeMove nudge would drift an uncalibrated camera with nothing re-centring it, breaking the
+    // "never replaces geo-pointing" promise. An uncalibrated/non-PTZ camera is a safe no-op here.
+    const cam = cameras?.get(found.camera);
+    if (cam?.capabilities?.absolutePtz !== true || !cam.calibration) {
       return;
     }
     const correction = visualRefine.onDetection(found.detection);
@@ -434,7 +442,13 @@ export = function (app: ServerAPI): Plugin {
             void ptz
               ?.controllerFor(id)
               .then((controller) => controller.moveAbsolute({ pan, tilt }))
-              .catch(() => undefined);
+              // Surface a flaky PTZ camera rejecting the MOB aim rather than swallowing it silently —
+              // the operator-facing aimedCameras count is best-effort and this is the failure trail.
+              .catch((err: unknown) =>
+                log(
+                  `mob aim failed for ${id}: ${err instanceof Error ? err.message : String(err)}`,
+                ),
+              );
           },
           raiseNotification: (message, position) =>
             void bridge?.raiseNotification('mob', {

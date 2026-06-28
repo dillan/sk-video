@@ -88,6 +88,38 @@ describe('MobController', () => {
     expect(status).toMatchObject({ targetSource: 'none', aimedCameras: 0 });
   });
 
+  it('tells the crew there is NO fix and cameras were not aimed when there is no target', () => {
+    const { mob, calls } = setup({ getOwnShip: () => null, getBeaconTarget: () => null });
+    const status = mob.activate();
+    expect(status.targetSource).toBe('none');
+    expect(calls.raised[0].message).toMatch(/no position fix/i);
+    expect(calls.raised[0].message).not.toMatch(/pointed at the last known position/i);
+  });
+
+  it('does not count a camera saturated at its pan limit as aimed at the target', () => {
+    const tightCam: IMobCamera = {
+      id: 'bow',
+      hasAbsolutePtz: true,
+      aimConfig: {
+        mountBearingDeg: 0,
+        calibration: {
+          pan: { offset: 0, scalePerDeg: 0.02 },
+          tilt: { offset: 0, scalePerDeg: 0.02 },
+        },
+      },
+    };
+    const beacon = { latitude: 0, longitude: 0.01 }; // due east of the datum, abeam -> pan over-ranges
+    const { mob, calls } = setup({
+      getOwnShip: () => ({ position: { latitude: 0, longitude: 0 }, headingDeg: 0 }),
+      getBeaconTarget: () => beacon,
+      getCameras: () => [tightCam],
+    });
+    const status = mob.activate();
+    expect(calls.aims).toHaveLength(1); // the move is still dispatched (the camera's best effort)
+    expect(status.aimedCameras).toBe(0); // but a clamped camera points at its limit, not the target
+    expect(calls.raised[0].message).toMatch(/no PTZ camera could be aimed/i);
+  });
+
   it('starts recording every camera on activate and stops on deactivate', () => {
     const { mob, calls } = setup();
     mob.activate();

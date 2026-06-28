@@ -16,8 +16,25 @@ const DEFAULT_REAIM_MS = 1500;
 // Generous on purpose: a real casualty stays well within this even after a long drift, so the gate only
 // rejects the clearly-unrelated. With no datum we have nothing to compare against and use the beacon.
 const MAX_BEACON_DRIFT_M = 18_520; // 10 nautical miles
-const MOB_MESSAGE =
-  'Person overboard — cameras are pointed at the last known position, not tracking the person.';
+
+type TargetSource = 'beacon' | 'datum' | 'none';
+
+/**
+ * An HONEST emergency message: never claim cameras are pointed when there is no fix, and never imply
+ * the system is tracking the person. Reflects the real target source and how many cameras were actually
+ * commanded toward it.
+ */
+function mobMessage(source: TargetSource, commanded: number): string {
+  if (source === 'none') {
+    return 'Person overboard — NO position fix available; cameras could NOT be aimed. Follow standard MOB procedure.';
+  }
+  const where =
+    source === 'beacon' ? 'the live distress-beacon position' : 'the last known position';
+  if (commanded === 0) {
+    return `Person overboard — position marked at ${where}; no PTZ camera could be aimed there. Follow standard MOB procedure.`;
+  }
+  return `Person overboard — ${commanded} camera(s) commanded toward ${where} (best-effort aim, not visually tracking the person). Follow standard MOB procedure.`;
+}
 
 export interface IMobCamera {
   id: string;
@@ -50,7 +67,12 @@ export interface IMobControllerDeps {
 
 export interface IMobStatus {
   active: boolean;
-  targetSource: 'beacon' | 'datum' | 'none';
+  targetSource: TargetSource;
+  /**
+   * How many cameras were COMMANDED toward the target with a valid, in-range geo solution this cycle.
+   * It excludes cameras saturated at their pan limit (they point at the limit, not the target) and is
+   * NOT a confirmation the PTZ move completed — a flaky camera may reject the command (logged upstream).
+   */
   aimedCameras: number;
 }
 
@@ -81,18 +103,21 @@ export class MobController {
     this.active = true;
 
     const target = this.currentTarget();
-    this.deps.raiseNotification(MOB_MESSAGE, target);
-    if (target) {
-      this.deps.emitMarker(target);
-    }
     this.deps.snapshotAll();
     this.deps.recordCameras?.(this.deps.getCameras().map((camera) => camera.id));
 
+    // Dispatch the aim first (a fast, non-blocking dispatch) so the emergency notification can report
+    // honestly how many cameras were actually commanded toward the target.
     const aimed = this.reaim();
+    const source = this.targetSource();
+    this.deps.raiseNotification(mobMessage(source, aimed), target);
+    if (target) {
+      this.deps.emitMarker(target);
+    }
     if (this.timer === null) {
       this.timer = this.setIntervalImpl(() => this.safeReaim(), this.reaimIntervalMs);
     }
-    return { active: true, targetSource: this.targetSource(), aimedCameras: aimed };
+    return { active: true, targetSource: source, aimedCameras: aimed };
   }
 
   /** Re-aim, never letting a throw escape into the interval timer (which would crash the process). */
@@ -130,18 +155,24 @@ export class MobController {
     if (!ship || !target) {
       return 0;
     }
-    let count = 0;
+    let commanded = 0;
     for (const camera of this.deps.getCameras()) {
       if (!camera.hasAbsolutePtz) {
         continue;
       }
       const aim = computeAim(ship, target, camera.aimConfig);
-      if (aim) {
-        this.deps.aimCamera(camera.id, aim.pan, aim.tilt);
-        count += 1;
+      if (!aim) {
+        continue;
+      }
+      // Dispatch even a clamped aim (the camera goes to its limit — the best it can do), but do NOT
+      // count it as aimed at the target: a saturated camera points at its mechanical limit, not the
+      // casualty. The honest count drives the operator-facing notification.
+      this.deps.aimCamera(camera.id, aim.pan, aim.tilt);
+      if (!aim.panClamped) {
+        commanded += 1;
       }
     }
-    return count;
+    return commanded;
   }
 
   /**
