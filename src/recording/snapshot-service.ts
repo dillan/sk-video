@@ -68,20 +68,36 @@ export class SnapshotService {
     this.now = options.now ?? (() => Date.now());
   }
 
-  /** Capture, telemetry-stamp and store a snapshot for `cameraId`; returns its metadata. */
-  async capture(cameraId: string): Promise<ISnapshotMetadata> {
+  /**
+   * Capture and telemetry-stamp a frame WITHOUT storing it. The incident bundler uses this to obtain
+   * stamped bytes for its own self-contained store (the shared snapshot store has no delete(), so
+   * reusing it would orphan blobs).
+   */
+  async captureBytes(
+    cameraId: string,
+  ): Promise<{ bytes: Uint8Array; contentType: string; telemetry: ISnapshotTelemetry }> {
     const bytes = await this.options.capture(cameraId);
     const sniff = sniffImageType(bytes);
     if (!sniff) {
       throw new SnapshotRejectedError('captured frame is not a recognised image');
     }
+    return {
+      bytes,
+      contentType: sniff.contentType,
+      telemetry: toTelemetry(this.options.selfSource.getSelfState()),
+    };
+  }
+
+  /** Capture, telemetry-stamp and store a snapshot for `cameraId`; returns its metadata. */
+  async capture(cameraId: string): Promise<ISnapshotMetadata> {
+    const { bytes, contentType, telemetry } = await this.captureBytes(cameraId);
     const meta: ISnapshotMetadata = {
       id: this.idGen(),
       cameraId,
       createdAt: this.now(),
-      contentType: sniff.contentType,
+      contentType,
       size: bytes.length,
-      telemetry: toTelemetry(this.options.selfSource.getSelfState()),
+      telemetry,
     };
     this.options.store.save(bytes, meta);
     return meta;

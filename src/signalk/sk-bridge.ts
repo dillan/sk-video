@@ -64,7 +64,20 @@ export interface ISignalKApp {
     ): void;
     clear?(id: string): void;
   };
+  /** Bacon-style self-path delta stream; present on full servers, absent on partial ones. */
+  streambundle?: {
+    getSelfBus(path: string): {
+      onValue(cb: (delta: IDeltaLike) => void): () => void;
+    };
+  };
   debug?: (msg: string) => void;
+}
+
+/** A normalized incoming delta as the subscription stream yields it. */
+export interface IDeltaLike {
+  path: string;
+  value: unknown;
+  timestamp?: string;
 }
 
 export interface ISelfReading<T> {
@@ -229,6 +242,25 @@ export class SignalKBridge {
       this.pluginId,
     );
     return true;
+  }
+
+  /**
+   * Subscribe to a self-path delta stream (e.g. `notifications.*`) for auto-triggering. Returns an
+   * unsubscribe function — call it in stop() before the bridge is dropped. Degrades to a no-op (and
+   * logs) when the server exposes no streambundle, so a partial server simply never auto-fires.
+   */
+  onDelta(path: string, cb: (delta: IDeltaLike) => void): () => void {
+    const sb = this.app.streambundle;
+    if (!sb || typeof sb.getSelfBus !== 'function') {
+      this.log(`streambundle unavailable; onDelta(${path}) is a no-op`);
+      return () => {};
+    }
+    try {
+      return sb.getSelfBus(path).onValue(cb);
+    } catch (err) {
+      this.log(`onDelta(${path}) subscription failed: ${errMessage(err)}`);
+      return () => {};
+    }
   }
 
   private readSelf<T>(path: string): ISelfReading<T> {

@@ -93,4 +93,18 @@ describe('SnapshotService', () => {
     await expect(svc.capture('bow')).rejects.toBeInstanceOf(SnapshotRejectedError);
     expect(store.saved).toEqual([]);
   });
+
+  it('captureBytes returns stamped bytes WITHOUT writing to the snapshot store', async () => {
+    const store = fakeStore();
+    const svc = new SnapshotService({
+      capture: async () => JPEG,
+      selfSource: bridgeWith({ 'navigation.position': { value: { latitude: 1, longitude: 2 } } }),
+      store,
+    });
+    const out = await svc.captureBytes('bow');
+    expect(out.bytes).toBe(JPEG);
+    expect(out.contentType).toBe('image/jpeg');
+    expect(out.telemetry.positionAvailable).toBe(true);
+    expect(store.saved).toEqual([]); // the incident bundler owns its own store
+  });
 });

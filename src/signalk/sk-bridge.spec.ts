@@ -280,3 +280,39 @@ describe('SignalKBridge — edge cases', () => {
     expect(raised).toHaveLength(1); // second raise has nothing to update, and must not throw
   });
 });
+
+describe('SignalKBridge — onDelta', () => {
+  it('subscribes via streambundle.getSelfBus and returns its unsubscribe', () => {
+    let unsubscribed = false;
+    const received: unknown[] = [];
+    let emit: ((d: unknown) => void) | null = null;
+    const bridge = new SignalKBridge(
+      {
+        streambundle: {
+          getSelfBus: () => ({
+            onValue: (cb: (d: unknown) => void) => {
+              emit = cb;
+              return () => {
+                unsubscribed = true;
+              };
+            },
+          }),
+        },
+      },
+      'sk-video',
+    );
+    const unsub = bridge.onDelta('notifications.navigation.anchor', (d) => received.push(d));
+    emit!({ path: 'notifications.navigation.anchor', value: { state: 'alarm' } });
+    expect(received).toEqual([
+      { path: 'notifications.navigation.anchor', value: { state: 'alarm' } },
+    ]);
+    unsub();
+    expect(unsubscribed).toBe(true);
+  });
+
+  it('is a no-op (no throw) when the server has no streambundle', () => {
+    const bridge = new SignalKBridge({ debug: () => {} }, 'sk-video');
+    const unsub = bridge.onDelta('notifications.*', () => {});
+    expect(() => unsub()).not.toThrow();
+  });
+});
