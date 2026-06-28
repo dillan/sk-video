@@ -25,6 +25,9 @@ import { registerIntrospectRoute } from './discovery/introspect-routes';
 import { introspectOnvifCamera } from './onvif/onvif-introspect';
 import { MobController } from './safety/mob-controller';
 import { toMobCamera, ownShipFromSelfState, findMobBeacon } from './safety/mob-wiring';
+import { registerSlewRoutes } from './awareness/slew-routes';
+import { slewOwnShipFromSelfState } from './awareness/slew-wiring';
+import { parseAisTargets } from './awareness/ais-targets';
 import { AssetStore } from './uploads/asset-store';
 import { createFileAssetStore } from './uploads/file-asset-store';
 import { registerUploadRoutes } from './uploads/upload-routes';
@@ -586,6 +589,22 @@ export = function (app: ServerAPI): Plugin {
 
       // ONVIF PTZ control.
       registerPtzRoutes(router, () => ptz);
+
+      // AIS slew-to-cue: aim a calibrated PTZ camera once at the nearest-CPA AIS target. A single
+      // deterministic geo-point (shares the MOB engine), not tracking; re-POST to re-cue.
+      registerSlewRoutes(router, {
+        ready: () => cameras !== null,
+        getCamera: (id) => cameras?.get(id) ?? null,
+        getOwnShip: () => (bridge ? slewOwnShipFromSelfState(bridge.getSelfState()) : null),
+        getTargets: () => parseAisTargets(safeGetPath('vessels'), app.selfId),
+        aimCamera: async (id, pan, tilt) => {
+          const controller = await ptz?.controllerFor(id);
+          if (!controller) {
+            throw new Error('PTZ controller unavailable');
+          }
+          await controller.moveAbsolute({ pan, tilt });
+        },
+      });
 
       // Camera auto-discovery (WS-Discovery + mDNS), rate-limited.
       registerDiscoveryRoutes(router, () => discovery);
