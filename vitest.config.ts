@@ -12,9 +12,8 @@ export default defineConfig({
         'src/**/*.d.ts',
         // Thin entrypoint: wires the pieces together; covered by the Signal K integration e2e.
         'src/index.ts',
-        // External IO wrappers (spawn go2rtc, open an ONVIF connection); covered by the e2e harness,
-        // not unit-testable without the real binary/device.
-        'src/gateway/go2rtc-process.ts',
+        // External IO wrappers (open an ONVIF connection); covered by the e2e harness,
+        // not unit-testable without the real device.
         'src/onvif/onvif-connect.ts',
         'src/diagnostics/probe-runner.ts',
         // Thin MQTT.js adapter for Frigate; the client orchestration is unit-tested against its interface.

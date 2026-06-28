@@ -1,10 +1,11 @@
-import { chmodSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import AdmZip from 'adm-zip';
 import {
   GO2RTC_VERSION,
   go2rtcAssetName,
   go2rtcDownloadUrl,
+  go2rtcExpectedSha256,
   isZipAsset,
   verifySha256,
 } from './go2rtc-binary';
@@ -76,17 +77,28 @@ export class Go2rtcBinaryManager {
       throw new Error(`go2rtc download failed: HTTP ${res.status}`);
     }
     const download = Buffer.from(await res.arrayBuffer());
-    if (this.expectedSha256 && !verifySha256(download, this.expectedSha256)) {
-      throw new Error('go2rtc download failed SHA-256 verification');
+    const expectedSha = this.expectedSha256 ?? go2rtcExpectedSha256(this.platform, this.arch);
+    if (expectedSha) {
+      if (!verifySha256(download, expectedSha)) {
+        throw new Error('go2rtc download failed SHA-256 verification');
+      }
+    } else {
+      this.log(
+        `go2rtc integrity check skipped: no pinned SHA-256 for ${this.platform}/${this.arch} (HTTPS + pinned URL only)`,
+      );
     }
     const asset = go2rtcAssetName(this.platform, this.arch);
     const binary = asset && isZipAsset(asset) ? extractBinaryFromZip(download) : download;
 
     mkdirSync(this.dataDir, { recursive: true });
-    writeFileSync(this.binaryPath, binary);
+    // Atomic install: write+chmod a temp file then rename into place, so a power loss mid-download can't
+    // leave a truncated/corrupt binary that fails to exec on next boot and wedges the gateway.
+    const tmpPath = `${this.binaryPath}.tmp-${process.pid}`;
+    writeFileSync(tmpPath, binary);
     if (this.platform !== 'win32') {
-      chmodSync(this.binaryPath, 0o755);
+      chmodSync(tmpPath, 0o755);
     }
+    renameSync(tmpPath, this.binaryPath);
     return this.binaryPath;
   }
 }

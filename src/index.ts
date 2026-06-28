@@ -176,6 +176,8 @@ export = function (app: ServerAPI): Plugin {
   let visualRefine: MobVisualRefine | null = null;
   let visualRefineTimer: ReturnType<typeof setInterval> | null = null;
   let syncTimer: ReturnType<typeof setTimeout> | null = null;
+  let syncInFlight: Promise<void> | null = null;
+  let syncRerun = false;
 
   const ssrfOptions: ISsrfOptions = { allowPrivate: true };
   // Cap DNS resolution so an unresponsive resolver on a flaky boat network can't stall the plugin.
@@ -213,16 +215,30 @@ export = function (app: ServerAPI): Plugin {
   };
 
   async function runSync(): Promise<void> {
-    if (!gateway || !cameras || !credentials) {
-      return;
+    // Serialize reconciles: a sync that arrives while one is running coalesces into a single re-run
+    // afterwards, so two overlapping syncs can never drive the gateway (and go2rtc spawn) concurrently.
+    if (syncInFlight) {
+      syncRerun = true;
+      return syncInFlight;
     }
-    try {
-      await gateway.sync(cameras.list(), credentials.all());
-    } catch (err) {
-      app.setPluginError(
-        redactUrl(`Gateway error: ${err instanceof Error ? err.message : String(err)}`),
-      );
-    }
+    syncInFlight = (async () => {
+      do {
+        syncRerun = false;
+        if (!gateway || !cameras || !credentials) {
+          break;
+        }
+        try {
+          await gateway.sync(cameras.list(), credentials.all());
+        } catch (err) {
+          app.setPluginError(
+            redactUrl(`Gateway error: ${err instanceof Error ? err.message : String(err)}`),
+          );
+        }
+      } while (syncRerun);
+    })().finally(() => {
+      syncInFlight = null;
+    });
+    return syncInFlight;
   }
 
   /** Coalesce rapid camera/credential changes into a single gateway reconcile. */
