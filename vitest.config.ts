@@ -17,6 +17,8 @@ export default defineConfig({
         'src/gateway/go2rtc-process.ts',
         'src/onvif/onvif-connect.ts',
         'src/diagnostics/probe-runner.ts',
+        // Thin MQTT.js adapter for Frigate; the client orchestration is unit-tested against its interface.
+        'src/analytics/frigate-mqtt.ts',
       ],
       // A regression ratchet, not an aspiration: set a few points below current coverage
       // (~96% lines / 94% branches / 100% functions) so a meaningful drop fails CI without

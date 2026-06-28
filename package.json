@@ -80,6 +80,7 @@
   },
   "dependencies": {
     "adm-zip": "^0.5.17",
+    "mqtt": "^5.15.1",
     "multicast-dns": "^7.2.5",
     "onvif": "^0.8.1"
   }

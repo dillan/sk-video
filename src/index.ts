@@ -34,7 +34,16 @@ import { registerSlewRoutes } from './awareness/slew-routes';
 import { slewOwnShipFromSelfState } from './awareness/slew-wiring';
 import { parseAisTargets } from './awareness/ais-targets';
 import { AssetStore } from './uploads/asset-store';
-import { createFileAssetStore } from './uploads/file-asset-store';
+import {
+  createFileAssetStore,
+  FileAssetIndexPersistence,
+  FileBlobStore,
+} from './uploads/file-asset-store';
+import { FrigateClient } from './analytics/frigate-client';
+import { FRIGATE_EVENT_TOPIC, frigateSlug } from './analytics/frigate-events';
+import { connectFrigateMqtt, type IMqttConnection } from './analytics/frigate-mqtt';
+import { registerFrigateClipRoutes } from './analytics/frigate-clip-routes';
+import { fetchFrigateClip } from './analytics/frigate-clip-fetch';
 import { registerUploadRoutes } from './uploads/upload-routes';
 import { registerTestRoutes } from './diagnostics/test-routes';
 import { runFfprobe, tcpProbe } from './diagnostics/probe-runner';
@@ -108,6 +117,24 @@ function asAlarmState(value: unknown): AlarmState {
     ? (value as AlarmState)
     : 'alarm';
 }
+// Frigate interop (consume a user-run Frigate; never bundled). Clips are short — cap size/quota.
+const FRIGATE_CLIP_MAX_BYTES = 200 * 1024 * 1024; // 200 MiB per clip
+const FRIGATE_FETCH_TIMEOUT_MS = 15_000;
+const FRIGATE_CLIP_LIMITS = {
+  maxFileBytes: FRIGATE_CLIP_MAX_BYTES,
+  maxTotalBytes: 2 * 1024 * 1024 * 1024, // 2 GiB of cached clips
+  maxFileCount: 200,
+};
+function csvList(value: string | undefined, fallback: string[]): string[] {
+  const trimmed = value?.trim();
+  if (!trimmed) {
+    return fallback;
+  }
+  return trimmed
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
 
 export = function (app: ServerAPI): Plugin {
   let cameras: CameraStore | null = null;
@@ -131,6 +158,9 @@ export = function (app: ServerAPI): Plugin {
   let watchUnsub: (() => void) | null = null;
   let watchdog: StreamWatchdog | null = null;
   let watchdogTimer: ReturnType<typeof setInterval> | null = null;
+  let frigateClient: FrigateClient | null = null;
+  let frigateMqtt: IMqttConnection | null = null;
+  let frigateClips: AssetStore | null = null;
   const triggerState: ITriggerState = { lastFiredAtByKey: {} };
   // Cameras this MOB event started recording, so deactivation stops exactly those (and not a
   // camera the operator was already manually recording).
@@ -224,10 +254,52 @@ export = function (app: ServerAPI): Plugin {
             'Signal K notification path to watch for an anchor-drag or geofence alarm. On an alarm it auto-captures evidence on your anchor/security-role cameras and raises one consolidated notification. It consumes an alarm you already produce (Anchor API / another plugin) — it does not compute drag itself. Default "notifications.navigation.anchor"; blank to disable.',
           default: 'notifications.navigation.anchor',
         },
+        frigateMqttUrl: {
+          type: 'string',
+          title: 'Frigate MQTT broker URL (optional)',
+          description:
+            'Connect to a YOUR-OWN-Frigate MQTT broker (e.g. "mqtt://user:pass@192.168.1.10:1883") to surface its person/car/boat detections as Signal K notifications + cached clips. Frigate is never bundled and runs on your own hardware; detection is close-range COCO-class only — never hazard/MOB-at-distance. Blank to disable.',
+          default: '',
+        },
+        frigateApiUrl: {
+          type: 'string',
+          title: 'Frigate HTTP API URL (optional)',
+          description:
+            'Frigate HTTP API base (e.g. "http://192.168.1.10:5000") used to fetch the event clip when a detection ends. The host is SSRF-guarded. Blank = notifications only, no clip caching.',
+          default: '',
+        },
+        frigateLabels: {
+          type: 'string',
+          title: 'Frigate alert labels',
+          description:
+            'Comma-separated object labels that count as an intrusion. Default "person,car".',
+          default: 'person,car',
+        },
+        frigateMinScore: {
+          type: 'number',
+          title: 'Frigate minimum score',
+          description: 'Minimum detection score (0–1) to alert on.',
+          default: 0.7,
+        },
+        frigateZones: {
+          type: 'string',
+          title: 'Frigate zones (optional)',
+          description: 'Comma-separated Frigate zones an object must enter to alert; blank = any.',
+          default: '',
+        },
       },
     }),
 
-    start(options?: { hardwareTier?: string; autoTriggerPath?: string; anchorWatchPath?: string }) {
+    start(options?: {
+      hardwareTier?: string;
+      autoTriggerPath?: string;
+      anchorWatchPath?: string;
+      frigateMqttUrl?: string;
+      frigateApiUrl?: string;
+      frigateLabels?: string;
+      frigateMinScore?: number;
+      frigateZones?: string;
+    }) {
       try {
         const dataDir = app.getDataDirPath();
         const override =
@@ -509,6 +581,62 @@ export = function (app: ServerAPI): Plugin {
         }, WATCHDOG_POLL_MS);
         watchdogTimer.unref?.();
 
+        // Frigate interop: consume a USER-RUN Frigate's MQTT events (we run no inference) and surface
+        // person/car/boat detections as Signal K notifications + cached, same-origin-served clips.
+        // Never bundled; close-range COCO-class only. Active only when an MQTT URL is configured.
+        const frigateMqttUrl = options?.frigateMqttUrl?.trim() ?? '';
+        if (frigateMqttUrl) {
+          frigateClips = new AssetStore({
+            index: new FileAssetIndexPersistence(dataDir, 'frigate-clips.json'),
+            blobs: new FileBlobStore(dataDir, 'frigate-clips'),
+            limits: FRIGATE_CLIP_LIMITS,
+          });
+          const frigateApiUrl = options?.frigateApiUrl?.trim() ?? '';
+          frigateClient = new FrigateClient({
+            config: {
+              labels: csvList(options?.frigateLabels, ['person', 'car']),
+              minScore:
+                typeof options?.frigateMinScore === 'number' ? options.frigateMinScore : 0.7,
+              zones: csvList(options?.frigateZones, []),
+            },
+            raiseNotification: (key, message, data) =>
+              void skBridge.raiseNotification(key, { state: 'alert', message, data }),
+            clearNotification: (key) => void skBridge.clearNotification(key),
+            fetchClip: (eventId) =>
+              frigateApiUrl
+                ? fetchFrigateClip(frigateApiUrl, eventId, {
+                    assertHost: (host) => assertHostAllowed(host, ssrfOptions, lookup),
+                    maxBytes: FRIGATE_CLIP_MAX_BYTES,
+                    timeoutMs: FRIGATE_FETCH_TIMEOUT_MS,
+                  })
+                : Promise.reject(new Error('no Frigate API URL configured')),
+            storeClip: (eventId, bytes) => {
+              try {
+                return frigateClips?.add(bytes, `${frigateSlug(eventId)}.mp4`).id ?? null;
+              } catch {
+                return null; // not a valid clip, or over quota
+              }
+            },
+            log,
+          });
+          try {
+            frigateMqtt = connectFrigateMqtt({ url: frigateMqttUrl });
+            frigateMqtt.on('error', (err) =>
+              app.error?.(`[sk-video] frigate mqtt: ${redactUrl(err.message)}`),
+            );
+            frigateMqtt.on('message', (topic, payload) => {
+              if (topic === FRIGATE_EVENT_TOPIC) {
+                frigateClient?.handleMessage(payload);
+              }
+            });
+            frigateMqtt.subscribe(FRIGATE_EVENT_TOPIC);
+          } catch (err) {
+            app.error?.(
+              `[sk-video] frigate mqtt connect failed: ${redactUrl(err instanceof Error ? err.message : String(err))}`,
+            );
+          }
+        }
+
         const base = createCameraResourceMethods(cameras);
         app.registerResourceProvider({
           type: 'cameras',
@@ -565,6 +693,11 @@ export = function (app: ServerAPI): Plugin {
       }
       watchdog?.reset(); // clears any outstanding "camera dark" alarms while the bridge is still live
       watchdog = null;
+      frigateMqtt?.end(true); // stop consuming events before the client/bridge are torn down
+      frigateMqtt = null;
+      frigateClient?.reset(); // clears outstanding Frigate alerts while the bridge is still live
+      frigateClient = null;
+      frigateClips = null;
       // Tear down the notification subscription BEFORE the bridge is dropped — a leaked Bacon
       // subscription would survive a plugin restart and double-fire.
       // Tear down both notification subscriptions BEFORE the bridge is dropped — a leaked Bacon
@@ -742,6 +875,9 @@ export = function (app: ServerAPI): Plugin {
 
       // Uploaded video library: store + Range-served playback.
       registerUploadRoutes(router, () => videos);
+
+      // Cached Frigate clips: read-only list + Range-served playback (same-origin).
+      registerFrigateClipRoutes(router, { getStore: () => frigateClips });
 
       // Capture a telemetry-stamped snapshot (position/heading/… from the Signal K bus burned into
       // the stored frame's sidecar). Same-origin and keyed by a known camera id.
