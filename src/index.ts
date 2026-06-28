@@ -16,6 +16,7 @@ import { Go2rtcGateway } from './gateway/go2rtc-gateway';
 import { registerProxyRoutes } from './gateway/go2rtc-proxy-routes';
 import { PtzManager } from './onvif/ptz-manager';
 import { registerPtzRoutes } from './onvif/ptz-routes';
+import { registerImagingRoutes } from './onvif/imaging-routes';
 import { DiscoveryService } from './discovery/discovery-service';
 import { createWsDiscoveryProbe } from './discovery/ws-discovery-probe';
 import { createMdnsProbe } from './discovery/mdns-probe';
@@ -647,6 +648,26 @@ export = function (app: ServerAPI): Plugin {
 
       // ONVIF PTZ control.
       registerPtzRoutes(router, () => ptz);
+
+      // ONVIF imaging presets (Day/Night/Fog/Glare/Auto), capability-gated + relative to current.
+      registerImagingRoutes(router, {
+        ready: () => cameras !== null,
+        hasCamera: (id: string) => cameras?.get(id) !== null && cameras?.get(id) !== undefined,
+        getImaging: async (id) => {
+          const controller = await ptz?.controllerFor(id);
+          if (!controller) {
+            throw new Error('PTZ controller unavailable');
+          }
+          return controller.getImaging();
+        },
+        setImaging: async (id, update) => {
+          const controller = await ptz?.controllerFor(id);
+          if (!controller) {
+            throw new Error('PTZ controller unavailable');
+          }
+          await controller.setImaging(update);
+        },
+      });
 
       // AIS slew-to-cue: aim a calibrated PTZ camera once at the nearest-CPA AIS target. A single
       // deterministic geo-point (shares the MOB engine), not tracking; re-POST to re-cue.
