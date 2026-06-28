@@ -53,6 +53,8 @@ These are **best-effort** and **capability-gated**: the widget only offers a pre
 
 > Honesty check: a defog preset can't see through dense fog, and night/IR depends entirely on the camera's own hardware. These help the picture; they don't work miracles.
 
+**Automatic after dark.** During a man-overboard or anchor/geofence alarm, SK Video checks the sun's position from the boat's location and time, and if it's past dusk it switches the imaging-capable cameras to the **Night (IR)** preset on its own — so the evidence and any camera aim are as clear as the hardware allows, with nobody at the screen. It only acts when the boat has a position fix and only on cameras that expose ONVIF imaging; everything else is left untouched. You can still change the preset by hand at any time.
+
 ---
 
 ## Multiple cameras at once

@@ -59,6 +59,22 @@ describe('MobController', () => {
     expect(mob.isActive()).toBe(true);
   });
 
+  it('applies the low-light preset to all cameras on activation when it is dark', () => {
+    const lowLight: string[][] = [];
+    const { mob } = setup({ isDark: () => true, applyLowLight: (ids) => lowLight.push(ids) });
+    mob.activate();
+    expect(lowLight).toEqual([['bow', 'engine']]);
+  });
+
+  it('does not touch imaging in daylight (or when no dusk source is wired)', () => {
+    const lowLight: string[][] = [];
+    const daylight = setup({ isDark: () => false, applyLowLight: (ids) => lowLight.push(ids) });
+    daylight.mob.activate();
+    const noSource = setup({ applyLowLight: (ids) => lowLight.push(ids) });
+    noSource.mob.activate();
+    expect(lowLight).toEqual([]);
+  });
+
   it('prefers a live beacon position over the dead-reckoned datum', () => {
     const beacon = { latitude: 0.01, longitude: 0.02 };
     const { mob, calls } = setup({ getBeaconTarget: () => beacon });

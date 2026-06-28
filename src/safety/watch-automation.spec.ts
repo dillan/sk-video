@@ -76,6 +76,17 @@ describe('WatchAutomation', () => {
     expect(watch.activePaths()).toEqual(['notifications.navigation.anchor']);
   });
 
+  it('switches the watched cameras to low light on a dark rising edge, but not in daylight', () => {
+    const dark: string[][] = [];
+    const atNight = setup({ isDark: () => true, applyLowLight: (ids) => dark.push(ids) });
+    atNight.watch.onNotification({ path: 'p1', value: { state: 'alarm' } });
+    expect(dark).toEqual([['bow']]); // the anchor camera, switched to low light
+
+    const byDay = setup({ isDark: () => false, applyLowLight: (ids) => dark.push(ids) });
+    byDay.watch.onNotification({ path: 'p2', value: { state: 'alarm' } });
+    expect(dark).toEqual([['bow']]); // unchanged — daylight leaves imaging alone
+  });
+
   it('clears the consolidated notification when the alarm returns to normal', () => {
     const { watch, calls } = setup();
     const path = 'notifications.navigation.anchor';

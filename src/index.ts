@@ -21,6 +21,8 @@ import { PtzManager } from './onvif/ptz-manager';
 import { registerPtzRoutes } from './onvif/ptz-routes';
 import { registerImagingRoutes } from './onvif/imaging-routes';
 import { registerCalibrationRoute } from './onvif/calibration-routes';
+import { ImagingPresetApplier } from './onvif/imaging-apply';
+import { isAfterDusk } from './safety/dusk';
 import { DiscoveryService } from './discovery/discovery-service';
 import { createWsDiscoveryProbe } from './discovery/ws-discovery-probe';
 import { createMdnsProbe } from './discovery/mdns-probe';
@@ -456,6 +458,40 @@ export = function (app: ServerAPI): Plugin {
         }, RECORDING_SWEEP_MS);
         recordingSweep.unref?.();
 
+        // Auto low-light: after dusk, MOB and anchor-watch switch imaging-capable cameras to the
+        // night preset so the evidence/aim sees as much as the hardware allows. Shared by both flows.
+        const imagingApplier = new ImagingPresetApplier({
+          getImaging: async (id) => (await ptz!.controllerFor(id)).getImaging(),
+          setImaging: async (id, update) => (await ptz!.controllerFor(id)).setImaging(update),
+        });
+        // Dark enough to bother? Computed from the boat's own position + the current time; false when
+        // there's no fix (we never guess), so daylight or an unknown position leaves imaging untouched.
+        const isDarkNow = (): boolean => {
+          const pos = (bridge ? ownShipFromSelfState(bridge.getSelfState()) : null)?.position;
+          return pos ? isAfterDusk(new Date(), pos.latitude, pos.longitude) : false;
+        };
+        // A camera can only act on a low-light preset if it speaks ONVIF imaging; skip the rest quietly
+        // rather than poke a plain RTSP feed that has no lever (which would just log a failure per event).
+        const applyLowLight = (cameraIds: string[]): void => {
+          for (const id of cameraIds) {
+            const cam = cameras?.get(id);
+            const mayHaveImaging =
+              cam !== null &&
+              cam !== undefined &&
+              (cam.source.scheme === 'onvif' || (cam.capabilities?.imaging?.length ?? 0) > 0);
+            if (!mayHaveImaging) {
+              continue;
+            }
+            void imagingApplier
+              .apply(id, 'night')
+              .catch((err: unknown) =>
+                log(
+                  `low-light preset failed for ${id}: ${err instanceof Error ? err.message : String(err)}`,
+                ),
+              );
+          }
+        };
+
         // Man-overboard: aim every capable PTZ camera at the MOB position (live beacon, else the
         // dead-reckoned datum), recomputed as the boat drifts. Aids — never replaces — MOB procedure.
         mob = new MobController({
@@ -504,6 +540,8 @@ export = function (app: ServerAPI): Plugin {
             }
             mobRecording = [];
           },
+          isDark: isDarkNow,
+          applyLowLight,
           log,
         });
 
@@ -654,6 +692,8 @@ export = function (app: ServerAPI): Plugin {
               data,
             }),
           clearNotification: () => void skBridge.clearNotification('anchorWatch'),
+          isDark: isDarkNow,
+          applyLowLight,
           log,
         });
         const anchorWatchPath =

@@ -118,6 +118,12 @@ sequenceDiagram
 
 ---
 
+## Auto low-light after dusk
+
+Both the MOB and anchor-watch flows take an optional `isDark()` + `applyLowLight(ids)` pair. `src/safety/dusk.ts` is a pure solar-geometry helper: `solarAltitudeDeg(date, lat, lon)` (low-precision USNO/NOAA, ~1° accuracy, no ephemeris or network) and `isAfterDusk(...)`. `src/index.ts` computes `isDark` from the boat's own position + the current time — returning `false` when there's no fix, so it never guesses — and `applyLowLight` routes through `ImagingPresetApplier` (`src/onvif/imaging-apply.ts`), which holds a per-camera session baseline so the night preset is idempotent and shares the exact maths the imaging route uses. Only cameras that speak ONVIF imaging are touched; the controllers themselves stay unaware of the clock, so they remain trivially unit-testable.
+
+---
+
 ## AIS slew-to-cue
 
 `src/awareness/` parses AIS targets, computes CPA, and reuses `computeAim` to point one camera at the nearest collision-risk vessel. It's a single deterministic aim (re-POST to re-cue), not tracking — and it refuses an uncalibrated or non-absolute-PTZ camera with a `409`.

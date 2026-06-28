@@ -28,6 +28,10 @@ export interface IWatchAutomationDeps {
   captureEvidence: (cameraIds: string[], context: { path: string; state: string }) => string | null;
   raiseNotification: (message: string, data: Record<string, unknown>) => void;
   clearNotification: () => void;
+  /** Whether it is currently dark enough that a low-light camera preset would help (dusk/night). */
+  isDark?: () => boolean;
+  /** Apply the low-light imaging preset to the given cameras (best-effort; capability-gated upstream). */
+  applyLowLight?: (cameraIds: string[]) => void;
   /** Camera roles to capture on. Default ['anchor', 'security']. */
   roles?: string[];
   /** Notification states treated as an alarm. Default ['alert', 'alarm', 'emergency']. */
@@ -132,6 +136,11 @@ export class WatchAutomation {
       return; // nothing to capture or consolidate; the user's own alarm stands
     }
     const state = stateOf(delta.value);
+    // After dusk, switch the watched cameras to low light before capturing, so the evidence is as
+    // usable as the hardware allows. Best-effort and capability-gated; runs every rising edge (cheap).
+    if (this.deps.isDark?.()) {
+      this.deps.applyLowLight?.(cameras);
+    }
     // The operator ALERT fires on every rising edge (a re-drag must be visible); the heavy evidence
     // CAPTURE is throttled per path so a flapping alarm can't spawn repeated recordings.
     const now = this.now();

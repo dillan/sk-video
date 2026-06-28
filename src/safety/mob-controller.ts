@@ -58,6 +58,10 @@ export interface IMobControllerDeps {
   recordCameras?: (cameraIds: string[]) => void;
   /** Stop the recordings this MOB event started. */
   stopRecording?: () => void;
+  /** Whether it is currently dark enough that a low-light camera preset would help (dusk/night). */
+  isDark?: () => boolean;
+  /** Apply the low-light imaging preset to the given cameras (best-effort; capability-gated upstream). */
+  applyLowLight?: (cameraIds: string[]) => void;
   reaimIntervalMs?: number;
   setIntervalImpl?: (cb: () => void, ms: number) => ReturnType<typeof setInterval>;
   clearIntervalImpl?: (token: ReturnType<typeof setInterval>) => void;
@@ -104,7 +108,13 @@ export class MobController {
 
     const target = this.currentTarget();
     this.deps.snapshotAll();
-    this.deps.recordCameras?.(this.deps.getCameras().map((camera) => camera.id));
+    const cameraIds = this.deps.getCameras().map((camera) => camera.id);
+    this.deps.recordCameras?.(cameraIds);
+    // After dusk, nudge cameras into their low-light preset so the recorded evidence and any PTZ aim
+    // see as much as the hardware allows. Best-effort and capability-gated; never blocks the aim.
+    if (this.deps.isDark?.()) {
+      this.deps.applyLowLight?.(cameraIds);
+    }
 
     // Dispatch the aim first (a fast, non-blocking dispatch) so the emergency notification can report
     // honestly how many cameras were actually commanded toward the target.
