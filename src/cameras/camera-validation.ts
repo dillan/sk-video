@@ -111,6 +111,12 @@ export interface ICamera {
    * gateway and is best-effort. Never a global TLS-off.
    */
   allowSelfSigned?: boolean;
+  /**
+   * Opt this camera into the safety-camera watchdog: when it goes dark after being live, the plugin
+   * raises a debounced Signal K notification. Explicit per-camera, since "safety-critical" is an
+   * operator judgement, not a fixed role.
+   */
+  safetyCritical?: boolean;
 }
 
 export interface IValidationResult {
@@ -137,6 +143,7 @@ const ALLOWED_TOP_KEYS = new Set([
   'media',
   'calibration',
   'allowSelfSigned',
+  'safetyCritical',
 ]);
 const ALLOWED_SOURCE_KEYS = new Set(['scheme', 'host', 'port', 'path']);
 const PLACEMENT_KEYS = new Set(['mount', 'bearingRelativeDeg', 'heightM']);
@@ -410,6 +417,15 @@ export function validateCamera(input: unknown): IValidationResult {
     }
   }
 
+  let safetyCritical: boolean | undefined;
+  if (obj.safetyCritical !== undefined) {
+    if (typeof obj.safetyCritical === 'boolean') {
+      safetyCritical = obj.safetyCritical;
+    } else {
+      errors.push('safetyCritical must be a boolean');
+    }
+  }
+
   if (errors.length > 0 || !normalizedSource) {
     return { valid: false, errors: errors.length ? errors : ['invalid camera'] };
   }
@@ -426,6 +442,7 @@ export function validateCamera(input: unknown): IValidationResult {
       ...(media && Object.keys(media).length ? { media } : {}),
       ...(calibration ? { calibration } : {}),
       ...(allowSelfSigned !== undefined ? { allowSelfSigned } : {}),
+      ...(safetyCritical !== undefined ? { safetyCritical } : {}),
     },
   };
 }

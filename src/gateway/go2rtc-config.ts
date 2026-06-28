@@ -26,10 +26,25 @@ export interface IGo2rtcConfigInput {
 export function buildGo2rtcConfig(input: IGo2rtcConfigInput): Record<string, unknown> {
   const ports = input.ports ?? DEFAULT_GO2RTC_PORTS;
 
-  const streams: Record<string, string> = {};
+  // A stream value is either one source URL or, when the camera has a substream, an array go2rtc
+  // uses for PARTIAL failover (main first, sub as fallback — not make-before-break).
+  const streams: Record<string, string | string[]> = {};
   for (const [id, camera] of Object.entries(input.cameras)) {
-    if (camera.enabled) {
-      streams[id] = buildGo2rtcSource(camera, input.credentials[id]);
+    if (!camera.enabled) {
+      continue;
+    }
+    const creds = input.credentials[id];
+    const main = buildGo2rtcSource(camera, creds);
+    const subPath = camera.media?.substreamPath;
+    if (subPath) {
+      const sub = buildGo2rtcSource(camera, creds, subPath);
+      streams[id] = [main, sub]; // failover source list for the primary stream
+      // A distinct stream for explicit low-res access (`/cameras/:id/whep?variant=sub`). The `_sub`
+      // suffix can never collide with a real camera id, which forbids underscores. Credentials are
+      // injected server-side here exactly as for the main stream.
+      streams[`${id}_sub`] = sub;
+    } else {
+      streams[id] = main;
     }
   }
 

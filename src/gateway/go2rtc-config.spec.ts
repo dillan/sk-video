@@ -34,4 +34,16 @@ describe('buildGo2rtcConfig', () => {
     const cfg = buildGo2rtcConfig({ cameras: { aft }, credentials: {} });
     expect(cfg.streams).toEqual({});
   });
+
+  it('emits a failover source array + a _sub variant when the camera has a substream', () => {
+    const withSub: ICamera = { ...foredeck, media: { substreamPath: '/sub' } };
+    const cfg = buildGo2rtcConfig({
+      cameras: { foredeck: withSub },
+      credentials: { foredeck: { username: 'u', password: 'p' } },
+    });
+    expect(cfg.streams).toEqual({
+      foredeck: ['rtsp://u:p@cam1:554/s', 'rtsp://u:p@cam1:554/sub'], // main, then sub (failover)
+      foredeck_sub: 'rtsp://u:p@cam1:554/sub', // explicit low-res variant, credentials server-side
+    });
+  });
 });

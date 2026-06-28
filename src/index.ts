@@ -14,6 +14,8 @@ import { Go2rtcBinaryManager } from './gateway/go2rtc-binary-manager';
 import { Go2rtcProcess } from './gateway/go2rtc-process';
 import { Go2rtcGateway } from './gateway/go2rtc-gateway';
 import { registerProxyRoutes } from './gateway/go2rtc-proxy-routes';
+import { StreamWatchdog } from './gateway/stream-watchdog';
+import { fetchStreamHealth } from './gateway/stream-health';
 import { PtzManager } from './onvif/ptz-manager';
 import { registerPtzRoutes } from './onvif/ptz-routes';
 import { registerImagingRoutes } from './onvif/imaging-routes';
@@ -88,6 +90,9 @@ const INCIDENT_FINALIZE_GRACE_MS = 2000;
 // One auto-triggered bundle per notification path per minute, so a flapping alarm can't spam.
 const INCIDENT_TRIGGER_COOLDOWN_MS = 60_000;
 const INCIDENT_SWEEP_MS = 5 * 60 * 1000;
+// Safety-camera watchdog: poll go2rtc health this often; the hysteresis thresholds turn that into a
+// ~45 s debounce before a "camera dark" alarm (and ~30 s before it clears).
+const WATCHDOG_POLL_MS = 15_000;
 // A retention budget for the incidents subtree, independent of the DVR/upload budgets. Pinned
 // bundles are never pruned.
 const INCIDENT_QUOTA: IBundleQuota = {
@@ -123,6 +128,8 @@ export = function (app: ServerAPI): Plugin {
   let incidentClipTmpDir: string | null = null;
   let watch: WatchAutomation | null = null;
   let watchUnsub: (() => void) | null = null;
+  let watchdog: StreamWatchdog | null = null;
+  let watchdogTimer: ReturnType<typeof setInterval> | null = null;
   const triggerState: ITriggerState = { lastFiredAtByKey: {} };
   // Cameras this MOB event started recording, so deactivation stops exactly those (and not a
   // camera the operator was already manually recording).
@@ -478,6 +485,29 @@ export = function (app: ServerAPI): Plugin {
           watchUnsub = skBridge.onDelta(anchorWatchPath, (delta) => watch?.onNotification(delta));
         }
 
+        // Safety-camera watchdog: poll go2rtc health for cameras the operator flagged safetyCritical
+        // and raise/clear a debounced Signal K notification when one goes dark after being live.
+        watchdog = new StreamWatchdog({
+          getMonitoredCameras: () =>
+            Object.entries(cameras?.list() ?? {})
+              .filter(([, camera]) => camera.enabled && camera.safetyCritical === true)
+              .map(([id]) => id),
+          fetchHealth: (id) =>
+            fetchStreamHealth({ apiPort: gateway?.apiPort ?? 1984, cameraId: id }),
+          raiseNotification: (id) =>
+            void skBridge.raiseNotification(`camera.${id}.offline`, {
+              state: 'alarm',
+              message: `Safety camera "${id}" has gone dark.`,
+              data: { camera: id },
+            }),
+          clearNotification: (id) => void skBridge.clearNotification(`camera.${id}.offline`),
+          log,
+        });
+        watchdogTimer = setInterval(() => {
+          void watchdog?.poll().catch(() => undefined);
+        }, WATCHDOG_POLL_MS);
+        watchdogTimer.unref?.();
+
         const base = createCameraResourceMethods(cameras);
         app.registerResourceProvider({
           type: 'cameras',
@@ -528,6 +558,12 @@ export = function (app: ServerAPI): Plugin {
         clearInterval(incidentSweep);
         incidentSweep = null;
       }
+      if (watchdogTimer) {
+        clearInterval(watchdogTimer);
+        watchdogTimer = null;
+      }
+      watchdog?.reset(); // clears any outstanding "camera dark" alarms while the bridge is still live
+      watchdog = null;
       // Tear down the notification subscription BEFORE the bridge is dropped — a leaked Bacon
       // subscription would survive a plugin restart and double-fire.
       // Tear down both notification subscriptions BEFORE the bridge is dropped — a leaked Bacon
@@ -644,6 +680,7 @@ export = function (app: ServerAPI): Plugin {
       registerProxyRoutes(router, {
         apiPort: () => gateway?.apiPort ?? 1984,
         hasCamera: (id: string) => cameras?.get(id) !== null && cameras?.get(id) !== undefined,
+        hasSubstream: (id: string) => cameras?.get(id)?.media?.substreamPath !== undefined,
       });
 
       // ONVIF PTZ control.

@@ -197,6 +197,13 @@ describe('validateCamera — vessel-context metadata', () => {
     expect(validateCamera({ ...base, allowSelfSigned: 'yes' }).valid).toBe(false);
   });
 
+  it('accepts a safetyCritical opt-in and rejects a non-boolean', () => {
+    expect(validateCamera({ ...base, safetyCritical: true }).value).toMatchObject({
+      safetyCritical: true,
+    });
+    expect(validateCamera({ ...base, safetyCritical: 1 }).valid).toBe(false);
+  });
+
   it('still rejects credentials even alongside valid metadata', () => {
     expect(validateCamera({ ...base, role: 'anchor', password: 'secret' }).valid).toBe(false);
   });

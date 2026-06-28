@@ -1,5 +1,5 @@
 import type { IRouter, Request, Response } from 'express';
-import { go2rtcApiUrl, go2rtcHlsUrl } from './go2rtc-proxy';
+import { go2rtcApiUrl, go2rtcVariantUrl, go2rtcHlsUrl } from './go2rtc-proxy';
 import { fetchStreamHealth } from './stream-health';
 
 export interface IProxyContext {
@@ -7,6 +7,8 @@ export interface IProxyContext {
   apiPort: () => number;
   /** Whether a camera id is known — unknown ids are rejected so no client-supplied src is proxied. */
   hasCamera: (id: string) => boolean;
+  /** Whether a camera has a low-res substream variant configured. */
+  hasSubstream?: (id: string) => boolean;
   fetchImpl?: typeof fetch;
 }
 
@@ -34,15 +36,20 @@ function readRawBody(req: Request): Promise<string> {
 export function registerProxyRoutes(router: IRouter, ctx: IProxyContext): void {
   const doFetch = ctx.fetchImpl ?? fetch;
 
-  // WHEP: POST an SDP offer, return go2rtc's SDP answer.
+  // WHEP: POST an SDP offer, return go2rtc's SDP answer. `?variant=sub` selects the low-res substream.
   router.post('/cameras/:id/whep', async (req: Request, res: Response) => {
     const id = String(req.params.id);
     if (!ctx.hasCamera(id)) {
       res.status(404).json({ error: 'unknown camera' });
       return;
     }
+    const wantSub = req.query.variant === 'sub';
+    if (wantSub && !(ctx.hasSubstream?.(id) ?? false)) {
+      res.status(404).json({ error: 'no substream for this camera' });
+      return;
+    }
     try {
-      const url = go2rtcApiUrl(ctx.apiPort(), 'webrtc', id);
+      const url = go2rtcVariantUrl(ctx.apiPort(), 'webrtc', id, wantSub ? 'sub' : 'main');
       const offer = await readRawBody(req);
       const upstream = await doFetch(url, {
         method: 'POST',

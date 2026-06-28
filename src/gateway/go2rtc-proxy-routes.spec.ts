@@ -65,6 +65,7 @@ function fakeReq(over: Partial<Request> & { body?: unknown } = {}): Request {
   return {
     params: {},
     headers: {},
+    query: {},
     url: '',
     setEncoding: () => undefined,
     on: () => undefined,
@@ -94,10 +95,11 @@ const PORT = 1984;
 function setup(over: Partial<IProxyContext> = {}) {
   const apiPort = over.apiPort ?? (() => PORT);
   const hasCamera = vi.fn(over.hasCamera ?? (() => true));
+  const hasSubstream = vi.fn(over.hasSubstream ?? (() => true));
   const fetchImpl = (over.fetchImpl ?? vi.fn()) as ReturnType<typeof vi.fn>;
   const { router, handlers } = fakeRouter();
-  registerProxyRoutes(router, { apiPort, hasCamera, fetchImpl });
-  return { handlers, apiPort, hasCamera, fetchImpl };
+  registerProxyRoutes(router, { apiPort, hasCamera, hasSubstream, fetchImpl });
+  return { handlers, apiPort, hasCamera, hasSubstream, fetchImpl };
 }
 
 describe('registerProxyRoutes', () => {
@@ -135,6 +137,41 @@ describe('registerProxyRoutes', () => {
       expect(res.statusCode).toBe(201);
       expect(res.headers['Content-Type']).toBe('application/sdp');
       expect(res.sent).toBe('v=0\r\no=answer');
+    });
+
+    it('routes ?variant=sub to the camera substream go2rtc stream', async () => {
+      const fetchImpl = vi.fn().mockResolvedValue(upstreamRes({ status: 201, text: 'answer' }));
+      const { handlers } = setup({ fetchImpl, hasSubstream: () => true });
+      const res = makeRes();
+      await handlers.get('POST /cameras/:id/whep')!(
+        fakeReq({
+          params: { id: 'foredeck' } as never,
+          query: { variant: 'sub' } as never,
+          body: 'offer',
+        }),
+        res,
+      );
+      expect(fetchImpl).toHaveBeenCalledWith(
+        'http://127.0.0.1:1984/api/webrtc?src=foredeck_sub',
+        expect.anything(),
+      );
+    });
+
+    it('404s ?variant=sub when the camera has no substream, and never fetches', async () => {
+      const fetchImpl = vi.fn();
+      const { handlers } = setup({ fetchImpl, hasSubstream: () => false });
+      const res = makeRes();
+      await handlers.get('POST /cameras/:id/whep')!(
+        fakeReq({
+          params: { id: 'foredeck' } as never,
+          query: { variant: 'sub' } as never,
+          body: 'offer',
+        }),
+        res,
+      );
+      expect(res.statusCode).toBe(404);
+      expect(res.body).toEqual({ error: 'no substream for this camera' });
+      expect(fetchImpl).not.toHaveBeenCalled();
     });
 
     it('returns 502 when the upstream fetch rejects', async () => {
