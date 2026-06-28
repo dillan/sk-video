@@ -74,6 +74,15 @@ export interface ICameraSource {
   path?: string;
 }
 
+/**
+ * Whether two sources point at a DIFFERENT network endpoint (scheme/host/port). Used to drop stored
+ * credentials when a camera is repointed, so a saved password can't be exfiltrated by editing the
+ * camera's host to an attacker-controlled server. The path is ignored — same server, different stream.
+ */
+export function sourceEndpointChanged(prev: ICameraSource, next: ICameraSource): boolean {
+  return prev.scheme !== next.scheme || prev.host !== next.host || prev.port !== next.port;
+}
+
 /** How the camera is mounted on the boat. `bearingRelativeDeg` is clockwise from the bow (0 = forward). */
 export interface ICameraPlacement {
   mount?: TCameraMount;

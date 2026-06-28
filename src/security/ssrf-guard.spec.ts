@@ -22,6 +22,18 @@ describe('isIpAllowed', () => {
     expect(isIpAllowed('::', allowLan)).toBe(false);
   });
 
+  it('denies IPv4-embedding IPv6 forms that could smuggle a blocked IPv4', () => {
+    for (const ip of [
+      '::ffff:127.0.0.1', // IPv4-mapped loopback
+      '::ffff:169.254.169.254', // IPv4-mapped cloud metadata
+      '64:ff9b::7f00:1', // NAT64 of 127.0.0.1
+      '2002:7f00:1::', // 6to4 of 127.0.0.1
+      '2001:0:dead:beef::1', // Teredo
+    ]) {
+      expect(isIpAllowed(ip, allowLan), ip).toBe(false);
+    }
+  });
+
   it('denies private ranges by default', () => {
     for (const ip of ['10.0.0.5', '172.16.0.1', '192.168.1.50', 'fc00::1']) {
       expect(isIpAllowed(ip, deny), ip).toBe(false);

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { validateCamera, CAMERA_SCHEMES } from './camera-validation';
+import { validateCamera, CAMERA_SCHEMES, sourceEndpointChanged } from './camera-validation';
 
 const valid = {
   name: '  Foredeck Cam  ',
@@ -213,5 +213,17 @@ describe('validateCamera — vessel-context metadata', () => {
 
   it('still rejects credentials even alongside valid metadata', () => {
     expect(validateCamera({ ...base, role: 'anchor', password: 'secret' }).valid).toBe(false);
+  });
+});
+
+describe('sourceEndpointChanged', () => {
+  const src = { scheme: 'rtsp' as const, host: 'cam.local', port: 554, path: '/s1' };
+  it('is false when only the stream path changes (same server)', () => {
+    expect(sourceEndpointChanged(src, { ...src, path: '/s2' })).toBe(false);
+  });
+  it('is true when the host, scheme, or port changes (a different endpoint)', () => {
+    expect(sourceEndpointChanged(src, { ...src, host: 'evil.example.com' })).toBe(true);
+    expect(sourceEndpointChanged(src, { ...src, scheme: 'rtsps' })).toBe(true);
+    expect(sourceEndpointChanged(src, { ...src, port: 5554 })).toBe(true);
   });
 });

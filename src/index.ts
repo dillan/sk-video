@@ -6,7 +6,7 @@ import { CredentialStore } from './cameras/credential-store';
 import { FileCameraPersistence, FileCredentialPersistence } from './cameras/file-persistence';
 import { createCameraResourceMethods } from './cameras/resource-provider';
 import { registerLayoutRoute } from './cameras/layout-routes';
-import { validateCamera } from './cameras/camera-validation';
+import { validateCamera, sourceEndpointChanged } from './cameras/camera-validation';
 import { assertHostAllowed, type ISsrfOptions } from './security/ssrf-guard';
 import { redactUrl } from './security/redact';
 import { RateLimiter } from './security/rate-limit';
@@ -776,6 +776,12 @@ export = function (app: ServerAPI): Plugin {
               const result = validateCamera(value);
               if (result.valid && result.value) {
                 await assertHostAllowed(result.value.source.host, ssrfOptions, lookup);
+                // If the camera is repointed at a different endpoint, drop its stored credentials so a
+                // saved password can't be exfiltrated by editing the host to an attacker's server.
+                const prev = cameras?.get(id)?.source;
+                if (prev && sourceEndpointChanged(prev, result.value.source)) {
+                  credentials?.delete(id);
+                }
               }
               await base.setResource(id, value);
               ptz?.invalidate(id);

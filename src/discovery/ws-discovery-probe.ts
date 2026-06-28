@@ -1,16 +1,40 @@
-import { Discovery, type DiscoveredDevice } from 'onvif';
+import { Discovery } from 'onvif';
 import type { DiscoveryProbe } from './discovery-service';
 import type { IRawDiscovery } from './normalize';
 
-/** Adapts an onvif Discovery device into our transport-neutral raw discovery shape. Pure/testable. */
-export function adaptOnvifDevice(device: DiscoveredDevice): IRawDiscovery {
-  const xaddr = device.xaddrs?.find((x) => typeof x?.href === 'string')?.href;
-  const port = device.port === undefined || device.port === null ? undefined : Number(device.port);
-  return {
-    xaddr: xaddr ?? undefined,
-    hostname: device.hostname ?? undefined,
-    port: Number.isFinite(port) ? port : undefined,
-  };
+/**
+ * Adapts a RAW onvif WS-Discovery probe-match into our transport-neutral discovery shape. We run the
+ * probe with `resolve:false` so the onvif library does NOT build a Cam (which would auto-CONNECT to the
+ * device's advertised XAddr — a blind SSRF to an attacker-controlled host that bypasses the egress
+ * guard). Instead we parse the raw ProbeMatch defensively; the resolved XAddr is re-validated through
+ * the SSRF guard downstream before anything connects to it.
+ */
+export function adaptOnvifDevice(device: unknown): IRawDiscovery {
+  const xaddr = firstXAddr(device);
+  if (!xaddr) {
+    return { xaddr: undefined, hostname: undefined, port: undefined };
+  }
+  let hostname: string | undefined;
+  let port: number | undefined;
+  try {
+    const parsed = new URL(xaddr);
+    hostname = parsed.hostname || undefined;
+    port = parsed.port ? Number(parsed.port) : undefined;
+  } catch {
+    /* keep host/port undefined; the xaddr still surfaces for the SSRF-guarded introspect step */
+  }
+  return { xaddr, hostname, port: Number.isFinite(port) ? port : undefined };
+}
+
+/** The first advertised XAddr URI from a raw ProbeMatch (XAddrs is a space-separated string). */
+function firstXAddr(device: unknown): string | undefined {
+  const matches = (device as { probeMatches?: { probeMatch?: unknown } })?.probeMatches?.probeMatch;
+  const match = Array.isArray(matches) ? matches[0] : matches;
+  const xaddrs = (match as { XAddrs?: unknown } | null)?.XAddrs;
+  if (typeof xaddrs !== 'string') {
+    return undefined;
+  }
+  return xaddrs.split(/\s+/).filter(Boolean)[0];
 }
 
 /** The raw onvif probe call, injectable so the wrapper can be tested without real multicast. */
@@ -24,7 +48,7 @@ export function createWsDiscoveryProbe(probe: OnvifProbe = Discovery.probe): Dis
   return (timeoutMs: number) =>
     new Promise<IRawDiscovery[]>((resolve) => {
       let settled = false;
-      const finish = (devices: DiscoveredDevice[]): void => {
+      const finish = (devices: unknown[]): void => {
         if (settled) {
           return;
         }
@@ -37,7 +61,8 @@ export function createWsDiscoveryProbe(probe: OnvifProbe = Discovery.probe): Dis
       safety.unref?.();
 
       try {
-        probe({ timeout: timeoutMs, resolve: true }, (err, devices) => {
+        // resolve:false -> the library returns raw ProbeMatch data and never connects to the device.
+        probe({ timeout: timeoutMs, resolve: false }, (err, devices) => {
           finish(err || !Array.isArray(devices) ? [] : devices);
         });
       } catch {
