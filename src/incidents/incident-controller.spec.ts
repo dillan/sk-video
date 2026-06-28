@@ -242,6 +242,46 @@ describe('IncidentController finalize robustness', () => {
     expect(started).toEqual(['bow', 'stern']);
   });
 
+  it('a finalize that races a teardown abandons instead of publishing', async () => {
+    const h = setup({ relevantCameras: () => ['bow'] });
+    const { id } = h.controller.mark({ source: 'manual' });
+    h.fireFinalize(); // enters finalize, awaits the snapshot promises
+    h.controller.cancelAll(); // disposed = true while finalize is suspended
+    await flush(() => h.abandoned.includes(id));
+    expect(h.published.has(id)).toBe(false);
+    expect(h.abandoned).toContain(id);
+  });
+
+  it('survives a throwing clearNotification without an unhandled rejection', async () => {
+    const h = setup({
+      relevantCameras: () => ['bow'],
+      clearNotification: () => {
+        throw new Error('notifications API down');
+      },
+    });
+    const { id } = h.controller.mark({ source: 'manual' });
+    h.fireFinalize();
+    await flush(() => h.published.has(id));
+    expect(h.published.has(id)).toBe(true); // published before the finally; the throw is swallowed
+  });
+
+  it('bounds and strips untrusted auto-trigger fields (path/reason/state)', async () => {
+    const longPath = 'notifications.' + 'a'.repeat(400);
+    const note = 'fire' + String.fromCharCode(7) + 'x'.repeat(3000);
+    const h = setup({
+      relevantCameras: () => ['bow'],
+      makeEpoch: utc,
+    });
+    const { id } = h.controller.mark({ source: 'signalk', path: longPath, state: 'alarm', note });
+    h.fireFinalize();
+    await flush(() => h.published.has(id));
+    const t = h.published.get(id)!.trigger;
+    expect(t.path!.length).toBeLessThanOrEqual(256);
+    expect(t.reason!.length).toBeLessThanOrEqual(2000);
+    expect(t.reason!.includes(String.fromCharCode(7))).toBe(false);
+    expect(t.state).toBe('alarm');
+  });
+
   it('names a PNG snapshot asset with a .png extension', async () => {
     const h = setup({
       relevantCameras: () => ['bow'],

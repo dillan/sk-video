@@ -25,7 +25,13 @@ describe('planClip', () => {
       actualEndMs: 120_000,
       segmentCount: 3,
       keyframeAligned: true,
+      contiguous: true,
     });
+  });
+
+  it('discloses a recorder-restart gap via coverage.contiguous=false', () => {
+    const sel = { ...selection(0, 180_000, ['/rec/a.mp4', '/rec/c.mp4']), contiguous: false };
+    expect(planClip(sel, 0, 180_000).coverage.contiguous).toBe(false);
   });
 
   it('clamps ssMs to 0 and reports the shorter actual window when pre-roll is missing', () => {

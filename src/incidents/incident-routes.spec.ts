@@ -124,7 +124,7 @@ describe('registerIncidentRoutes', () => {
     );
     expect(res.statusCode).toBe(202);
     expect(res.body).toEqual({ id: 'new-inc', status: 'capturing' });
-    expect(res.headers.Location).toBe('new-inc');
+    expect(res.headers.Location).toBe('incidents/new-inc');
     expect(marked[0]).toMatchObject({ source: 'manual', preMs: 30000, postMs: 0 });
   });
 

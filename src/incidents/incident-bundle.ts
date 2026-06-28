@@ -28,7 +28,9 @@ export function computeStatus(
     return 'failed';
   }
   const clipCount = assets.filter((a) => a.kind === 'clip').length;
-  if (clipCount >= cameras.length && failures.length === 0) {
+  // Require real camera coverage before claiming complete — a zero-camera, telemetry-only bundle is
+  // not "complete" evidence, it's partial.
+  if (cameras.length > 0 && clipCount >= cameras.length && failures.length === 0) {
     return 'complete';
   }
   return 'partial';

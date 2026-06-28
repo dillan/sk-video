@@ -57,7 +57,8 @@ import { bundlesToPrune, type IBundleQuota } from './incidents/retention';
 import { validateTriggerRequest } from './incidents/incident-validation';
 import { go2rtcApiUrl } from './gateway/go2rtc-proxy';
 import { spawn } from 'node:child_process';
-import { rmSync, writeFileSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { readFile as fsReadFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -107,6 +108,7 @@ export = function (app: ServerAPI): Plugin {
   let incidentStore: FileIncidentStore | null = null;
   let incidentSweep: ReturnType<typeof setInterval> | null = null;
   let incidentUnsub: (() => void) | null = null;
+  let incidentClipTmpDir: string | null = null;
   const triggerState: ITriggerState = { lastFiredAtByKey: {} };
   // Cameras this MOB event started recording, so deactivation stops exactly those (and not a
   // camera the operator was already manually recording).
@@ -321,20 +323,27 @@ export = function (app: ServerAPI): Plugin {
         // bridge/snapshots are non-null here; capture locals so the closures never null-check.
         const skBridge = bridge;
         const snapshotService = snapshots;
+        const recDir = recordingsDir; // capture: stop() nulls the module var, but an in-flight
+        // finalize must still scan on-disk segments rather than silently drop the clip.
         incidentStore = new FileIncidentStore(dataDir);
         incidentStore.sweepStaging(); // drop any staging dir orphaned by an earlier crash
+        // A private 0700 temp dir with unguessable per-clip names, so a local user can't pre-plant a
+        // symlink at a predictable /tmp path and have ffmpeg overwrite a victim file.
+        incidentClipTmpDir = mkdtempSync(join(tmpdir(), 'sk-clip-'));
+        const clipTmp = incidentClipTmpDir;
         const clipProducer = createFfmpegClipProducer({
           spawn: (args) => spawn('ffmpeg', args, { stdio: 'ignore' }),
           writeFile: (path, data) => writeFileSync(path, data, { mode: 0o600 }),
           readFile: (path) => fsReadFile(path),
           removeFile: (path) => rmSync(path, { force: true }),
-          tmpDir: () => tmpdir(),
+          tmpDir: () => clipTmp,
+          idGen: () => randomUUID(),
         });
         incidents = new IncidentController({
           store: incidentStore,
           captureSnapshot: (id) => snapshotService.captureBytes(id),
           produceClip: clipProducer,
-          listSegments: () => (recordingsDir ? scanRecordings(recordingsDir) : []),
+          listSegments: () => (recDir ? scanRecordings(recDir) : []),
           getSelfState: () => skBridge.getSelfState(),
           relevantCameras: () =>
             Object.entries(cameras?.list() ?? {})
@@ -355,7 +364,14 @@ export = function (app: ServerAPI): Plugin {
           const parsed = validateTriggerRequest(
             typeof value === 'object' && value !== null ? value : {},
           );
-          incidents?.mark({ ...(parsed.value ?? { preMs: 0, postMs: 0 }), source: 'manual' });
+          if (!parsed.valid || !parsed.value) {
+            return {
+              state: 'FAILED',
+              statusCode: 400,
+              message: parsed.errors.join('; ') || 'invalid trigger',
+            };
+          }
+          incidents?.mark({ ...parsed.value, source: 'manual' });
           return { state: 'COMPLETED', statusCode: 200 };
         });
 
@@ -460,8 +476,12 @@ export = function (app: ServerAPI): Plugin {
       // subscription would survive a plugin restart and double-fire.
       incidentUnsub?.();
       incidentUnsub = null;
-      incidents?.cancelAll(); // clears finalize/sampler timers so none fire after stop()
+      incidents?.cancelAll(); // marks disposed + clears timers so no finalize publishes after stop()
       triggerState.lastFiredAtByKey = {};
+      if (incidentClipTmpDir) {
+        rmSync(incidentClipTmpDir, { recursive: true, force: true });
+        incidentClipTmpDir = null;
+      }
       ptz?.disposeAll();
       mob?.deactivate(); // stops MOB-started recorders before we tear the manager down
       recordings?.stopAll();

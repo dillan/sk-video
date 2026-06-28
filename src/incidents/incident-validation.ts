@@ -31,6 +31,8 @@ export interface IClipCoverage {
   segmentCount: number;
   /** -c copy can only cut on keyframes, so edges are ±one GOP. Always true; stated, not implied. */
   keyframeAligned: true;
+  /** False when the cut spans a recorder-restart gap — the clip jumps across missing footage. */
+  contiguous: boolean;
 }
 
 export interface IIncidentAsset {
@@ -99,8 +101,9 @@ export interface IIncidentBundle {
 
 export interface ITriggerRequest {
   cameras?: string[];
-  preMs: number;
-  postMs: number;
+  /** Omitted means "use the configured default" — the controller applies it, so don't force 0 here. */
+  preMs?: number;
+  postMs?: number;
   note?: string;
 }
 
@@ -140,8 +143,12 @@ function rejectUnknownKeys(
   }
 }
 
-/** Strips control characters and length-caps a free-text note (display only, never a path/id). */
-function sanitizeNote(value: unknown): string | undefined {
+/**
+ * Strips control characters and length-caps free text (display only, never a path/id). Used for the
+ * manual note AND for the untrusted fields the Signal K auto-trigger carries (notification message,
+ * path, state), so both trigger paths are bounded identically.
+ */
+export function sanitizeText(value: unknown, maxLen: number): string | undefined {
   if (typeof value !== 'string') {
     return undefined;
   }
@@ -152,8 +159,12 @@ function sanitizeNote(value: unknown): string | undefined {
     })
     .join('')
     .trim()
-    .slice(0, MAX_NOTE_LEN);
+    .slice(0, maxLen);
   return stripped || undefined;
+}
+
+function sanitizeNote(value: unknown): string | undefined {
+  return sanitizeText(value, MAX_NOTE_LEN);
 }
 
 const TRIGGER_KEYS = new Set(['cameras', 'preMs', 'postMs', 'note']);
@@ -185,13 +196,15 @@ export function validateTriggerRequest(input: unknown): IValidation<ITriggerRequ
     }
   }
 
-  const clampRoll = (value: unknown, name: string, max: number): number => {
+  // Return undefined for an omitted roll so the controller's configured default survives (a forced 0
+  // would shadow it and cut a zero-length clip).
+  const clampRoll = (value: unknown, name: string, max: number): number | undefined => {
     if (value === undefined) {
-      return 0;
+      return undefined;
     }
     if (typeof value !== 'number' || !Number.isFinite(value)) {
       errors.push(`${name} must be a number`);
-      return 0;
+      return undefined;
     }
     return Math.min(Math.max(value, 0), max);
   };
@@ -205,7 +218,12 @@ export function validateTriggerRequest(input: unknown): IValidation<ITriggerRequ
   return {
     valid: true,
     errors: [],
-    value: { ...(cameras ? { cameras } : {}), preMs, postMs, ...(note ? { note } : {}) },
+    value: {
+      ...(cameras ? { cameras } : {}),
+      ...(preMs !== undefined ? { preMs } : {}),
+      ...(postMs !== undefined ? { postMs } : {}),
+      ...(note ? { note } : {}),
+    },
   };
 }
 

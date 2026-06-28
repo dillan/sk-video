@@ -56,6 +56,10 @@ describe('computeStatus', () => {
       computeStatus(['bow'], [], [{ kind: 'clip', cameraId: 'bow', reason: 'no segments' }]),
     ).toBe('failed');
   });
+
+  it('a zero-camera, telemetry-only bundle is partial, not complete', () => {
+    expect(computeStatus([], [asset('t', 'telemetry', null)], [])).toBe('partial');
+  });
 });
 
 describe('buildManifest', () => {

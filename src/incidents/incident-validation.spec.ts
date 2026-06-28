@@ -17,10 +17,10 @@ describe('isValidIncidentId', () => {
 });
 
 describe('validateTriggerRequest', () => {
-  it('accepts a bare {} (all fields optional) and defaults rolls to 0', () => {
+  it('accepts a bare {} and leaves rolls absent so the controller default applies', () => {
     const r = validateTriggerRequest({});
     expect(r.valid).toBe(true);
-    expect(r.value).toEqual({ preMs: 0, postMs: 0 });
+    expect(r.value).toEqual({}); // no preMs/postMs forced to 0 — omitted stays omitted
   });
 
   it('accepts undefined input as an empty mark', () => {

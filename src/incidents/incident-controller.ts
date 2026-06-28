@@ -7,8 +7,20 @@ import { planClip, type IClipPlan } from './incident-clip';
 import { TelemetrySampler, telemetryTrackBytes } from './telemetry-track';
 import { hashBytes } from './bundle-digest';
 import { buildManifest } from './incident-bundle';
-import type { IIncidentAsset, IIncidentFailure, IIncidentTrigger } from './incident-validation';
+import {
+  sanitizeText,
+  type IIncidentAsset,
+  type IIncidentFailure,
+  type IIncidentTrigger,
+} from './incident-validation';
 import type { IIncidentStore } from './incident-store';
+
+// Bounds for the untrusted trigger fields the Signal K auto-trigger carries (the manual path is
+// already bounded by validateTriggerRequest); keeps an attacker-supplied notification from bloating
+// the in-memory assembly and the manifest.
+const MAX_TRIGGER_REASON = 2000;
+const MAX_TRIGGER_PATH = 256;
+const MAX_TRIGGER_STATE = 32;
 
 /**
  * The behavioral heart of C9: a MobController-shaped orchestrator with every IO injected (clock,
@@ -90,6 +102,7 @@ interface IAssembly {
 
 export class IncidentController {
   private readonly active = new Map<string, IAssembly>();
+  private disposed = false;
   private readonly idGen: () => string;
   private readonly now: () => number;
   private readonly setTimeoutImpl: NonNullable<IIncidentControllerDeps['setTimeoutImpl']>;
@@ -115,12 +128,16 @@ export class IncidentController {
     const postMs = input.postMs ?? this.deps.defaultPostMs;
     const telemetryAtTrigger = toTelemetry(this.deps.getSelfState());
 
+    // Bound every trigger field — the auto-trigger feeds untrusted, unbounded notification text here.
+    const path = sanitizeText(input.path, MAX_TRIGGER_PATH);
+    const state = sanitizeText(input.state, MAX_TRIGGER_STATE);
+    const reason = sanitizeText(input.note, MAX_TRIGGER_REASON);
     const trigger: IIncidentTrigger = {
       source: input.source,
       firedAt: t0,
-      ...(input.path ? { path: input.path } : {}),
-      ...(input.state ? { state: input.state } : {}),
-      ...(input.note ? { reason: input.note } : {}),
+      ...(path ? { path } : {}),
+      ...(state ? { state } : {}),
+      ...(reason ? { reason } : {}),
     };
 
     this.deps.raiseNotification(this.notifyMessage(cameras, input), { id });
@@ -175,6 +192,9 @@ export class IncidentController {
 
   /** Clear every in-flight timer so no finalize runs after the plugin stops. */
   cancelAll(): void {
+    // Mark disposed so a finalize already past its synchronous guard bails before spawning ffmpeg or
+    // publishing — a restart's sweepStaging() could otherwise wipe its staged blobs out from under it.
+    this.disposed = true;
     for (const a of this.active.values()) {
       if (a.finalizeTimer !== null) {
         this.clearTimeoutImpl(a.finalizeTimer);
@@ -240,6 +260,13 @@ export class IncidentController {
         }
       }
 
+      // Bail before the expensive ffmpeg work if the plugin is tearing down — abandon the staging
+      // rather than publish a bundle whose blobs a restart's sweepStaging() may delete.
+      if (this.disposed) {
+        this.deps.store.abandon(id);
+        return;
+      }
+
       for (const cameraId of assembly.cameras) {
         const clip = await this.cutClip(id, cameraId, windowStartMs, windowEndMs);
         if (clip.asset) {
@@ -264,6 +291,13 @@ export class IncidentController {
         createdAt: this.now(),
       });
 
+      // Last disposed check just before the atomic publish: if a teardown raced in during the clip
+      // cuts, abandon rather than publish a bundle a restart sweep could orphan.
+      if (this.disposed) {
+        this.deps.store.abandon(id);
+        return;
+      }
+
       const manifest = buildManifest({
         id,
         createdAt: assembly.createdAt,
@@ -285,7 +319,13 @@ export class IncidentController {
         /* best effort */
       }
     } finally {
-      this.deps.clearNotification();
+      // clearNotification reaches the server's notifications API, which may throw; the "finalize
+      // never throws" guarantee must hold even then (this runs fire-and-forget as void finalize()).
+      try {
+        this.deps.clearNotification();
+      } catch {
+        /* best effort */
+      }
     }
   }
 

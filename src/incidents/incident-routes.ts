@@ -56,7 +56,9 @@ export function registerIncidentRoutes(router: IRouter, deps: IIncidentRouteDeps
       return;
     }
     const started = controller.mark({ ...result.value, source: 'manual' });
-    res.setHeader('Location', started.id);
+    // Relative-path reference that resolves to GET /<base>/incidents/:id (a bare id would resolve to
+    // /<base>/:id and 404).
+    res.setHeader('Location', `incidents/${started.id}`);
     res.status(202).json(started);
   });
 

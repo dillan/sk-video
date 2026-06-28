@@ -37,6 +37,8 @@ export function planClip(
       actualEndMs,
       segmentCount: sel.segments.length,
       keyframeAligned: true,
+      // Disclose a recorder-restart gap so the manifest never claims continuous footage it lacks.
+      contiguous: sel.contiguous,
     },
   };
 }
