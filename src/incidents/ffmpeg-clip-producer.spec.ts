@@ -65,4 +65,32 @@ describe('createFfmpegClipProducer', () => {
     const { producer } = setup(fakeChild(null, true));
     expect((await producer(plan)).ok).toBe(false);
   });
+
+  it('returns ok:false when the concat list cannot be written', async () => {
+    const producer = createFfmpegClipProducer({
+      spawn: () => fakeChild(0),
+      writeFile: () => {
+        throw new Error('EACCES');
+      },
+      readFile: async () => new Uint8Array([1]),
+      removeFile: () => undefined,
+      tmpDir: () => '/tmp/sk',
+      idGen: () => 'fixed',
+    });
+    expect((await producer(plan)).ok).toBe(false);
+  });
+
+  it('returns ok:false when reading the output fails after a clean exit', async () => {
+    const producer = createFfmpegClipProducer({
+      spawn: () => fakeChild(0),
+      writeFile: () => undefined,
+      readFile: async () => {
+        throw new Error('ENOENT');
+      },
+      removeFile: () => undefined,
+      tmpDir: () => '/tmp/sk',
+      idGen: () => 'fixed',
+    });
+    expect((await producer(plan)).ok).toBe(false);
+  });
 });

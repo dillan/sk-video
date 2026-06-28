@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { mkdtempSync, rmSync, existsSync, mkdirSync, readdirSync } from 'node:fs';
+import { mkdtempSync, rmSync, existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { FileIncidentStore } from './incident-store';
@@ -116,6 +116,24 @@ describe('FileIncidentStore', () => {
     const store = new FileIncidentStore(tempDir());
     expect(() => store.assetPath('../x', 'a')).toThrow(/invalid/);
     expect(() => store.assetPath('inc1', '../a')).toThrow(/invalid/);
+  });
+
+  it('re-publishing an id overwrites the prior bundle (target exists)', () => {
+    const store = new FileIncidentStore(tempDir());
+    store.publish('inc1', manifest('inc1', { status: 'partial' }));
+    store.publish('inc1', manifest('inc1', { status: 'complete' }));
+    expect(store.get('inc1')?.status).toBe('complete');
+    expect(store.list()).toHaveLength(1);
+  });
+
+  it('get() returns null for a corrupt manifest rather than throwing', () => {
+    const root = tempDir();
+    const store = new FileIncidentStore(root);
+    const dir = join(root, 'incidents', 'inc1');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'manifest.json'), '{ not json');
+    expect(store.get('inc1')).toBeNull();
+    expect(store.list()).toHaveLength(0);
   });
 
   it('ignores a non-incident directory that has no manifest', () => {

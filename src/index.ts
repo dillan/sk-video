@@ -43,9 +43,23 @@ import { FileSnapshotStore } from './recording/file-snapshot-store';
 import { RecordingManager } from './recording/recording-manager';
 import { registerRecordingRoutes } from './recording/recording-routes';
 import { scanRecordings } from './recording/file-recordings';
+import { FileIncidentStore } from './incidents/incident-store';
+import { IncidentController } from './incidents/incident-controller';
+import { createIncidentResourceMethods } from './incidents/incident-resource-provider';
+import { registerIncidentRoutes } from './incidents/incident-routes';
+import { createFfmpegClipProducer } from './incidents/ffmpeg-clip-producer';
+import {
+  shouldTrigger,
+  DEFAULT_TRIGGER_STATES,
+  type ITriggerState,
+} from './incidents/trigger-decision';
+import { bundlesToPrune, type IBundleQuota } from './incidents/retention';
+import { validateTriggerRequest } from './incidents/incident-validation';
 import { go2rtcApiUrl } from './gateway/go2rtc-proxy';
 import { spawn } from 'node:child_process';
-import { rmSync } from 'node:fs';
+import { rmSync, writeFileSync } from 'node:fs';
+import { readFile as fsReadFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 const PLUGIN_ID = 'sk-video';
@@ -59,6 +73,22 @@ const RECORDING_SEGMENT_SECONDS = 60;
 const RECORDING_MAX_BYTES = 10 * 1024 * 1024 * 1024; // 10 GiB
 const RECORDING_MAX_AGE_MS = 48 * 60 * 60 * 1000; // 48 hours
 const RECORDING_SWEEP_MS = 5 * 60 * 1000; // prune every 5 minutes
+// Incident bundles: pre/post-roll clip + telemetry track + snapshots around an event.
+const INCIDENT_DEFAULT_PRE_MS = 15_000;
+const INCIDENT_DEFAULT_POST_MS = 15_000;
+const INCIDENT_SAMPLE_INTERVAL_MS = 2000;
+// Give the DVR a moment to close the segment covering the end of the post-roll before cutting.
+const INCIDENT_FINALIZE_GRACE_MS = 2000;
+// One auto-triggered bundle per notification path per minute, so a flapping alarm can't spam.
+const INCIDENT_TRIGGER_COOLDOWN_MS = 60_000;
+const INCIDENT_SWEEP_MS = 5 * 60 * 1000;
+// A retention budget for the incidents subtree, independent of the DVR/upload budgets. Pinned
+// bundles are never pruned.
+const INCIDENT_QUOTA: IBundleQuota = {
+  maxBytes: 5 * 1024 * 1024 * 1024, // 5 GiB
+  maxCount: 200,
+  maxAgeMs: 30 * 24 * 60 * 60 * 1000, // 30 days
+};
 
 export = function (app: ServerAPI): Plugin {
   let cameras: CameraStore | null = null;
@@ -73,6 +103,11 @@ export = function (app: ServerAPI): Plugin {
   let recordings: RecordingManager | null = null;
   let recordingsDir: string | null = null;
   let recordingSweep: ReturnType<typeof setInterval> | null = null;
+  let incidents: IncidentController | null = null;
+  let incidentStore: FileIncidentStore | null = null;
+  let incidentSweep: ReturnType<typeof setInterval> | null = null;
+  let incidentUnsub: (() => void) | null = null;
+  const triggerState: ITriggerState = { lastFiredAtByKey: {} };
   // Cameras this MOB event started recording, so deactivation stops exactly those (and not a
   // camera the operator was already manually recording).
   let mobRecording: string[] = [];
@@ -151,10 +186,17 @@ export = function (app: ServerAPI): Plugin {
           enum: ['auto', ...TIER_ORDER],
           default: 'auto',
         },
+        autoTriggerPath: {
+          type: 'string',
+          title: 'Incident auto-trigger path (optional)',
+          description:
+            'Signal K notification subtree to auto-capture an incident bundle from (e.g. "notifications.*"). Leave blank to disable — the manual "mark incident" trigger is the reliable path. Auto-triggers fire only on alert/alarm/emergency and are best-effort.',
+          default: '',
+        },
       },
     }),
 
-    start(options?: { hardwareTier?: string }) {
+    start(options?: { hardwareTier?: string; autoTriggerPath?: string }) {
       try {
         const dataDir = app.getDataDirPath();
         const override =
@@ -274,6 +316,96 @@ export = function (app: ServerAPI): Plugin {
           return { state: 'COMPLETED', statusCode: 200 };
         });
 
+        // Incident bundles: on a trigger, cut a pre/post-roll clip per camera from the DVR segments,
+        // package them with a sampled telemetry track + stamped snapshots into one atomic bundle.
+        // bridge/snapshots are non-null here; capture locals so the closures never null-check.
+        const skBridge = bridge;
+        const snapshotService = snapshots;
+        incidentStore = new FileIncidentStore(dataDir);
+        incidentStore.sweepStaging(); // drop any staging dir orphaned by an earlier crash
+        const clipProducer = createFfmpegClipProducer({
+          spawn: (args) => spawn('ffmpeg', args, { stdio: 'ignore' }),
+          writeFile: (path, data) => writeFileSync(path, data, { mode: 0o600 }),
+          readFile: (path) => fsReadFile(path),
+          removeFile: (path) => rmSync(path, { force: true }),
+          tmpDir: () => tmpdir(),
+        });
+        incidents = new IncidentController({
+          store: incidentStore,
+          captureSnapshot: (id) => snapshotService.captureBytes(id),
+          produceClip: clipProducer,
+          listSegments: () => (recordingsDir ? scanRecordings(recordingsDir) : []),
+          getSelfState: () => skBridge.getSelfState(),
+          relevantCameras: () =>
+            Object.entries(cameras?.list() ?? {})
+              .filter(([, camera]) => camera.enabled)
+              .map(([id]) => id),
+          raiseNotification: (message, data) =>
+            void skBridge.raiseNotification('incident', { state: 'alert', message, data }),
+          clearNotification: () => void skBridge.clearNotification('incident'),
+          segmentSeconds: RECORDING_SEGMENT_SECONDS,
+          defaultPreMs: INCIDENT_DEFAULT_PRE_MS,
+          defaultPostMs: INCIDENT_DEFAULT_POST_MS,
+          sampleIntervalMs: INCIDENT_SAMPLE_INTERVAL_MS,
+          finalizeGraceMs: INCIDENT_FINALIZE_GRACE_MS,
+        });
+
+        // Manual trigger (the reliable path): a Signal K PUT action — the server enforces auth.
+        skBridge.registerAction('cameras.incident.mark', (value) => {
+          const parsed = validateTriggerRequest(
+            typeof value === 'object' && value !== null ? value : {},
+          );
+          incidents?.mark({ ...(parsed.value ?? { preMs: 0, postMs: 0 }), source: 'manual' });
+          return { state: 'COMPLETED', statusCode: 200 };
+        });
+
+        // Opt-in auto-trigger off a Signal K notification subtree (default disabled). Best-effort:
+        // fires only on alert/alarm/emergency, debounced per path; a no-op without streambundle.
+        const autoTriggerPath = options?.autoTriggerPath?.trim();
+        if (autoTriggerPath) {
+          incidentUnsub = skBridge.onDelta(autoTriggerPath, (delta) => {
+            const decision = shouldTrigger(
+              delta,
+              { states: DEFAULT_TRIGGER_STATES, cooldownMs: INCIDENT_TRIGGER_COOLDOWN_MS },
+              triggerState,
+              Date.now(),
+            );
+            if (decision.fire && decision.key) {
+              triggerState.lastFiredAtByKey[decision.key] = Date.now();
+              incidents?.mark({
+                source: 'signalk',
+                path: decision.key,
+                state: decision.state,
+                note: decision.reason,
+              });
+            }
+          });
+        }
+
+        // Serve bundles read-mostly; clients can only patch label/notes/pinned, never create one.
+        app.registerResourceProvider({
+          type: 'incidents',
+          methods: createIncidentResourceMethods(incidentStore),
+        });
+
+        incidentSweep = setInterval(() => {
+          try {
+            if (!incidentStore) {
+              return;
+            }
+            for (const id of bundlesToPrune(
+              incidentStore.summaries(),
+              INCIDENT_QUOTA,
+              Date.now(),
+            )) {
+              incidentStore.delete(id);
+            }
+          } catch {
+            // a transient FS error during prune must not crash the plugin; next sweep retries
+          }
+        }, INCIDENT_SWEEP_MS);
+        incidentSweep.unref?.();
+
         const base = createCameraResourceMethods(cameras);
         app.registerResourceProvider({
           type: 'cameras',
@@ -320,6 +452,16 @@ export = function (app: ServerAPI): Plugin {
         clearInterval(recordingSweep);
         recordingSweep = null;
       }
+      if (incidentSweep) {
+        clearInterval(incidentSweep);
+        incidentSweep = null;
+      }
+      // Tear down the notification subscription BEFORE the bridge is dropped — a leaked Bacon
+      // subscription would survive a plugin restart and double-fire.
+      incidentUnsub?.();
+      incidentUnsub = null;
+      incidents?.cancelAll(); // clears finalize/sampler timers so none fire after stop()
+      triggerState.lastFiredAtByKey = {};
       ptz?.disposeAll();
       mob?.deactivate(); // stops MOB-started recorders before we tear the manager down
       recordings?.stopAll();
@@ -337,6 +479,8 @@ export = function (app: ServerAPI): Plugin {
       recordingsDir = null;
       mobRecording = [];
       mob = null;
+      incidents = null;
+      incidentStore = null;
       return stopping;
     },
 
@@ -466,6 +610,12 @@ export = function (app: ServerAPI): Plugin {
         getManager: () => recordings,
         hasCamera: (id: string) => cameras?.get(id) !== null && cameras?.get(id) !== undefined,
         listSegments: () => (recordingsDir ? scanRecordings(recordingsDir) : []),
+      });
+
+      // Incident bundles: trigger, list, manifest, Range-served assets, patch + delete.
+      registerIncidentRoutes(router, {
+        getController: () => incidents,
+        getStore: () => incidentStore,
       });
 
       // Connection test for an unsaved camera (ffprobe / TCP reachability, SSRF-guarded).

@@ -208,6 +208,67 @@ describe('IncidentController.finalize', () => {
   });
 });
 
+describe('IncidentController finalize robustness', () => {
+  it('swallows a publish failure: logs, abandons staging, and still clears the notification', async () => {
+    const logs: string[] = [];
+    const abandoned: string[] = [];
+    const throwingStore = {
+      ...makeStore().store,
+      publish: () => {
+        throw new Error('disk full');
+      },
+      abandon: (id: string) => abandoned.push(id),
+    };
+    const h = setup({
+      relevantCameras: () => ['bow'],
+      store: throwingStore,
+      log: (m) => logs.push(m),
+    });
+    const { id } = h.controller.mark({ source: 'manual' });
+    h.fireFinalize();
+    await flush(() => abandoned.length > 0);
+    expect(abandoned).toEqual([id]);
+    expect(logs.some((l) => l.includes('finalize failed'))).toBe(true);
+    expect(h.calls.cleared).toBe(1); // notification cleared even on failure
+  });
+
+  it('calls ensureRecording for each camera at trigger when provided', () => {
+    const started: string[] = [];
+    const h = setup({
+      relevantCameras: () => ['bow', 'stern'],
+      ensureRecording: (id) => started.push(id),
+    });
+    h.controller.mark({ source: 'manual' });
+    expect(started).toEqual(['bow', 'stern']);
+  });
+
+  it('names a PNG snapshot asset with a .png extension', async () => {
+    const h = setup({
+      relevantCameras: () => ['bow'],
+      captureSnapshot: async () => ({
+        bytes: new Uint8Array([1]),
+        contentType: 'image/png',
+        telemetry: {
+          position: null,
+          headingTrue: null,
+          speedOverGround: null,
+          courseOverGroundTrue: null,
+          depth: null,
+          windSpeedApparent: null,
+          windAngleApparent: null,
+          oldestReadingAgeMs: null,
+          positionAvailable: false,
+        },
+      }),
+    });
+    const { id } = h.controller.mark({ source: 'manual' });
+    h.fireFinalize();
+    await flush(() => h.published.has(id));
+    const snap = h.published.get(id)!.assets.find((a) => a.kind === 'snapshot')!;
+    expect(snap.name.endsWith('.png')).toBe(true);
+  });
+});
+
 describe('IncidentController.cancelAll', () => {
   it('clears timers and prevents a late finalize from publishing', async () => {
     const h = setup();
