@@ -4,8 +4,7 @@ Thanks for helping out! This guide covers how to set up, make changes, and get t
 
 ## Set up
 
-See [**For developers → Develop**](README.md#develop) in the README for prerequisites, the install
-steps, the script list, and how to run your changes against a Signal K server. In short:
+See [**For developers → Develop**](README.md#develop) in the README for prerequisites, the install steps, the script list, and how to run your changes against a Signal K server. In short:
 
 ```sh
 npm install
@@ -24,15 +23,11 @@ npm run build          # it compiles
 npm test               # tests pass
 ```
 
-We write tests first where we can: add a failing test that proves the behavior you want, then make it
-pass. Keep credentials and secrets out of the code, tests, and fixtures — use placeholder hostnames
-(`example.com`) and fake logins. Camera logins are handled on the server only and are never returned
-to the browser or written into shared config.
+We write tests first where we can: add a failing test that proves the behavior you want, then make it pass. Keep credentials and secrets out of the code, tests, and fixtures — use placeholder hostnames (`example.com`) and fake logins. Camera logins are handled on the server only and are never returned to the browser or written into shared config.
 
 ## Commit messages: Conventional Commits (this matters)
 
-Every release is created automatically from commit messages, so the format is not optional. Use
-[Conventional Commits](https://www.conventionalcommits.org/):
+Every release is created automatically from commit messages, so the format is not optional. Use [Conventional Commits](https://www.conventionalcommits.org/):
 
 ```
 <type>: <short summary in plain language>
@@ -49,8 +44,7 @@ Every release is created automatically from commit messages, so the format is no
 | `ci`       | CI/CD configuration                     | No release                 |
 | `style`    | Formatting only                         | No release                 |
 
-A breaking change adds a `!` (e.g. `feat!: ...`) or a `BREAKING CHANGE:` footer and triggers a new
-**major** version.
+A breaking change adds a `!` (e.g. `feat!: ...`) or a `BREAKING CHANGE:` footer and triggers a new **major** version.
 
 Examples:
 
@@ -60,8 +54,7 @@ fix: stop the gateway from leaking go2rtc connections on disconnect
 docs: explain the local development loop
 ```
 
-The commit message is checked automatically (locally via a git hook, and in CI). If a commit is
-rejected, reword it with `git commit --amend`.
+The commit message is checked automatically (locally via a git hook, and in CI). If a commit is rejected, reword it with `git commit --amend`.
 
 ## Pull requests
 
@@ -72,17 +65,12 @@ rejected, reword it with `git commit --amend`.
 
 ## Releases
 
-Releases are fully automated with [semantic-release](https://semantic-release.gitbook.io/). When
-commits land on `main`, it works out the next version from the commit messages, updates the
-changelog, tags the release, and publishes to npm.
+Releases are fully automated with [semantic-release](https://semantic-release.gitbook.io/). When commits land on `main`, it works out the next version from the commit messages, updates the changelog, tags the release, and publishes to npm.
 
-Publishing uses npm **trusted publishing** (OIDC) — there is no npm token stored in the repo. The
-release workflow is held back by a repository variable until publishing is set up:
+Publishing uses npm **trusted publishing** (OIDC) — there is no npm token stored in the repo. The release workflow is held back by a repository variable until publishing is set up:
 
 1. Publish the package to npm once by hand to create it (`npm publish` from a clean build).
-2. On npmjs.com, open the package's **Settings → Trusted Publisher** and add a GitHub Actions
-   publisher: organization/user `dillan`, repository `sk-video`, workflow `release.yml`.
-3. In the GitHub repo, set the variable **`RELEASE_ENABLED`** to `true`
-   (Settings → Secrets and variables → Actions → Variables).
+2. On npmjs.com, open the package's **Settings → Trusted Publisher** and add a GitHub Actions publisher: organization/user `dillan`, repository `sk-video`, workflow `release.yml`.
+3. In the GitHub repo, set the variable **`RELEASE_ENABLED`** to `true` (Settings → Secrets and variables → Actions → Variables).
 
 After that, every merge to `main` releases automatically with no tokens to manage.

@@ -1,11 +1,8 @@
 # Getting started
 
-This guide takes you from nothing to a live camera on screen. It assumes you already have a
-**Signal K server** running on your boat (on a Raspberry Pi, a Cerbo GX, a small PC, or similar) and
-at least one **IP camera** on the same network.
+This guide takes you from nothing to a live camera on screen. It assumes you already have a **Signal K server** running on your boat (on a Raspberry Pi, a Cerbo GX, a small PC, or similar) and at least one **IP camera** on the same network.
 
-If you're not sure what Signal K is: it's the free open-source software many boats run to collect and
-share their instrument data (GPS, depth, wind…). SK Video is an add-on for it.
+If you're not sure what Signal K is: it's the free open-source software many boats run to collect and share their instrument data (GPS, depth, wind…). SK Video is an add-on for it.
 
 ---
 
@@ -42,25 +39,20 @@ Then restart Signal K.
   <img src="../images/plugin-config.png" alt="Enabling SK Video in the Signal K admin Plugin Config screen" width="85%">
 </p>
 
-> **First-run note:** the very first time you add a camera, the plugin downloads a small helper
-> program ([go2rtc](https://github.com/AlexxIT/go2rtc)) once. So the server needs internet access on
-> that first run. After that, everything works offline.
+> **First-run note:** the very first time you add a camera, the plugin downloads a small helper program ([go2rtc](https://github.com/AlexxIT/go2rtc)) once. So the server needs internet access on that first run. After that, everything works offline.
 
-That's all the configuration most boats ever need here. **You don't add cameras on this screen** — you
-add them from the Video widget (next step), and the plugin remembers them for every device on the boat.
+That's all the configuration most boats ever need here. **You don't add cameras on this screen** — you add them from the Video widget (next step), and the plugin remembers them for every device on the boat.
 
 ---
 
 ## 3. See your first camera
 
-The video itself shows up in **[KIP](https://github.com/mxtommy/Kip)**, the Signal K dashboard app,
-through its **Video widget**.
+The video itself shows up in **[KIP](https://github.com/mxtommy/Kip)**, the Signal K dashboard app, through its **Video widget**.
 
 1. Open KIP and edit a dashboard.
 2. Add a **Video** widget.
 3. Open the widget's settings and set **Source** to **Camera**.
-4. Click **Scan** to find cameras on the network, pick yours from the list — or **Add a camera** by
-   hand if it doesn't appear (you'll need its address, and a login if the camera requires one).
+4. Click **Scan** to find cameras on the network, pick yours from the list — or **Add a camera** by hand if it doesn't appear (you'll need its address, and a login if the camera requires one).
 5. Choose a delivery mode (start with **Standard / HLS**) and **Save**.
 
 <p align="center">
@@ -77,17 +69,13 @@ You should now have live video:
 
 ## What just happened?
 
-- Your camera is now saved **on the boat's server** as a Signal K _resource_. Every phone, tablet, and
-  laptop on the boat can use it — you only set it up once.
-- The browser is **not** talking to the camera directly. It asks the SK Video plugin, which repackages
-  the camera's stream into something a browser can play. Your **camera login never leaves the server.**
+- Your camera is now saved **on the boat's server** as a Signal K _resource_. Every phone, tablet, and laptop on the boat can use it — you only set it up once.
+- The browser is **not** talking to the camera directly. It asks the SK Video plugin, which repackages the camera's stream into something a browser can play. Your **camera login never leaves the server.**
 
 ---
 
 ## Where to next
 
-- **[Adding & organizing cameras](cameras.md)** — scanning vs. adding by hand, logins, and telling the
-  boat where each camera is mounted (which unlocks the smart features).
-- **[Watching video](viewing.md)** — pick the right delivery mode, move a PTZ camera, and use the
-  night/fog picture presets.
+- **[Adding & organizing cameras](cameras.md)** — scanning vs. adding by hand, logins, and telling the boat where each camera is mounted (which unlocks the smart features).
+- **[Watching video](viewing.md)** — pick the right delivery mode, move a PTZ camera, and use the night/fog picture presets.
 - **[Troubleshooting](troubleshooting.md)** — if the scan finds nothing or the picture won't load.
