@@ -70,5 +70,6 @@ These were considered and ruled out on purpose:
 - **Server-side 360 dewarp** — client-side WebGL only.
 - **Certified VDR / black-box / chain-of-custody** — captures are best-effort evidence.
 - **Autonomous docking / steering / control-law integration** — entirely out of scope.
+- **ONVIF PullPoint camera events** — not production-ready in the pinned `onvif@0.8.1`, so the plugin does not consume them. Camera-side event alerting flows through [Frigate](../guides/advanced.md#frigate-motion-alerts) (or a camera's own MQTT) instead.
 
 If a third-party page or comparison claims SK Video does one of the above, it's wrong — by design.
