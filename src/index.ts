@@ -442,6 +442,7 @@ export = function (app: ServerAPI): Plugin {
           listSegments: () => (recordingsDir ? scanRecordings(recordingsDir) : []),
           removeFile: (path) => rmSync(path, { force: true }),
           segmentSeconds: RECORDING_SEGMENT_SECONDS,
+          log,
         });
         recordingSweep = setInterval(() => {
           try {
@@ -611,7 +612,11 @@ export = function (app: ServerAPI): Plugin {
               INCIDENT_QUOTA,
               Date.now(),
             )) {
-              incidentStore.delete(id);
+              try {
+                incidentStore.delete(id);
+              } catch {
+                // one un-deletable bundle must not halt pruning of the rest (disk would fill)
+              }
             }
           } catch {
             // a transient FS error during prune must not crash the plugin; next sweep retries

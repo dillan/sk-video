@@ -80,4 +80,25 @@ describe('RecordingManager', () => {
     expect(mgr.sweep(10_000_000)).toBe(1);
     expect(removed).toEqual(['/rec/old.mp4']);
   });
+
+  it('keeps pruning when one segment cannot be deleted (no abort-on-first-failure)', () => {
+    const segs: ISegment[] = [
+      { cameraId: 'a', path: '/rec/locked.mp4', startedAt: 0, bytes: 100 },
+      { cameraId: 'a', path: '/rec/old.mp4', startedAt: 0, bytes: 100 },
+    ];
+    const removed: string[] = [];
+    const logs: string[] = [];
+    const mgr = setup({
+      listSegments: () => segs,
+      limits: () => ({ maxBytes: 1e9, maxAgeMs: 1 }), // everything is past the age budget
+      removeFile: (p) => {
+        if (p === '/rec/locked.mp4') throw new Error('EBUSY');
+        removed.push(p);
+      },
+      log: (m) => logs.push(m),
+    }).mgr;
+    expect(mgr.sweep(10_000_000)).toBe(1); // only the deletable one counted
+    expect(removed).toEqual(['/rec/old.mp4']); // the rest were still pruned
+    expect(logs.some((l) => /prune/i.test(l))).toBe(true);
+  });
 });

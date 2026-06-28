@@ -159,6 +159,24 @@ describe('SignalKBridge — notifications', () => {
     expect(bridge.clearNotification('anchor.drag')).toBe(true);
     expect(h.deltas[0].msg.updates[0].values[0].value).toMatchObject({ state: 'normal' });
   });
+
+  it('degrades to a delta (does not throw) when the notifications API itself throws', () => {
+    const h = makeApp({
+      notifications: {
+        raise: () => {
+          throw new Error('notifications backend down');
+        },
+        update: () => undefined,
+        clear: () => undefined,
+      },
+    });
+    const ok = new SignalKBridge(h.app, 'sk-video').raiseNotification('mob', {
+      state: 'emergency',
+      message: 'Person overboard',
+    });
+    expect(ok).toBe(true); // a throwing safety-channel notification must not crash the caller
+    expect(h.deltas[0].msg.updates[0].values[0].path).toBe('notifications.sk-video.mob');
+  });
 });
 
 describe('SignalKBridge — actions', () => {

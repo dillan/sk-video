@@ -15,6 +15,7 @@ import {
   type IStagedBlob,
   type IVideoAsset,
 } from './asset-store';
+import { writeJsonAtomic } from '../util/atomic-write';
 import type { IQuotaLimits } from './quota';
 
 /** Enough leading bytes for the magic-byte sniff (matroska reads up to 64). */
@@ -41,7 +42,9 @@ export class FileAssetIndexPersistence implements IAssetIndexPersistence {
 
   save(index: Record<string, IVideoAsset>): void {
     mkdirSync(join(this.file, '..'), { recursive: true });
-    writeFileSync(this.file, JSON.stringify(index, null, 2), { mode: 0o600 });
+    // Atomic: a power loss / full disk mid-write must not corrupt the index that maps every stored
+    // blob to its metadata (a corrupt index orphans all videos).
+    writeJsonAtomic(this.file, index);
   }
 }
 

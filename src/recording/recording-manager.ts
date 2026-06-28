@@ -30,6 +30,7 @@ export interface IRecordingManagerDeps {
   listSegments: () => ISegment[];
   removeFile: (path: string) => void;
   segmentSeconds?: number;
+  log?: (msg: string) => void;
 }
 
 export class RecordingManager {
@@ -82,9 +83,19 @@ export class RecordingManager {
   /** Delete segments past the retention budget; returns how many were removed. */
   sweep(now: number): number {
     const prune = segmentsToPrune(this.deps.listSegments(), this.deps.limits(), now);
+    let removed = 0;
     for (const segment of prune) {
-      this.deps.removeFile(segment.path);
+      try {
+        // Per-segment guard: one un-deletable (locked / permission-denied) file must not abort the
+        // loop and permanently halt ALL pruning, letting recordings grow past the budget and fill disk.
+        this.deps.removeFile(segment.path);
+        removed += 1;
+      } catch (err) {
+        this.deps.log?.(
+          `failed to prune a recording segment: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
     }
-    return prune.length;
+    return removed;
   }
 }

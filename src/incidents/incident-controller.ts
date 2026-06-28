@@ -214,7 +214,13 @@ export class IncidentController {
         /* best effort */
       }
     }
+    const hadActive = this.active.size > 0;
     this.active.clear();
+    if (hadActive) {
+      // Clear the 'incident' alert on teardown — a leaked notification can't be cleared after a reload
+      // (the restarted bridge has lost its raise-id) and would stick in Signal K until a full restart.
+      this.deps.clearNotification();
+    }
   }
 
   private async captureSnapshotRaw(cameraId: string): Promise<IRawSnapshot> {

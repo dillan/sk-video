@@ -168,25 +168,32 @@ export class SignalKBridge {
   raiseNotification(key: string, options: INotificationOptions): boolean {
     const n = this.app.notifications;
     if (n?.raise) {
-      const existing = this.notificationIds.get(key);
-      if (existing !== undefined) {
-        n.update?.(existing, {
-          state: options.state,
-          message: options.message,
-          data: options.data,
-        });
-      } else {
-        this.notificationIds.set(
-          key,
-          n.raise({
+      // Guard the API: a server whose notifications implementation throws must not take down a safety
+      // path (MOB/incident/watchdog). On failure, degrade to a notifications.* delta on the same path.
+      try {
+        const existing = this.notificationIds.get(key);
+        if (existing !== undefined) {
+          n.update?.(existing, {
             state: options.state,
             message: options.message,
-            path: this.notifPath(key),
             data: options.data,
-          }),
-        );
+          });
+        } else {
+          this.notificationIds.set(
+            key,
+            n.raise({
+              state: options.state,
+              message: options.message,
+              path: this.notifPath(key),
+              data: options.data,
+            }),
+          );
+        }
+        return true;
+      } catch (err) {
+        this.log(`notifications.raise(${key}) failed: ${errMessage(err)}; falling back to a delta`);
+        return this.emit(this.notificationDelta(key, options));
       }
-      return true;
     }
     // No notifications API on this server: fall back to a notifications.* delta.
     return this.emit(this.notificationDelta(key, options));
@@ -197,7 +204,11 @@ export class SignalKBridge {
     const n = this.app.notifications;
     const id = this.notificationIds.get(key);
     if (n?.clear && id !== undefined) {
-      n.clear(id);
+      try {
+        n.clear(id);
+      } catch (err) {
+        this.log(`notifications.clear(${key}) failed: ${errMessage(err)}`);
+      }
       this.notificationIds.delete(key);
       return true;
     }

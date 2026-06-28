@@ -242,6 +242,14 @@ describe('IncidentController finalize robustness', () => {
     expect(started).toEqual(['bow', 'stern']);
   });
 
+  it('clears the incident notification on cancelAll so it does not leak across a reload', () => {
+    const h = setup({ relevantCameras: () => ['bow'] });
+    h.controller.mark({ source: 'manual' }); // raises the 'incident' alert
+    const clearedBefore = h.calls.cleared;
+    h.controller.cancelAll();
+    expect(h.calls.cleared).toBe(clearedBefore + 1);
+  });
+
   it('a finalize that races a teardown abandons instead of publishing', async () => {
     const h = setup({ relevantCameras: () => ['bow'] });
     const { id } = h.controller.mark({ source: 'manual' });

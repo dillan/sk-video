@@ -8,6 +8,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
+import { writeJsonAtomic } from '../util/atomic-write';
 import {
   isValidIncidentId,
   type IIncidentBundle,
@@ -168,7 +169,9 @@ export class FileIncidentStore implements IIncidentStore {
       ...(fields.notes !== undefined ? { notes: fields.notes } : {}),
       ...(fields.pinned !== undefined ? { pinned: fields.pinned } : {}),
     };
-    writeFileSync(join(this.dir, id, MANIFEST), JSON.stringify(updated, null, 2), { mode: 0o600 });
+    // Atomic: a non-atomic O_TRUNC write here could wipe the only manifest copy on a power loss /
+    // full disk, making the bundle (and any pinned evidence) vanish from the API and escape the quota.
+    writeJsonAtomic(join(this.dir, id, MANIFEST), updated);
     return updated;
   }
 
