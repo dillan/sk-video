@@ -77,7 +77,7 @@ import { validateTriggerRequest } from './incidents/incident-validation';
 import { go2rtcApiUrl } from './gateway/go2rtc-proxy';
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { readFile as fsReadFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -351,6 +351,9 @@ export = function (app: ServerAPI): Plugin {
         // live only in go2rtc's source config — the recorder reads the unauthenticated loopback
         // restream, so no secret ever lands in a segment path or filename.
         recordingsDir = join(dataDir, 'recordings');
+        // ffmpeg's segment muxer does NOT create its output directory, so the very first recording
+        // on a fresh install would fail silently — create it up front.
+        mkdirSync(recordingsDir, { recursive: true });
         recordings = new RecordingManager({
           dir: recordingsDir,
           rtspBase: () => `rtsp://127.0.0.1:${gateway?.rtspPort ?? 8554}`,
