@@ -1,6 +1,7 @@
 import type { IRouter, Request, Response } from 'express';
 import { go2rtcApiUrl, go2rtcVariantUrl, go2rtcHlsUrl } from './go2rtc-proxy';
 import { fetchStreamHealth } from './stream-health';
+import { transportHints } from './transport-hints';
 
 export interface IProxyContext {
   /** Current go2rtc API port. */
@@ -9,19 +10,36 @@ export interface IProxyContext {
   hasCamera: (id: string) => boolean;
   /** Whether a camera has a low-res substream variant configured. */
   hasSubstream?: (id: string) => boolean;
+  /** Whether a camera has a two-way audio backchannel (an ONVIF audio output / speaker). */
+  hasBackchannel?: (id: string) => boolean;
   fetchImpl?: typeof fetch;
 }
 
-/** Reads the raw request body (e.g. an SDP offer the server did not parse). */
+// An SDP offer is only a few KB; cap the raw read so a same-origin client can't stream an unbounded
+// body into memory through /talk or /whep.
+const MAX_SDP_BYTES = 64 * 1024;
+
+/** Reads the raw request body (e.g. an SDP offer the server did not parse), bounded to MAX_SDP_BYTES. */
 function readRawBody(req: Request): Promise<string> {
   if (typeof req.body === 'string' && req.body.length > 0) {
     return Promise.resolve(req.body);
   }
-  return new Promise((resolve) => {
+  if (Buffer.isBuffer(req.body) && req.body.length > 0) {
+    return Promise.resolve(req.body.toString('utf8'));
+  }
+  // If a middleware already drained the stream, the 'data'/'end' events will never fire — don't hang.
+  if (req.readableEnded || req.complete) {
+    return Promise.resolve('');
+  }
+  return new Promise((resolve, reject) => {
     let data = '';
     req.setEncoding('utf8');
     req.on('data', (chunk: string) => {
       data += chunk;
+      if (data.length > MAX_SDP_BYTES) {
+        req.destroy();
+        reject(new Error('request body too large'));
+      }
     });
     req.on('end', () => resolve(data));
     req.on('error', () => resolve(data));
@@ -50,6 +68,35 @@ export function registerProxyRoutes(router: IRouter, ctx: IProxyContext): void {
     }
     try {
       const url = go2rtcVariantUrl(ctx.apiPort(), 'webrtc', id, wantSub ? 'sub' : 'main');
+      const offer = await readRawBody(req);
+      const upstream = await doFetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/sdp' },
+        body: offer,
+      });
+      const answer = await upstream.text();
+      res.status(upstream.status).set('Content-Type', 'application/sdp').send(answer);
+    } catch {
+      res.status(502).json({ error: 'gateway unavailable' });
+    }
+  });
+
+  // Two-way audio backchannel (A4): same WebRTC negotiation as WHEP, but gated on the camera
+  // reporting an audio output (speaker). The browser's SDP offer carries the talk audio track and
+  // go2rtc routes it to the camera's NATIVE backchannel — this is not WHIP (which is ingest-only),
+  // and it is camera/codec-dependent (PCMU/AAC), best-effort hailing/intercom, not telephony-grade.
+  router.post('/cameras/:id/talk', async (req: Request, res: Response) => {
+    const id = String(req.params.id);
+    if (!ctx.hasCamera(id)) {
+      res.status(404).json({ error: 'unknown camera' });
+      return;
+    }
+    if (!(ctx.hasBackchannel?.(id) ?? false)) {
+      res.status(404).json({ error: 'camera has no two-way audio backchannel' });
+      return;
+    }
+    try {
+      const url = go2rtcApiUrl(ctx.apiPort(), 'webrtc', id);
       const offer = await readRawBody(req);
       const upstream = await doFetch(url, {
         method: 'POST',
@@ -113,6 +160,25 @@ export function registerProxyRoutes(router: IRouter, ctx: IProxyContext): void {
     }
   });
 
+  // Adaptive transport contract (A5): the recommended transport walk for the widget to fall back on.
+  router.get('/cameras/:id/transport', async (req: Request, res: Response) => {
+    const id = String(req.params.id);
+    if (!ctx.hasCamera(id)) {
+      res.status(404).json({ error: 'unknown camera' });
+      return;
+    }
+    try {
+      const health = await fetchStreamHealth({
+        apiPort: ctx.apiPort(),
+        cameraId: id,
+        fetchImpl: doFetch,
+      });
+      res.json(transportHints(health));
+    } catch {
+      res.status(502).json({ error: 'gateway unavailable' });
+    }
+  });
+
   // Snapshot frame and HLS master playlist: GET passthrough.
   const getRoutes: [string, 'frame' | 'hls'][] = [
     ['/cameras/:id/frame.jpeg', 'frame'],
@@ -131,6 +197,11 @@ export function registerProxyRoutes(router: IRouter, ctx: IProxyContext): void {
         const contentType = upstream.headers.get('content-type');
         if (contentType) {
           res.setHeader('Content-Type', contentType);
+        }
+        if (transport === 'frame') {
+          // The MJPEG still-refresh fallback (A5) re-fetches this in a loop; never let a cache serve
+          // a stale frame.
+          res.setHeader('Cache-Control', 'no-store');
         }
         const body = Buffer.from(await upstream.arrayBuffer());
         res.status(upstream.status).send(body);

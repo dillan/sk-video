@@ -96,10 +96,11 @@ function setup(over: Partial<IProxyContext> = {}) {
   const apiPort = over.apiPort ?? (() => PORT);
   const hasCamera = vi.fn(over.hasCamera ?? (() => true));
   const hasSubstream = vi.fn(over.hasSubstream ?? (() => true));
+  const hasBackchannel = vi.fn(over.hasBackchannel ?? (() => true));
   const fetchImpl = (over.fetchImpl ?? vi.fn()) as ReturnType<typeof vi.fn>;
   const { router, handlers } = fakeRouter();
-  registerProxyRoutes(router, { apiPort, hasCamera, hasSubstream, fetchImpl });
-  return { handlers, apiPort, hasCamera, hasSubstream, fetchImpl };
+  registerProxyRoutes(router, { apiPort, hasCamera, hasSubstream, hasBackchannel, fetchImpl });
+  return { handlers, apiPort, hasCamera, hasSubstream, hasBackchannel, fetchImpl };
 }
 
 describe('registerProxyRoutes', () => {
@@ -184,6 +185,66 @@ describe('registerProxyRoutes', () => {
       );
       expect(res.statusCode).toBe(502);
       expect(res.body).toEqual({ error: 'gateway unavailable' });
+    });
+  });
+
+  describe('POST /cameras/:id/talk (A4 two-way audio)', () => {
+    it('forwards the SDP offer to go2rtc webrtc and returns its answer when a backchannel exists', async () => {
+      const fetchImpl = vi
+        .fn()
+        .mockResolvedValue(upstreamRes({ status: 201, text: 'v=0\r\nanswer' }));
+      const { handlers } = setup({ fetchImpl, hasBackchannel: () => true });
+      const res = makeRes();
+      await handlers.get('POST /cameras/:id/talk')!(
+        fakeReq({ params: { id: 'foredeck' } as never, body: 'v=0\r\noffer' }),
+        res,
+      );
+      // The browser's offer must actually be forwarded (not just method/url), with the SDP content type.
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
+      expect(fetchImpl).toHaveBeenCalledWith('http://127.0.0.1:1984/api/webrtc?src=foredeck', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/sdp' },
+        body: 'v=0\r\noffer',
+      });
+      expect(res.statusCode).toBe(201);
+      expect(res.headers['Content-Type']).toBe('application/sdp');
+      expect(res.sent).toBe('v=0\r\nanswer'); // go2rtc's SDP answer is relayed back verbatim
+    });
+
+    it('502s when the gateway is unreachable', async () => {
+      const fetchImpl = vi.fn().mockRejectedValue(new Error('ECONNREFUSED'));
+      const { handlers } = setup({ fetchImpl, hasBackchannel: () => true });
+      const res = makeRes();
+      await handlers.get('POST /cameras/:id/talk')!(
+        fakeReq({ params: { id: 'foredeck' } as never, body: 'v=0' }),
+        res,
+      );
+      expect(res.statusCode).toBe(502);
+      expect(res.body).toEqual({ error: 'gateway unavailable' });
+    });
+
+    it('404s a camera with no backchannel, and never fetches', async () => {
+      const fetchImpl = vi.fn();
+      const { handlers } = setup({ fetchImpl, hasBackchannel: () => false });
+      const res = makeRes();
+      await handlers.get('POST /cameras/:id/talk')!(
+        fakeReq({ params: { id: 'foredeck' } as never, body: 'v=0' }),
+        res,
+      );
+      expect(res.statusCode).toBe(404);
+      expect(res.body).toEqual({ error: 'camera has no two-way audio backchannel' });
+      expect(fetchImpl).not.toHaveBeenCalled();
+    });
+
+    it('404s an unknown camera before the backchannel check', async () => {
+      const { handlers } = setup({ hasCamera: () => false, hasBackchannel: () => true });
+      const res = makeRes();
+      await handlers.get('POST /cameras/:id/talk')!(
+        fakeReq({ params: { id: 'ghost' } as never }),
+        res,
+      );
+      expect(res.statusCode).toBe(404);
+      expect(res.body).toEqual({ error: 'unknown camera' });
     });
   });
 
@@ -350,6 +411,64 @@ describe('registerProxyRoutes', () => {
     });
   });
 
+  describe('GET /cameras/:id/transport (A5)', () => {
+    it('recommends a codec-aware transport walk from the stream health', async () => {
+      const fetchImpl = vi.fn().mockResolvedValue({
+        json: () =>
+          Promise.resolve({
+            producers: [{ medias: [{ codecs: [{ name: 'H265' }] }] }],
+            consumers: [],
+          }),
+      });
+      const { handlers } = setup({ fetchImpl });
+      const res = makeRes();
+      await handlers.get('GET /cameras/:id/transport')!(
+        fakeReq({ params: { id: 'foredeck' } as never }),
+        res,
+      );
+      expect(res.statusCode).toBe(200);
+      expect((res.body as { recommended: string[] }).recommended).toEqual([
+        'hls',
+        'mjpeg',
+        'webrtc',
+      ]);
+    });
+
+    it('recommends WebRTC first for an ordinary H.264 stream', async () => {
+      const fetchImpl = vi.fn().mockResolvedValue({
+        json: () =>
+          Promise.resolve({
+            producers: [{ medias: [{ codecs: [{ name: 'H264' }] }] }],
+            consumers: [{}],
+          }),
+      });
+      const { handlers } = setup({ fetchImpl });
+      const res = makeRes();
+      await handlers.get('GET /cameras/:id/transport')!(
+        fakeReq({ params: { id: 'foredeck' } as never }),
+        res,
+      );
+      expect(res.statusCode).toBe(200);
+      const body = res.body as { recommended: string[]; online: boolean };
+      expect(body.recommended).toEqual(['webrtc', 'hls', 'mjpeg']);
+      expect(body.online).toBe(true);
+    });
+
+    it('404s an unknown camera and 502s an unreachable gateway', async () => {
+      const r404 = makeRes();
+      await setup({ hasCamera: () => false }).handlers.get('GET /cameras/:id/transport')!(
+        fakeReq({ params: { id: 'ghost' } as never }),
+        r404,
+      );
+      expect(r404.statusCode).toBe(404);
+      const r502 = makeRes();
+      await setup({ fetchImpl: vi.fn().mockRejectedValue(new Error('down')) }).handlers.get(
+        'GET /cameras/:id/transport',
+      )!(fakeReq({ params: { id: 'foredeck' } as never }), r502);
+      expect(r502.statusCode).toBe(502);
+    });
+  });
+
   describe('GET passthrough routes (frame.jpeg / stream.m3u8)', () => {
     const cases: Array<{ name: string; key: string; expectedUrl: string }> = [
       {
@@ -400,5 +519,32 @@ describe('registerProxyRoutes', () => {
         expect(res.body).toEqual({ error: 'gateway unavailable' });
       });
     }
+
+    it('sets Cache-Control: no-store on frame.jpeg (A5 MJPEG still-loop) but not on the playlist', async () => {
+      const fetchImpl = vi
+        .fn()
+        .mockResolvedValue(
+          upstreamRes({ status: 200, contentType: 'image/jpeg', bytes: [0xff, 0xd8] }),
+        );
+      const frameRes = makeRes();
+      await setup({ fetchImpl }).handlers.get('GET /cameras/:id/frame.jpeg')!(
+        fakeReq({ params: { id: 'foredeck' } as never }),
+        frameRes,
+      );
+      expect(frameRes.headers['Cache-Control']).toBe('no-store');
+
+      const hlsRes = makeRes();
+      await setup({
+        fetchImpl: vi
+          .fn()
+          .mockResolvedValue(
+            upstreamRes({ status: 200, contentType: 'application/vnd.apple.mpegurl', bytes: [1] }),
+          ),
+      }).handlers.get('GET /cameras/:id/stream.m3u8')!(
+        fakeReq({ params: { id: 'foredeck' } as never }),
+        hlsRes,
+      );
+      expect(hlsRes.headers['Cache-Control']).toBeUndefined();
+    });
   });
 });
