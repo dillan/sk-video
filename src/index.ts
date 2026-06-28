@@ -30,6 +30,7 @@ import { registerOnboardingHintsRoute } from './discovery/device-hints';
 import { introspectOnvifCamera } from './onvif/onvif-introspect';
 import { MobController } from './safety/mob-controller';
 import { toMobCamera, ownShipFromSelfState, findMobBeacon } from './safety/mob-wiring';
+import { MobVisualRefine, frigatePersonDetection } from './safety/mob-visual-refine';
 import { WatchAutomation } from './safety/watch-automation';
 import { registerSlewRoutes } from './awareness/slew-routes';
 import { slewOwnShipFromSelfState } from './awareness/slew-wiring';
@@ -41,7 +42,7 @@ import {
   FileBlobStore,
 } from './uploads/file-asset-store';
 import { FrigateClient } from './analytics/frigate-client';
-import { FRIGATE_EVENT_TOPIC, frigateSlug } from './analytics/frigate-events';
+import { FRIGATE_EVENT_TOPIC, frigateSlug, parseFrigateEvent } from './analytics/frigate-events';
 import { connectFrigateMqtt, type IMqttConnection } from './analytics/frigate-mqtt';
 import { registerFrigateClipRoutes } from './analytics/frigate-clip-routes';
 import { fetchFrigateClip } from './analytics/frigate-clip-fetch';
@@ -105,6 +106,7 @@ const INCIDENT_SWEEP_MS = 5 * 60 * 1000;
 // Safety-camera watchdog: poll go2rtc health this often; the hysteresis thresholds turn that into a
 // ~45 s debounce before a "camera dark" alarm (and ~30 s before it clears).
 const WATCHDOG_POLL_MS = 15_000;
+const VISUAL_REFINE_CHECK_MS = 1000; // how often the experimental MOB refine checks for track loss
 // A retention budget for the incidents subtree, independent of the DVR/upload budgets. Pinned
 // bundles are never pruned.
 const INCIDENT_QUOTA: IBundleQuota = {
@@ -171,6 +173,8 @@ export = function (app: ServerAPI): Plugin {
   // camera the operator was already manually recording).
   let mobRecording: string[] = [];
   let mob: MobController | null = null;
+  let visualRefine: MobVisualRefine | null = null;
+  let visualRefineTimer: ReturnType<typeof setInterval> | null = null;
   let syncTimer: ReturnType<typeof setTimeout> | null = null;
 
   const ssrfOptions: ISsrfOptions = { allowPrivate: true };
@@ -227,6 +231,36 @@ export = function (app: ServerAPI): Plugin {
       clearTimeout(syncTimer);
     }
     syncTimer = setTimeout(() => void runSync(), SYNC_DEBOUNCE_MS);
+  }
+
+  // A1 (experimental): turn one Frigate person detection into a small bounded relativeMove nudge on
+  // top of MOB's authoritative geo-pointing. Only runs while MOB is active AND the refine is engaged.
+  // The Frigate camera NAME is matched to the sk-video camera id (operators give the camera the same
+  // id as its Frigate name); we only nudge a camera the MOB controller is already geo-aiming — i.e. one
+  // with absolute PTZ — so the authoritative baseline keeps re-asserting underneath the correction.
+  // frigatePersonDetection applies the honesty filters (skip 'end'/false-positive, finite score, a
+  // normalised box). An unmatched camera is a safe no-op: geo-pointing simply stays in control.
+  function feedVisualRefine(payload: unknown): void {
+    if (!visualRefine?.isActive() || mob?.isActive() !== true) {
+      return;
+    }
+    const msg = parseFrigateEvent(payload);
+    if (!msg) {
+      return;
+    }
+    const found = frigatePersonDetection(msg);
+    if (!found || cameras?.get(found.camera)?.capabilities?.absolutePtz !== true) {
+      return;
+    }
+    const correction = visualRefine.onDetection(found.detection);
+    if (correction) {
+      void ptz
+        ?.controllerFor(found.camera)
+        .then((controller) =>
+          controller.moveRelative({ pan: correction.pan, tilt: correction.tilt }),
+        )
+        .catch(() => undefined);
+    }
   }
 
   const plugin: Plugin = {
@@ -294,6 +328,13 @@ export = function (app: ServerAPI): Plugin {
           description: 'Comma-separated Frigate zones an object must enter to alert; blank = any.',
           default: '',
         },
+        mobVisualRefine: {
+          type: 'boolean',
+          title: 'Experimental visual MOB refine (NOT safety-rated)',
+          description:
+            'When ON, during a man-overboard event a Frigate person detection adds a small, bounded visual correction on TOP of the authoritative position-based aim. It fails safe — on track loss it notifies and reverts to position-based aim. It can lock onto a wake/whitecap and cannot hold a tiny person on open water; it never replaces the geo-pointing baseline and makes no safety claim. Requires Frigate configured above, and only refines a PTZ camera whose id here matches its Frigate camera name. OFF by default.',
+          default: false,
+        },
       },
     }),
 
@@ -306,6 +347,7 @@ export = function (app: ServerAPI): Plugin {
       frigateLabels?: string;
       frigateMinScore?: number;
       frigateZones?: string;
+      mobVisualRefine?: boolean;
     }) {
       try {
         const dataDir = app.getDataDirPath();
@@ -423,8 +465,10 @@ export = function (app: ServerAPI): Plugin {
         bridge.registerAction('cameras.mob.activate', (value) => {
           if (value === false) {
             mob?.deactivate();
+            visualRefine?.deactivate();
           } else {
             mob?.activate();
+            visualRefine?.activate();
           }
           return { state: 'COMPLETED', statusCode: 200 };
         });
@@ -595,6 +639,13 @@ export = function (app: ServerAPI): Plugin {
         // person/car/boat detections as Signal K notifications + cached, same-origin-served clips.
         // Never bundled; close-range COCO-class only. Active only when an MQTT URL is configured.
         const frigateMqttUrl = options?.frigateMqttUrl?.trim() ?? '';
+        if (options?.mobVisualRefine === true && !frigateMqttUrl) {
+          // The experimental refine has no detection source without Frigate — say so rather than
+          // sit silently inert while the operator believes visual refine is armed.
+          log(
+            'mobVisualRefine is enabled but no Frigate MQTT URL is configured; the experimental visual refine will not run.',
+          );
+        }
         if (frigateMqttUrl) {
           frigateClips = new AssetStore({
             index: new FileAssetIndexPersistence(dataDir, 'frigate-clips.json'),
@@ -631,15 +682,37 @@ export = function (app: ServerAPI): Plugin {
                 : null,
             log,
           });
+          // A1 (EXPERIMENTAL, NOT safety-rated): when the operator opts in, a confident Frigate person
+          // detection adds a small, bounded relativeMove correction ON TOP of MOB's authoritative
+          // geo-pointing. It fails safe — a periodic check reverts to position-based aim and notifies
+          // when detections stall. It needs Frigate, so it lives in this block and is null otherwise.
+          if (options?.mobVisualRefine === true) {
+            visualRefine = new MobVisualRefine({
+              raiseNotification: (message) =>
+                void skBridge.raiseNotification('mob.visualRefine.lost', {
+                  state: 'alert',
+                  message,
+                }),
+              clearNotification: () => void skBridge.clearNotification('mob.visualRefine.lost'),
+              log,
+            });
+            visualRefineTimer = setInterval(
+              () => visualRefine?.checkTrackLoss(),
+              VISUAL_REFINE_CHECK_MS,
+            );
+            visualRefineTimer.unref?.();
+          }
           try {
             frigateMqtt = connectFrigateMqtt({ url: frigateMqttUrl });
             frigateMqtt.on('error', (err) =>
               app.error?.(`[sk-video] frigate mqtt: ${redactUrl(err.message)}`),
             );
             frigateMqtt.on('message', (topic, payload) => {
-              if (topic === FRIGATE_EVENT_TOPIC) {
-                frigateClient?.handleMessage(payload);
+              if (topic !== FRIGATE_EVENT_TOPIC) {
+                return;
               }
+              frigateClient?.handleMessage(payload);
+              feedVisualRefine(payload);
             });
             frigateMqtt.subscribe(FRIGATE_EVENT_TOPIC);
           } catch (err) {
@@ -714,6 +787,12 @@ export = function (app: ServerAPI): Plugin {
       }
       frigateMqtt?.end(true); // stop consuming events before the client/bridge are torn down
       frigateMqtt = null;
+      if (visualRefineTimer) {
+        clearInterval(visualRefineTimer);
+        visualRefineTimer = null;
+      }
+      visualRefine?.deactivate(); // clears any outstanding "tracking lost" banner while bridge is live
+      visualRefine = null;
       frigateClient?.reset(); // clears outstanding Frigate alerts while the bridge is still live
       frigateClient = null;
       frigateClips = null;
@@ -823,10 +902,13 @@ export = function (app: ServerAPI): Plugin {
         }
         if ((req.body as { active?: unknown })?.active === false) {
           mob.deactivate();
+          visualRefine?.deactivate();
           res.json({ active: false });
           return;
         }
-        res.json(mob.activate());
+        const status = mob.activate();
+        visualRefine?.activate();
+        res.json(status);
       });
 
       // Same-origin transport proxy to go2rtc (WHEP / frame.jpeg / HLS).
@@ -834,6 +916,7 @@ export = function (app: ServerAPI): Plugin {
         apiPort: () => gateway?.apiPort ?? 1984,
         hasCamera: (id: string) => cameras?.get(id) !== null && cameras?.get(id) !== undefined,
         hasSubstream: (id: string) => cameras?.get(id)?.media?.substreamPath !== undefined,
+        hasBackchannel: (id: string) => cameras?.get(id)?.capabilities?.audioBackchannel === true,
       });
 
       // Read-only role/placement layout hints for the widget to auto-arrange feeds by area.

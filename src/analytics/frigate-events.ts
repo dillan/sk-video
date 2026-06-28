@@ -21,6 +21,8 @@ export interface IFrigateObject {
   has_snapshot?: boolean;
   entered_zones?: unknown;
   current_zones?: unknown;
+  /** Frigate's bounding box as frame ratios [x, y, w, h] — used by the experimental MOB refine (A1). */
+  box?: unknown;
 }
 
 export interface IFrigateEventMessage {
