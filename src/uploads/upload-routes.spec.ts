@@ -25,6 +25,37 @@ function makeStore(limits?: ConstructorParameters<typeof AssetStore>[0]['limits'
     remove: () => {},
     has: () => true,
     pathFor: (id) => `/data/videos/${id}`,
+    stageFromStream: (stream, maxBytes) =>
+      new Promise((resolve) => {
+        const headChunks: Buffer[] = [];
+        let size = 0;
+        let headLen = 0;
+        let settled = false;
+        const done = (outcome: 'ok' | 'too-large' | 'error'): void => {
+          if (settled) return;
+          settled = true;
+          resolve({
+            ref: 'staged',
+            size,
+            head: new Uint8Array(Buffer.concat(headChunks)),
+            outcome,
+          });
+        };
+        stream.on('data', (c: Buffer) => {
+          if (settled) return;
+          size += c.length;
+          if (size > maxBytes) return done('too-large');
+          if (headLen < 64) {
+            const take = c.subarray(0, 64 - headLen);
+            headChunks.push(Buffer.from(take));
+            headLen += take.length;
+          }
+        });
+        stream.on('end', () => done('ok'));
+        stream.on('error', () => done('error'));
+      }),
+    commitStaged: () => {},
+    discardStaged: () => {},
   };
   let n = 0;
   return new AssetStore({
@@ -86,6 +117,14 @@ function fakeReq(over: Partial<Request> & { body?: unknown } = {}): Request {
   } as unknown as Request;
 }
 
+/** A POST /videos request as a real readable body stream (the route streams it to the store). */
+function uploadReq(body: Buffer | Uint8Array, headers: Record<string, string> = {}): Request {
+  const stream = Readable.from(Buffer.from(body)) as unknown as Request & Readable;
+  (stream as unknown as { params: unknown }).params = {};
+  (stream as unknown as { headers: unknown }).headers = headers;
+  return stream as never;
+}
+
 describe('registerUploadRoutes', () => {
   function setup(store = makeStore(), streamBytes = 100) {
     const { router, handlers } = fakeRouter();
@@ -102,10 +141,7 @@ describe('registerUploadRoutes', () => {
   it('stores a valid upload and returns 201 with the asset', async () => {
     const { handlers } = setup();
     const res = new FakeRes();
-    handlers.get('POST /videos')!(
-      fakeReq({ body: mp4(), headers: { 'x-filename': 'clip.mp4' } }),
-      res as never,
-    );
+    handlers.get('POST /videos')!(uploadReq(mp4(), { 'x-filename': 'clip.mp4' }), res as never);
     await once(res, 'finish');
     expect(res.statusCode).toBe(201);
     expect((res.body as { contentType: string }).contentType).toBe('video/mp4');
@@ -114,7 +150,7 @@ describe('registerUploadRoutes', () => {
   it('rejects a non-video upload with 415', async () => {
     const { handlers } = setup();
     const res = new FakeRes();
-    handlers.get('POST /videos')!(fakeReq({ body: Buffer.from('<html></html>') }), res as never);
+    handlers.get('POST /videos')!(uploadReq(Buffer.from('<html></html>')), res as never);
     await once(res, 'finish');
     expect(res.statusCode).toBe(415);
   });
@@ -122,7 +158,7 @@ describe('registerUploadRoutes', () => {
   it('rejects an over-quota upload with 413', async () => {
     const { handlers } = setup(makeStore({ maxFileBytes: 10, maxTotalBytes: 10, maxFileCount: 1 }));
     const res = new FakeRes();
-    handlers.get('POST /videos')!(fakeReq({ body: mp4(100) }), res as never);
+    handlers.get('POST /videos')!(uploadReq(mp4(100)), res as never);
     await once(res, 'finish');
     expect(res.statusCode).toBe(413);
   });

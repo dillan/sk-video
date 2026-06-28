@@ -1,9 +1,24 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { mkdtempSync, rmSync, statSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
+import {
+  mkdtempSync,
+  rmSync,
+  statSync,
+  readFileSync,
+  readdirSync,
+  writeFileSync,
+  existsSync,
+} from 'node:fs';
+import { Readable } from 'node:stream';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { FileAssetIndexPersistence, FileBlobStore, createFileAssetStore } from './file-asset-store';
-import type { IVideoAsset } from './asset-store';
+import { AssetQuotaError, AssetRejectedError, type IVideoAsset } from './asset-store';
+
+const streamOf = (bytes: Uint8Array) => Readable.from(Buffer.from(bytes)) as NodeJS.ReadableStream;
+const stagingFiles = (dir: string): string[] =>
+  existsSync(join(dir, 'videos'))
+    ? readdirSync(join(dir, 'videos')).filter((f) => f.startsWith('.staging-'))
+    : [];
 
 /** A valid minimal mp4 header (ftyp + isom) padded to a chosen size. */
 function mp4(size = 64): Uint8Array {
@@ -237,5 +252,42 @@ describe('createFileAssetStore', () => {
     });
     expect(() => store.add(mp4(100), 'too-big.mp4')).toThrow();
     expect(existsSync(join(dir, 'videos'))).toBe(false);
+  });
+
+  describe('addFromStream (streamed upload)', () => {
+    it('streams a valid upload to disk, commits it, and leaves no staging file', async () => {
+      const dir = freshDir();
+      const store = createFileAssetStore(dir);
+      const saved = await store.addFromStream(streamOf(mp4(2048)), 'big clip.mp4');
+      expect(saved.size).toBe(2048);
+      expect(saved.contentType).toBe('video/mp4');
+      expect(existsSync(join(dir, 'videos', saved.id))).toBe(true);
+      expect(store.usage()).toEqual({ totalBytes: 2048, fileCount: 1 });
+      expect(stagingFiles(dir)).toEqual([]); // the temp file was renamed into place, not left behind
+    });
+
+    it('caps an over-large stream and leaves no asset or staging file behind', async () => {
+      const dir = freshDir();
+      const store = createFileAssetStore(dir, {
+        maxFileBytes: 100,
+        maxTotalBytes: 1000,
+        maxFileCount: 10,
+      });
+      await expect(store.addFromStream(streamOf(mp4(5000)), 'too-big.mp4')).rejects.toBeInstanceOf(
+        AssetQuotaError,
+      );
+      expect(store.list()).toHaveLength(0);
+      expect(stagingFiles(dir)).toEqual([]);
+    });
+
+    it('rejects a non-video stream and discards the staged blob', async () => {
+      const dir = freshDir();
+      const store = createFileAssetStore(dir);
+      await expect(
+        store.addFromStream(streamOf(Buffer.from('<html>not a video</html>')), 'x.html'),
+      ).rejects.toBeInstanceOf(AssetRejectedError);
+      expect(store.list()).toHaveLength(0);
+      expect(stagingFiles(dir)).toEqual([]);
+    });
   });
 });
