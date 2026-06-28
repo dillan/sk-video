@@ -122,7 +122,8 @@ function asAlarmState(value: unknown): AlarmState {
     : 'alarm';
 }
 // Frigate interop (consume a user-run Frigate; never bundled). Clips are short — cap size/quota.
-const FRIGATE_CLIP_MAX_BYTES = 200 * 1024 * 1024; // 200 MiB per clip
+// Event clips are a few-to-tens of MiB; this bounds the in-memory fetch so a burst can't OOM a Pi.
+const FRIGATE_CLIP_MAX_BYTES = 64 * 1024 * 1024; // 64 MiB per clip
 const FRIGATE_FETCH_TIMEOUT_MS = 15_000;
 const FRIGATE_CLIP_LIMITS = {
   maxFileBytes: FRIGATE_CLIP_MAX_BYTES,

@@ -49,13 +49,18 @@ export function parseStreamHealth(raw: unknown, cameraId: string): IStreamHealth
   };
 }
 
+/** A stalled go2rtc must not hang the proxy handler forever — bound every loopback read. */
+const LOOPBACK_TIMEOUT_MS = 5000;
+
 export async function fetchStreamHealth(opts: {
   apiPort: number;
   cameraId: string;
   fetchImpl?: typeof fetch;
 }): Promise<IStreamHealth> {
   const doFetch = opts.fetchImpl ?? fetch;
-  const upstream = await doFetch(go2rtcStreamsUrl(opts.apiPort, opts.cameraId));
+  const upstream = await doFetch(go2rtcStreamsUrl(opts.apiPort, opts.cameraId), {
+    signal: AbortSignal.timeout(LOOPBACK_TIMEOUT_MS),
+  });
   const data: unknown = await upstream.json();
   return parseStreamHealth(data, opts.cameraId);
 }

@@ -15,6 +15,9 @@ import {
  */
 
 const DEFAULT_RETENTION_MS = 60 * 60 * 1000; // forget an event id an hour after first seen
+// A burst of simultaneous detection-ends must not fetch+buffer many clips at once and OOM a Pi. Each
+// clip fetch is bounded in size by the caller; this bounds how many run concurrently.
+const MAX_CONCURRENT_CLIP_FETCHES = 2;
 
 export interface IFrigateClientDeps {
   config: IFrigateMatchConfig;
@@ -41,6 +44,7 @@ export class FrigateClient {
   private readonly active = new Map<string, IActiveEvent>();
   private readonly now: () => number;
   private readonly retentionMs: number;
+  private clipFetchesInFlight = 0;
 
   constructor(private readonly deps: IFrigateClientDeps) {
     this.now = deps.now ?? (() => Date.now());
@@ -100,6 +104,15 @@ export class FrigateClient {
   }
 
   private async attachClip(object: IFrigateNormalized, key: string): Promise<void> {
+    if (this.clipFetchesInFlight >= MAX_CONCURRENT_CLIP_FETCHES) {
+      // Best-effort: under a detection burst the alert still fires; we just skip this clip rather than
+      // pile up many multi-MiB in-memory fetches at once.
+      this.deps.log?.(
+        `frigate clip skipped for ${object.id}: ${this.clipFetchesInFlight} fetches already in flight`,
+      );
+      return;
+    }
+    this.clipFetchesInFlight += 1;
     try {
       const bytes = await this.deps.fetchClip(object.id);
       const assetId = this.deps.storeClip(object.id, bytes);
@@ -114,6 +127,8 @@ export class FrigateClient {
       }
     } catch (err) {
       this.deps.log?.(`frigate clip fetch failed for ${object.id}: ${errMessage(err)}`);
+    } finally {
+      this.clipFetchesInFlight -= 1;
     }
   }
 

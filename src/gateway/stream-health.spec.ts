@@ -59,7 +59,9 @@ describe('fetchStreamHealth', () => {
   it('fetches the loopback /api/streams URL for the camera and returns parsed health', async () => {
     const fetchImpl = vi.fn().mockResolvedValue({ json: () => Promise.resolve(sample) });
     const h = await fetchStreamHealth({ apiPort: 1984, cameraId: 'cam', fetchImpl });
-    expect(fetchImpl).toHaveBeenCalledWith('http://127.0.0.1:1984/api/streams?src=cam');
+    expect(fetchImpl).toHaveBeenCalledWith('http://127.0.0.1:1984/api/streams?src=cam', {
+      signal: expect.any(AbortSignal),
+    });
     expect(h).toMatchObject({ online: true, producers: 1 });
     expect(h.codecs).toContain('H264');
   });

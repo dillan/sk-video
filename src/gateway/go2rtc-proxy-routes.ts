@@ -18,6 +18,9 @@ export interface IProxyContext {
 // An SDP offer is only a few KB; cap the raw read so a same-origin client can't stream an unbounded
 // body into memory through /talk or /whep.
 const MAX_SDP_BYTES = 64 * 1024;
+// A stalled go2rtc must not hang a proxy handler indefinitely — bound every loopback fetch.
+const LOOPBACK_TIMEOUT_MS = 10_000;
+const loopbackSignal = (): AbortSignal => AbortSignal.timeout(LOOPBACK_TIMEOUT_MS);
 
 /** Reads the raw request body (e.g. an SDP offer the server did not parse), bounded to MAX_SDP_BYTES. */
 function readRawBody(req: Request): Promise<string> {
@@ -73,6 +76,7 @@ export function registerProxyRoutes(router: IRouter, ctx: IProxyContext): void {
         method: 'POST',
         headers: { 'Content-Type': 'application/sdp' },
         body: offer,
+        signal: loopbackSignal(),
       });
       const answer = await upstream.text();
       res.status(upstream.status).set('Content-Type', 'application/sdp').send(answer);
@@ -102,6 +106,7 @@ export function registerProxyRoutes(router: IRouter, ctx: IProxyContext): void {
         method: 'POST',
         headers: { 'Content-Type': 'application/sdp' },
         body: offer,
+        signal: loopbackSignal(),
       });
       const answer = await upstream.text();
       res.status(upstream.status).set('Content-Type', 'application/sdp').send(answer);
@@ -129,7 +134,7 @@ export function registerProxyRoutes(router: IRouter, ctx: IProxyContext): void {
       return;
     }
     try {
-      const upstream = await doFetch(url);
+      const upstream = await doFetch(url, { signal: loopbackSignal() });
       const contentType = upstream.headers.get('content-type');
       if (contentType) {
         res.setHeader('Content-Type', contentType);
@@ -193,7 +198,7 @@ export function registerProxyRoutes(router: IRouter, ctx: IProxyContext): void {
       }
       try {
         const url = go2rtcApiUrl(ctx.apiPort(), transport, id);
-        const upstream = await doFetch(url);
+        const upstream = await doFetch(url, { signal: loopbackSignal() });
         const contentType = upstream.headers.get('content-type');
         if (contentType) {
           res.setHeader('Content-Type', contentType);

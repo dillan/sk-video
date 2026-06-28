@@ -134,6 +134,7 @@ describe('registerProxyRoutes', () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/sdp' },
         body: 'v=0\r\no=offer',
+        signal: expect.any(AbortSignal),
       });
       expect(res.statusCode).toBe(201);
       expect(res.headers['Content-Type']).toBe('application/sdp');
@@ -205,6 +206,7 @@ describe('registerProxyRoutes', () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/sdp' },
         body: 'v=0\r\noffer',
+        signal: expect.any(AbortSignal),
       });
       expect(res.statusCode).toBe(201);
       expect(res.headers['Content-Type']).toBe('application/sdp');
@@ -392,7 +394,9 @@ describe('registerProxyRoutes', () => {
         fakeReq({ params: { id: 'foredeck' } as never }),
         res,
       );
-      expect(fetchImpl).toHaveBeenCalledWith('http://127.0.0.1:1984/api/streams?src=foredeck');
+      expect(fetchImpl).toHaveBeenCalledWith('http://127.0.0.1:1984/api/streams?src=foredeck', {
+        signal: expect.any(AbortSignal),
+      });
       expect(res.statusCode).toBe(200);
       expect(res.body).toMatchObject({ online: true, producers: 1, codecs: ['H264'] });
       expect(JSON.stringify(res.body)).not.toContain('secret');
@@ -504,7 +508,7 @@ describe('registerProxyRoutes', () => {
         const res = makeRes();
         await handlers.get(c.key)!(fakeReq({ params: { id: 'foredeck' } as never }), res);
         expect(fetchImpl).toHaveBeenCalledTimes(1);
-        expect(fetchImpl).toHaveBeenCalledWith(c.expectedUrl);
+        expect(fetchImpl).toHaveBeenCalledWith(c.expectedUrl, { signal: expect.any(AbortSignal) });
         expect(res.statusCode).toBe(200);
         expect(res.headers['Content-Type']).toBe('image/jpeg');
         expect(Array.from(res.sent as Buffer)).toEqual([0xff, 0xd8, 0xff]);

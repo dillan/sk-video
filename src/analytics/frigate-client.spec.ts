@@ -86,6 +86,22 @@ describe('FrigateClient', () => {
     expect(fetched).toEqual(['evt-1']);
   });
 
+  it('caps concurrent clip fetches so a detection burst cannot pile up in memory', async () => {
+    const fetched: string[] = [];
+    const { client } = setup({
+      fetchClip: (id) => {
+        fetched.push(id);
+        return new Promise<Uint8Array>(() => {}); // never resolves: holds the fetch in flight
+      },
+    });
+    for (const id of ['a', 'b', 'c']) {
+      client.handleMessage(event('new', { id }));
+      client.handleMessage(event('end', { id, has_clip: true }));
+    }
+    await flush(() => fetched.length >= 2);
+    expect(fetched).toEqual(['a', 'b']); // the third end is skipped, not buffered
+  });
+
   it('does not crash or update when the clip fetch fails', async () => {
     const { client, raised } = setup({
       fetchClip: async () => {
