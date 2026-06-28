@@ -19,6 +19,12 @@ describe('distanceMeters', () => {
     expect(distanceMeters(ORIGIN, at(0, 1000))).toBeCloseTo(1000, 0);
     expect(distanceMeters(ORIGIN, at(300, 400))).toBeCloseTo(500, 0);
   });
+
+  it('wraps the antimeridian: 179.9999 and -179.9999 are metres apart, not ~40000 km', () => {
+    const here = { latitude: 0, longitude: 179.9999 };
+    const there = { latitude: 0, longitude: -179.9999 };
+    expect(distanceMeters(here, there)).toBeLessThan(100);
+  });
 });
 
 describe('computeCpa', () => {
@@ -56,5 +62,16 @@ describe('computeCpa', () => {
     const r = computeCpa(own, target);
     expect(r.tcpaSeconds).toBe(0);
     expect(r.cpaMeters).toBeCloseTo(800, 0);
+  });
+
+  it('computes a sane range across the antimeridian instead of a garbage value', () => {
+    const own: IKinematics = { position: { latitude: 0, longitude: 179.99 }, sogMps: 0, cogDeg: 0 };
+    const target: IKinematics = {
+      position: { latitude: 0, longitude: -179.99 },
+      sogMps: 4,
+      cogDeg: 270,
+    };
+    const r = computeCpa(own, target);
+    expect(r.rangeMeters).toBeLessThan(3000); // ~2.2 km apart, not ~40000 km
   });
 });

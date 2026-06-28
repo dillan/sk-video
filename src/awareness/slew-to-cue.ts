@@ -11,8 +11,10 @@ import type { ICpaResult, IKinematics } from './cpa';
 
 export interface ISlewOwnShip {
   position: ILatLon;
-  /** Reference heading for aiming, degrees [0, 360) — true heading, or COG as a fallback. */
+  /** Reference heading for aiming, degrees [0, 360) — true heading, or COG only while making way. */
   headingDeg: number;
+  /** Whether the aim reference is a real heading or COG (a heading proxy only while moving). */
+  headingSource: 'heading' | 'cog';
   /** Speed over ground (m/s) and course over ground (deg) — the motion vector for CPA. */
   sogMps: number;
   cogDeg: number;

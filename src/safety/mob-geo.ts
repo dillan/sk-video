@@ -36,6 +36,9 @@ export interface ICameraAimConfig {
 export interface IAim {
   pan: number;
   tilt: number;
+  /** True when the target's bearing fell outside the camera's pan range, so pan was clamped to ±1
+   * (the camera points at its mechanical limit, not the target). */
+  panClamped: boolean;
 }
 
 /** Initial great-circle bearing from `from` to `to`, in degrees [0, 360). */
@@ -70,9 +73,12 @@ export function computeAim(ship: IOwnShip, target: ILatLon, camera: ICameraAimCo
   const bearing = bearingTo(ship.position, target);
   const relativeToBow = relativeBearing(bearing, ship.headingDeg);
   const panAngleDeg = relativeBearing(relativeToBow, camera.mountBearingDeg ?? 0);
+  const rawPan = camera.calibration.pan.offset + camera.calibration.pan.scalePerDeg * panAngleDeg;
   return {
     pan: degToNormalized(panAngleDeg, camera.calibration.pan),
     // The casualty is at the waterline; 0° elevation is the right default without a range estimate.
     tilt: degToNormalized(0, camera.calibration.tilt),
+    // Disclose when the bearing is beyond the camera's pan range (pan saturated at ±1).
+    panClamped: Math.abs(rawPan) > 1,
   };
 }

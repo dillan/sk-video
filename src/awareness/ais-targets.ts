@@ -20,6 +20,10 @@ export interface IAisTarget {
   position: ILatLon;
   sogMps: number;
   cogDeg: number;
+  /** Age of the position fix in ms (null when the target carries no timestamp). */
+  positionAgeMs: number | null;
+  /** True when SOG and/or COG were absent and defaulted to 0 — the motion is assumed, not measured. */
+  motionAssumed: boolean;
 }
 
 export interface INearestCpaOptions {
@@ -27,12 +31,13 @@ export interface INearestCpaOptions {
   maxRangeMeters?: number;
   /** Ignore targets whose CPA is more than this far out (seconds). Default 1 hour. */
   maxTcpaSeconds?: number;
-  /** The own-vessel key to exclude from the target list. */
-  selfId?: string;
+  /** Ignore targets whose position fix is older than this (ms). Default 10 minutes. */
+  maxPositionAgeMs?: number;
 }
 
 const DEFAULT_MAX_RANGE_M = 18_520; // 10 nautical miles
 const DEFAULT_MAX_TCPA_S = 3_600; // 1 hour
+const DEFAULT_MAX_POSITION_AGE_MS = 600_000; // 10 minutes
 
 function num(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
@@ -44,7 +49,11 @@ function extractMmsi(key: string): string | undefined {
 }
 
 /** Parse the Signal K `vessels` tree into AIS targets with a valid position (self + beacons excluded). */
-export function parseAisTargets(vessels: unknown, selfId?: string): IAisTarget[] {
+export function parseAisTargets(
+  vessels: unknown,
+  selfId?: string,
+  now: number = Date.now(),
+): IAisTarget[] {
   if (!vessels || typeof vessels !== 'object') {
     return [];
   }
@@ -57,7 +66,7 @@ export function parseAisTargets(vessels: unknown, selfId?: string): IAisTarget[]
       mmsi?: unknown;
       name?: unknown;
       navigation?: {
-        position?: { value?: { latitude?: unknown; longitude?: unknown } };
+        position?: { value?: { latitude?: unknown; longitude?: unknown }; timestamp?: unknown };
         speedOverGround?: { value?: unknown };
         courseOverGroundTrue?: { value?: unknown };
       };
@@ -72,17 +81,29 @@ export function parseAisTargets(vessels: unknown, selfId?: string): IAisTarget[]
     if (lat === undefined || lon === undefined) {
       continue;
     }
+    const sog = num(v?.navigation?.speedOverGround?.value);
     const cogRad = num(v?.navigation?.courseOverGroundTrue?.value);
     out.push({
       id: key,
       ...(mmsi ? { mmsi } : {}),
       ...(typeof v?.name === 'string' ? { name: v.name } : {}),
       position: { latitude: lat, longitude: lon },
-      sogMps: num(v?.navigation?.speedOverGround?.value) ?? 0,
+      sogMps: sog ?? 0,
       cogDeg: cogRad !== undefined ? (((cogRad * R2D) % 360) + 360) % 360 : 0,
+      positionAgeMs: positionAge(v?.navigation?.position?.timestamp, now),
+      motionAssumed: sog === undefined || cogRad === undefined,
     });
   }
   return out;
+}
+
+/** Age in ms of a position fix from its ISO timestamp, or null when absent/unparseable. */
+function positionAge(timestamp: unknown, now: number): number | null {
+  if (typeof timestamp !== 'string') {
+    return null;
+  }
+  const t = Date.parse(timestamp);
+  return Number.isNaN(t) ? null : now - t;
 }
 
 /**
@@ -96,9 +117,14 @@ export function nearestCpaTarget(
 ): { target: IAisTarget; cpa: ICpaResult } | null {
   const maxRange = options.maxRangeMeters ?? DEFAULT_MAX_RANGE_M;
   const maxTcpa = options.maxTcpaSeconds ?? DEFAULT_MAX_TCPA_S;
+  const maxAge = options.maxPositionAgeMs ?? DEFAULT_MAX_POSITION_AGE_MS;
 
   let best: { target: IAisTarget; cpa: ICpaResult } | null = null;
   for (const target of targets) {
+    // Drop a stale fix — a long-departed vessel lingers in the model and must not be cued as live.
+    if (target.positionAgeMs !== null && target.positionAgeMs > maxAge) {
+      continue;
+    }
     const cpa = computeCpa(own, {
       position: target.position,
       sogMps: target.sogMps,

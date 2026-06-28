@@ -15,14 +15,22 @@ const CAL = { pan: { offset: 0, scalePerDeg: 0.01 }, tilt: { offset: 0, scalePer
 const calibrated: ICameraAimConfig = { mountBearingDeg: 0, calibration: CAL };
 const uncalibrated: ICameraAimConfig = { mountBearingDeg: 0 };
 
-// Own-ship at origin, pointed north, stationary.
-const own: ISlewOwnShip = { position: ORIGIN, headingDeg: 0, sogMps: 0, cogDeg: 0 };
+// Own-ship at origin, pointed north, stationary (with a real heading reference).
+const own: ISlewOwnShip = {
+  position: ORIGIN,
+  headingDeg: 0,
+  headingSource: 'heading',
+  sogMps: 0,
+  cogDeg: 0,
+};
 
 const target = (id: string, pos: ILatLon, sogMps = 4, cogDeg = 180): IAisTarget => ({
   id,
   position: pos,
   sogMps,
   cogDeg,
+  positionAgeMs: null,
+  motionAssumed: false,
 });
 
 describe('planSlew', () => {
@@ -48,5 +56,13 @@ describe('planSlew', () => {
     const leaving = target('leaving', at(0, 200), 9, 0); // heading away
     expect(planSlew(own, [leaving], calibrated)).toBeNull();
     expect(planSlew(own, [], calibrated)).toBeNull();
+  });
+
+  it('flags panClamped when the target is beyond the camera pan range (astern)', () => {
+    // A target ~5 km due south of a north-pointing boat, closing from astern (bearing ~180°).
+    const astern = target('astern', at(0, -5000), 4, 0);
+    const plan = planSlew(own, [astern], calibrated);
+    expect(plan).not.toBeNull();
+    expect(plan!.aim.panClamped).toBe(true); // 180° * 0.01 = 1.8 -> clamped to ±1
   });
 });

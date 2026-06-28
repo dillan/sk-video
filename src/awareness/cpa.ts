@@ -40,8 +40,13 @@ export function distanceMeters(a: ILatLon, b: ILatLon): number {
 
 /** East/north metre offset of `to` relative to `from` (local tangent plane). */
 function offsetMeters(from: ILatLon, to: ILatLon): { east: number; north: number } {
+  // Wrap the longitude delta to (-180, 180] so a pair straddling the antimeridian (e.g. 179.9 vs
+  // -179.9) reads as ~0.2° apart, not ~360° — otherwise range/CPA explode and a close target is
+  // wrongly dropped by the range gate.
+  let dLon = to.longitude - from.longitude;
+  dLon -= 360 * Math.round(dLon / 360);
   const midLat = ((from.latitude + to.latitude) / 2) * D2R;
-  const east = (to.longitude - from.longitude) * D2R * Math.cos(midLat) * EARTH_RADIUS_M;
+  const east = dLon * D2R * Math.cos(midLat) * EARTH_RADIUS_M;
   const north = (to.latitude - from.latitude) * D2R * EARTH_RADIUS_M;
   return { east, north };
 }

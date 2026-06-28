@@ -10,14 +10,17 @@ import type { ISlewOwnShip } from './slew-to-cue';
  */
 
 const R2D = 180 / Math.PI;
+/** Below this speed over ground (~1 knot) a GPS course is noise, so COG is not a valid heading proxy. */
+const SOG_MIN_FOR_COG_HEADING = 0.5;
 
 function norm360(deg: number): number {
   return ((deg % 360) + 360) % 360;
 }
 
 /**
- * Own-ship state for slewing. Requires a position and an aiming reference (true heading preferred,
- * else course-over-ground). SOG/COG default to 0 when absent (a stationary own-ship is still valid).
+ * Own-ship state for slewing. Requires a position and an aiming reference: a true heading, or — only
+ * while making way — course-over-ground (a stationary/drifting boat's GPS course is noise, so we
+ * refuse it rather than aim at empty sea). Returns null when there is no usable reference.
  */
 export function slewOwnShipFromSelfState(self: ISelfState): ISlewOwnShip | null {
   const pos = self.position.value;
@@ -26,14 +29,25 @@ export function slewOwnShipFromSelfState(self: ISelfState): ISlewOwnShip | null 
   }
   const headingRad = self.headingTrue.value;
   const cogRad = self.courseOverGroundTrue.value;
-  const referenceRad = headingRad ?? cogRad; // heading first; COG only as a fallback
-  if (referenceRad === null || referenceRad === undefined) {
-    return null; // no heading and no course — nothing to aim relative to
+  const sogMps = self.speedOverGround.value ?? 0;
+
+  let referenceRad: number;
+  let headingSource: 'heading' | 'cog';
+  if (headingRad !== null && headingRad !== undefined) {
+    referenceRad = headingRad;
+    headingSource = 'heading';
+  } else if (cogRad !== null && cogRad !== undefined && sogMps >= SOG_MIN_FOR_COG_HEADING) {
+    referenceRad = cogRad; // making way, so course is a usable heading proxy
+    headingSource = 'cog';
+  } else {
+    return null; // no true heading, and not making way — nothing trustworthy to aim relative to
   }
+
   return {
     position: { latitude: pos.latitude, longitude: pos.longitude },
     headingDeg: norm360(referenceRad * R2D),
-    sogMps: self.speedOverGround.value ?? 0,
+    headingSource,
+    sogMps,
     cogDeg:
       cogRad !== null && cogRad !== undefined ? norm360(cogRad * R2D) : norm360(referenceRad * R2D),
   };

@@ -19,13 +19,23 @@ function selfState(over: Partial<ISelfState> = {}): ISelfState {
 describe('slewOwnShipFromSelfState', () => {
   it('uses true heading as the reference and COG/SOG for the motion vector (radians -> degrees)', () => {
     const own = slewOwnShipFromSelfState(selfState());
-    expect(own).toMatchObject({ headingDeg: 90, sogMps: 3, cogDeg: 180 });
+    expect(own).toMatchObject({ headingDeg: 90, sogMps: 3, cogDeg: 180, headingSource: 'heading' });
     expect(own!.position).toEqual({ latitude: 47.6, longitude: -122.3 });
   });
 
-  it('falls back to COG as the aiming reference when heading is absent', () => {
-    const own = slewOwnShipFromSelfState(selfState({ headingTrue: reading(null) }));
-    expect(own?.headingDeg).toBe(180); // COG used for the reference
+  it('falls back to COG as the reference only while making way, flagged headingSource:cog', () => {
+    const own = slewOwnShipFromSelfState(
+      selfState({ headingTrue: reading(null), speedOverGround: reading(3) }),
+    );
+    expect(own).toMatchObject({ headingDeg: 180, headingSource: 'cog' });
+  });
+
+  it('refuses to use COG as a heading when stationary (no real heading, SOG below threshold)', () => {
+    expect(
+      slewOwnShipFromSelfState(
+        selfState({ headingTrue: reading(null), speedOverGround: reading(0.1) }),
+      ),
+    ).toBeNull();
   });
 
   it('returns null without a position, or without any heading/course reference', () => {

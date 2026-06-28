@@ -60,9 +60,13 @@ export function registerSlewRoutes(router: IRouter, deps: ISlewRouteDeps): void 
       .aimCamera(id, plan.aim.pan, plan.aim.tilt)
       .then(() => {
         res.json({
-          aimed: true,
+          aimed: true, // the move command was issued (not a guarantee the camera has settled)
           tracking: false, // a single geo-point, not visual tracking — re-POST to re-cue
           camera: id,
+          // The target's bearing is outside the camera's pan range; it points at its limit, not the target.
+          outOfReach: plan.aim.panClamped,
+          // Whether the aim reference was a true heading or COG (a proxy only while making way).
+          headingSource: own.headingSource,
           aim: { pan: plan.aim.pan, tilt: plan.aim.tilt },
           target: {
             id: plan.target.id,
@@ -72,6 +76,10 @@ export function registerSlewRoutes(router: IRouter, deps: ISlewRouteDeps): void 
             rangeMeters: round(plan.cpa.rangeMeters),
             cpaMeters: round(plan.cpa.cpaMeters),
             tcpaSeconds: round(plan.cpa.tcpaSeconds),
+            // null when the target carries no fix timestamp; flags a possibly-stale contact.
+            positionAgeMs: plan.target.positionAgeMs,
+            // true when the target's SOG/COG were absent and assumed (CPA is then approximate).
+            motionAssumed: plan.target.motionAssumed,
           },
         });
       })

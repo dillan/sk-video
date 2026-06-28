@@ -47,7 +47,13 @@ const ptzCamera = {
   placement: { bearingRelativeDeg: 0 },
   calibration: CAL,
 } as unknown as ICamera;
-const own: ISlewOwnShip = { position: ORIGIN, headingDeg: 0, sogMps: 0, cogDeg: 0 };
+const own: ISlewOwnShip = {
+  position: ORIGIN,
+  headingDeg: 0,
+  headingSource: 'heading',
+  sogMps: 0,
+  cogDeg: 0,
+};
 const threat: IAisTarget = {
   id: 'cargo',
   mmsi: '123456789',
@@ -55,6 +61,8 @@ const threat: IAisTarget = {
   position: at(1000, 1000),
   sogMps: 4,
   cogDeg: 180,
+  positionAgeMs: null,
+  motionAssumed: false,
 };
 
 function setup(over: Partial<ISlewRouteDeps> = {}) {
@@ -88,9 +96,22 @@ describe('registerSlewRoutes', () => {
     await flush(() => res.body !== undefined);
     expect(aimed).toHaveLength(1);
     expect(aimed[0].id).toBe('mast');
-    const body = res.body as { aimed: boolean; tracking: boolean; target: { mmsi: string } };
-    expect(body).toMatchObject({ aimed: true, tracking: false });
-    expect(body.target).toMatchObject({ id: 'cargo', mmsi: '123456789', name: 'Cargo' });
+    const body = res.body as {
+      aimed: boolean;
+      tracking: boolean;
+      outOfReach: boolean;
+      headingSource: string;
+      target: { mmsi: string; positionAgeMs: number | null; motionAssumed: boolean };
+    };
+    expect(body).toMatchObject({ aimed: true, tracking: false, headingSource: 'heading' });
+    expect(body.target).toMatchObject({
+      id: 'cargo',
+      mmsi: '123456789',
+      name: 'Cargo',
+      positionAgeMs: null,
+      motionAssumed: false,
+    });
+    expect(typeof body.outOfReach).toBe('boolean');
   });
 
   it('404s an unknown camera', () => {
