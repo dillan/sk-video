@@ -35,6 +35,8 @@ export interface IIntrospectResult {
   imaging: boolean;
   imagingControls: string[];
   audio: boolean;
+  /** The camera reports an audio output (speaker), so go2rtc native two-way audio (A4) is feasible. */
+  audioBackchannel: boolean;
 }
 
 export interface IIntrospectDeps {
@@ -68,6 +70,9 @@ export async function introspectOnvifCamera(
     imaging: caps.imaging,
     imagingControls: caps.imagingControls,
     audio: caps.audioOutput,
+    // A speaker (audio output) is what makes go2rtc's native two-way audio backchannel feasible, so the
+    // /talk route gates on this capability (set server-side from the ONVIF probe, never client-trusted).
+    audioBackchannel: caps.audioOutput,
   };
   const info = caps.deviceInformation;
   if (info?.manufacturer) {

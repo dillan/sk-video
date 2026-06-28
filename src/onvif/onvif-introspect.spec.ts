@@ -8,8 +8,14 @@ function fakeCam(over: Partial<Record<string, unknown>> = {}): IOnvifCam {
     streamUri: 'rtsp://192.168.1.50:554/Streaming/Channels/101',
     snapshotUri: 'http://192.168.1.50/snap.jpg',
     failStatus: false,
+    audioOutputs: [{ token: 'AO1' }] as unknown[],
     ...over,
-  } as { streamUri: string; snapshotUri: string; failStatus: boolean };
+  } as {
+    streamUri: string;
+    snapshotUri: string;
+    failStatus: boolean;
+    audioOutputs: unknown[];
+  };
   return {
     continuousMove: (_o, cb) => cb(null),
     stop: (_o, cb) => cb(null),
@@ -31,7 +37,7 @@ function fakeCam(over: Partial<Record<string, unknown>> = {}): IOnvifCam {
         serialNumber: 'SN123',
         hardwareId: 'HW1',
       }),
-    getAudioOutputs: (cb) => cb(null, [{ token: 'AO1' }]),
+    getAudioOutputs: (cb) => cb(null, o.audioOutputs),
   };
 }
 
@@ -55,8 +61,17 @@ describe('introspectOnvifCamera', () => {
       absolutePtz: true,
       imaging: true,
       audio: true,
+      audioBackchannel: true,
     });
     expect(result.imagingControls).toContain('irCut');
+  });
+
+  it('reports no two-way audio backchannel when the camera has no audio output (speaker)', async () => {
+    const result = await introspectOnvifCamera(
+      { host: '192.168.1.50' },
+      deps({ connectFactory: () => async () => fakeCam({ audioOutputs: [] }) }),
+    );
+    expect(result.audioBackchannel).toBe(false);
   });
 
   it('SSRF-checks the device host before connecting and rejects a blocked host', async () => {
