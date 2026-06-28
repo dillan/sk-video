@@ -76,23 +76,32 @@ export class FileBlobStore implements IBlobStore {
     const ref = join(this.dir, `.staging-${process.pid}-${++this.stageSeq}`);
     return new Promise<IStagedBlob>((resolve) => {
       const out = createWriteStream(ref, { mode: 0o600 });
-      out.on('error', () => fail('error')); // a disk write failure must reject, not crash the process
       const headChunks: Buffer[] = [];
       let size = 0;
       let headLen = 0;
       let settled = false;
+      const head = (): Uint8Array => new Uint8Array(Buffer.concat(headChunks));
       const done = (outcome: IStagedBlob['outcome']): void => {
         if (settled) {
           return;
         }
         settled = true;
-        resolve({ ref, size, head: new Uint8Array(Buffer.concat(headChunks)), outcome });
+        resolve({ ref, size, head: head(), outcome });
       };
       const fail = (outcome: 'too-large' | 'error'): void => {
+        if (settled) {
+          return; // already resolved (e.g. a late write-stream 'error' after a too-large abort)
+        }
+        settled = true;
         out.destroy();
-        rmSync(ref, { force: true });
-        done(outcome);
+        // The write stream's open is ASYNC; wait for it to fully close before unlinking, or rmSync can
+        // race the not-yet-open file and the temp file reappears on disk afterwards.
+        out.once('close', () => {
+          rmSync(ref, { force: true });
+          resolve({ ref, size, head: head(), outcome });
+        });
       };
+      out.on('error', () => fail('error')); // a disk write failure must reject, not crash the process
       stream.on('data', (chunk: Buffer) => {
         if (settled) {
           return;

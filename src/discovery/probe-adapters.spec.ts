@@ -3,25 +3,22 @@ import { adaptOnvifDevice } from './ws-discovery-probe';
 import { parseMdnsRecords } from './mdns-probe';
 
 describe('adaptOnvifDevice', () => {
-  it('prefers the XAddr href and carries hostname/port', () => {
-    expect(
-      adaptOnvifDevice({
-        hostname: '192.168.1.60',
-        port: 80,
-        xaddrs: [{ href: 'http://192.168.1.60/onvif/device_service' }],
-      }),
-    ).toEqual({
-      xaddr: 'http://192.168.1.60/onvif/device_service',
+  // resolve:false hands us a raw ProbeMatch (XAddrs is a space-separated URI string), not a Cam.
+  const rawMatch = (xaddrs: string) => ({ probeMatches: { probeMatch: { XAddrs: xaddrs } } });
+
+  it('parses the XAddr URI into xaddr + hostname + port', () => {
+    expect(adaptOnvifDevice(rawMatch('http://192.168.1.60:8080/onvif/device_service'))).toEqual({
+      xaddr: 'http://192.168.1.60:8080/onvif/device_service',
       hostname: '192.168.1.60',
-      port: 80,
+      port: 8080,
     });
   });
 
-  it('handles a device with no xaddrs and a string port', () => {
-    expect(adaptOnvifDevice({ hostname: 'cam', port: '8000' })).toEqual({
+  it('returns all-undefined for a probe-match with no XAddr', () => {
+    expect(adaptOnvifDevice({ probeMatches: { probeMatch: {} } })).toEqual({
       xaddr: undefined,
-      hostname: 'cam',
-      port: 8000,
+      hostname: undefined,
+      port: undefined,
     });
   });
 });
