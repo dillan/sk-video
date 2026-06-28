@@ -16,9 +16,11 @@ Camera definitions are managed through the standard Signal K Resources API at `/
 | Method | Path | Purpose | Notes |
 | --- | --- | --- | --- |
 | `GET` | `/status` | Plugin health: ready flag, camera count, detected hardware. | — |
-| `GET` | `/cameras/:id/credentials` | Whether a login is stored (presence flags only — **no secrets**). | rate-limited (20/min) |
-| `POST` | `/cameras/:id/credentials` | Store a write-only camera login (never echoed). | rate-limited (20/min) → `204` |
-| `DELETE` | `/cameras/:id/credentials` | Delete a stored login. | rate-limited (20/min) → `204`/`404` |
+| `GET` | `/cameras/:id/credentials` | Whether a login is stored (presence flags only — **no secrets**). | auth required¹ · rate-limited (20/min) |
+| `POST` | `/cameras/:id/credentials` | Store a write-only camera login (never echoed). | auth required¹ · rate-limited (20/min) → `204` |
+| `DELETE` | `/cameras/:id/credentials` | Delete a stored login. | auth required¹ · rate-limited (20/min) → `204`/`404` |
+
+¹ On a server with security enabled, these require an authenticated request (`401` otherwise) so they can't be used to enumerate which cameras have a stored login. On an open server (security disabled) they pass through.
 
 ## Streaming gateway
 

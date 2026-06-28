@@ -72,6 +72,7 @@ The id is validated against the known cameras on every request, so there's nothi
 | --- | --- | --- |
 | Credential leakage in logs | URL/userinfo redaction | `src/security/redact.ts` |
 | Brute force / enumeration | token-bucket rate limiter | `src/security/rate-limit.ts` |
+| Credential-route enumeration | auth gate on a secured server (feature-detects the SK security strategy; fails closed) | `src/security/request-auth.ts` |
 | A stalled dependency hanging a handler | per-call timeouts / `AbortSignal` | `src/security/with-timeout.ts`, loopback fetches |
 | Path traversal on stored files | opaque ids only; `..` rejected; names validated | upload/recording/incident stores |
 | Malicious uploads | magic-byte sniff (not the filename/Content-Type) | `src/uploads/video-sniff.ts` |

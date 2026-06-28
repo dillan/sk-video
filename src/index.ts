@@ -23,6 +23,11 @@ import { registerImagingRoutes } from './onvif/imaging-routes';
 import { registerCalibrationRoute } from './onvif/calibration-routes';
 import { ImagingPresetApplier } from './onvif/imaging-apply';
 import { isAfterDusk } from './safety/dusk';
+import {
+  isAuthorizedSensitiveRequest,
+  type ISecurityStrategy,
+  type IAuthenticatableRequest,
+} from './security/request-auth';
 import { DiscoveryService } from './discovery/discovery-service';
 import { createWsDiscoveryProbe } from './discovery/ws-discovery-probe';
 import { createMdnsProbe } from './discovery/mdns-probe';
@@ -221,6 +226,20 @@ export = function (app: ServerAPI): Plugin {
       return true;
     }
     return false;
+  };
+
+  // The Signal K security strategy isn't in the public ServerAPI types; read it structurally.
+  const securityStrategy = (app as unknown as { securityStrategy?: ISecurityStrategy })
+    .securityStrategy;
+  // Gate a sensitive route: on a secured server, refuse an unauthenticated caller with 401 so the
+  // credential routes can't be used to enumerate which cameras have a stored login. Open servers and
+  // authenticated callers pass through. Returns true when the request was rejected.
+  const unauthorized = (req: Request, res: Response): boolean => {
+    if (isAuthorizedSensitiveRequest(securityStrategy, req as IAuthenticatableRequest)) {
+      return false;
+    }
+    res.status(401).json({ error: 'authentication required' });
+    return true;
   };
 
   async function runSync(): Promise<void> {
@@ -953,9 +972,10 @@ export = function (app: ServerAPI): Plugin {
       });
 
       // Credential presence — booleans only, never the secret — so the UI can show a saved state.
-      // Rate-limited so it can't be used to enumerate which cameras have credentials.
+      // Authenticated (on a secured server) so it can't be used to enumerate which cameras have a
+      // stored login, and rate-limited on top.
       router.get('/cameras/:id/credentials', (req: Request, res: Response) => {
-        if (tooManyRequests(req, res)) {
+        if (unauthorized(req, res) || tooManyRequests(req, res)) {
           return;
         }
         if (!credentials) {
@@ -965,9 +985,9 @@ export = function (app: ServerAPI): Plugin {
         res.json(credentials.presence(String(req.params.id)));
       });
 
-      // Write-only camera credentials.
+      // Write-only camera credentials. Authenticated (storing a login is an operator action) + rate-limited.
       router.post('/cameras/:id/credentials', (req: Request, res: Response) => {
-        if (tooManyRequests(req, res)) {
+        if (unauthorized(req, res) || tooManyRequests(req, res)) {
           return;
         }
         if (!credentials) {
@@ -987,7 +1007,7 @@ export = function (app: ServerAPI): Plugin {
         }
       });
       router.delete('/cameras/:id/credentials', (req: Request, res: Response) => {
-        if (tooManyRequests(req, res)) {
+        if (unauthorized(req, res) || tooManyRequests(req, res)) {
           return;
         }
         if (!credentials) {

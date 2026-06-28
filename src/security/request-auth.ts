@@ -1,0 +1,47 @@
+/**
+ * Authorisation gate for a plugin's own sensitive HTTP routes. Signal K enforces security at the
+ * server, but a plugin route registered through `registerWithRouter` must still gate itself for
+ * anything that could leak information to an unauthenticated caller. The Signal K security strategy is
+ * NOT part of `@signalk/server-api`'s public types, so this feature-detects it structurally and fails
+ * closed when security is on but the caller can't be shown to be logged in.
+ *
+ * Policy:
+ *   - No strategy on the app → security isn't in play; allow.
+ *   - Dummy strategy → the operator runs an open server by choice; allow (nothing to enforce).
+ *   - Security enabled → allow only an authenticated request: one carrying `req.skPrincipal`, or one
+ *     the strategy's own `getLoginStatus` reports as logged in. Anything else (including a thrown
+ *     strategy) is denied.
+ */
+
+export interface ISecurityStrategy {
+  /** True when the no-security ("dummy") strategy is active — i.e. the server runs fully open. */
+  isDummy?: () => boolean;
+  /** The strategy's view of a request's login state; shape varies by server version. */
+  getLoginStatus?: (req: unknown) => { status?: string } | undefined;
+}
+
+export interface IAuthenticatableRequest {
+  /** Set by the Signal K server on an authenticated request when security is enabled. */
+  skPrincipal?: unknown;
+}
+
+export function isAuthorizedSensitiveRequest(
+  strategy: ISecurityStrategy | undefined,
+  req: IAuthenticatableRequest,
+): boolean {
+  if (!strategy) {
+    return true; // the server exposes no strategy → security is not configured
+  }
+  if (strategy.isDummy?.() === true) {
+    return true; // security explicitly disabled → open by the operator's choice
+  }
+  // Security is enabled: require a demonstrably authenticated caller.
+  if (req.skPrincipal !== undefined && req.skPrincipal !== null) {
+    return true;
+  }
+  try {
+    return strategy.getLoginStatus?.(req)?.status === 'loggedIn';
+  } catch {
+    return false; // fail closed on a misbehaving strategy
+  }
+}
