@@ -27,6 +27,10 @@ function errorBody(err: unknown, fallback: string): { error: string } {
 }
 
 export function registerImagingRoutes(router: IRouter, deps: IImagingRouteDeps): void {
+  // Per-camera session baseline: the settings the first time a preset is applied. Presets are computed
+  // relative to this fixed baseline, so re-applying never compounds and Auto/Day restore it.
+  const baselines = new Map<string, IImagingSettings>();
+
   router.get('/cameras/:id/imaging', async (req: Request, res: Response) => {
     if (!deps.ready()) {
       res.status(503).json({ error: 'plugin not started' });
@@ -66,7 +70,12 @@ export function registerImagingRoutes(router: IRouter, deps: IImagingRouteDeps):
     }
     try {
       const current = await deps.getImaging(id);
-      const update = computeImagingUpdate(preset, current);
+      // Capture the session baseline on first use, then compute every preset against it (idempotent).
+      if (!baselines.has(id)) {
+        baselines.set(id, current);
+      }
+      const baseline = baselines.get(id) ?? current;
+      const update = computeImagingUpdate(preset, baseline);
       if (Object.keys(update).length === 0) {
         res.status(409).json({ error: "camera exposes none of this preset's imaging controls" });
         return;
@@ -75,7 +84,7 @@ export function registerImagingRoutes(router: IRouter, deps: IImagingRouteDeps):
       res.json({
         preset,
         applied: update,
-        note: 'best-effort — the camera may clamp or ignore values; Fog/Glare cannot see through dense fog',
+        note: 'best-effort — the camera may clamp or ignore values; Fog/Glare cannot see through dense fog. Auto/Day restore the tone levers.',
       });
     } catch (err) {
       res.status(502).json(errorBody(err, 'imaging write failed'));

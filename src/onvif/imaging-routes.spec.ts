@@ -107,6 +107,26 @@ describe('POST /cameras/:id/imaging/preset', () => {
     expect((res.body as { preset: string }).preset).toBe('night');
   });
 
+  it('captures a session baseline so re-applying is idempotent and Day restores it', async () => {
+    const { handlers, writes } = setup(); // getImaging always returns CURRENT (brightness 50)
+    const post = handlers.get('POST /cameras/:id/imaging/preset')!;
+
+    const r1 = new FakeRes();
+    post(req({ params: { id: 'bow' }, body: { preset: 'night' } }), r1 as unknown as Response);
+    await flush(() => r1.body !== undefined);
+    const r2 = new FakeRes();
+    post(req({ params: { id: 'bow' }, body: { preset: 'night' } }), r2 as unknown as Response);
+    await flush(() => r2.body !== undefined);
+    // Both Night applications write the SAME value (computed against the fixed baseline, not compounded).
+    expect(writes[1].update.brightness).toBeCloseTo(writes[0].update.brightness as number, 5);
+    expect(writes[0].update.brightness).toBeCloseTo(62.5, 5);
+
+    const r3 = new FakeRes();
+    post(req({ params: { id: 'bow' }, body: { preset: 'day' } }), r3 as unknown as Response);
+    await flush(() => r3.body !== undefined);
+    expect(writes[2].update.brightness).toBeCloseTo(50, 5); // Day restores the baseline tone
+  });
+
   it('400s an unknown preset', () => {
     const { handlers, writes } = setup();
     const res = new FakeRes();

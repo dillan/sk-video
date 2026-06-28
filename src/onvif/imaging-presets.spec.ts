@@ -35,17 +35,32 @@ describe('availableControls', () => {
 });
 
 describe('computeImagingUpdate', () => {
-  it('day/auto set only the IR-cut mode and touch no numeric levers', () => {
-    expect(computeImagingUpdate('day', full)).toEqual({ irCutFilter: 'ON' });
-    expect(computeImagingUpdate('auto', full)).toEqual({ irCutFilter: 'AUTO' });
+  it('day/auto set the IR-cut mode and RESTORE the baseline tone levers (a true reset)', () => {
+    expect(computeImagingUpdate('day', full)).toEqual({
+      irCutFilter: 'ON',
+      brightness: 50,
+      contrast: 40,
+      colorSaturation: 60,
+      sharpness: 30,
+    });
+    expect(computeImagingUpdate('auto', full)).toMatchObject({
+      irCutFilter: 'AUTO',
+      brightness: 50,
+    });
   });
 
-  it('night turns IR-cut off and scales brightness up + saturation down, relative to current', () => {
+  it('night turns IR-cut off and scales brightness up + saturation down, relative to the baseline', () => {
     const u = computeImagingUpdate('night', full);
     expect(u.irCutFilter).toBe('OFF');
     expect(u.brightness).toBeCloseTo(50 * 1.25, 5);
     expect(u.colorSaturation).toBeCloseTo(60 * 0.7, 5);
     expect(u.contrast).toBeUndefined(); // night doesn't touch contrast
+  });
+
+  it('is idempotent: applying a preset against a fixed baseline never compounds', () => {
+    const once = computeImagingUpdate('night', full);
+    const twice = computeImagingUpdate('night', full);
+    expect(twice).toEqual(once); // same baseline in -> same write out
   });
 
   it('is scale-independent: the same factors apply on a 0-1 ranged camera', () => {
