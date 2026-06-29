@@ -247,6 +247,22 @@ export const setRecording = async (id: string, active: boolean): Promise<IRecord
   return (await res.json()) as IRecordResult;
 };
 
+// ---- Safety actions (MOB arm/disarm, mark incident, AIS slew) ----
+
+/** Arm or disarm the man-overboard response. Mirrors the shared Signal K PUT action. */
+export const armMob = async (active: boolean): Promise<IMobStatus> => {
+  const res = await send('/mob', { method: 'POST', body: JSON.stringify({ active }) }, 'MOB');
+  return (await res.json()) as IMobStatus;
+};
+
+/** Package an incident bundle now (the reliable manual trigger). */
+export const markIncident = (): Promise<Response> =>
+  send('/incidents', { method: 'POST', body: JSON.stringify({}) }, 'mark incident');
+
+/** Aim one calibrated PTZ camera at the nearest-CPA AIS target (a single deterministic aim). */
+export const slewToCue = (id: string): Promise<Response> =>
+  send(`${cam(id)}/slew-to-cue`, { method: 'POST' }, 'slew');
+
 /**
  * Sign in against Signal K's own auth — SK Video delegates entirely. The same-origin POST sets the
  * `JAUTHENTICATION` cookie; the returned token isn't needed for cookie auth. After it resolves,

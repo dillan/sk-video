@@ -10,6 +10,7 @@ import { useHashRoute } from './lib/router';
 import { NavRail, TabBar } from './components/Nav';
 import { LiveWall } from './screens/LiveWall';
 import { CameraFocus } from './screens/CameraFocus';
+import { Safety } from './screens/Safety';
 import { Stub } from './screens/Stub';
 
 /**
@@ -68,12 +69,7 @@ export function App() {
             note="Camera management, zero-typing onboarding, and PTZ calibration land in a later slice."
           />
         )}
-        {route.cluster === 'safety' && (
-          <Stub
-            title="Safety"
-            note="The man-overboard and AIS-slew console lands in a later slice."
-          />
-        )}
+        {route.cluster === 'safety' && <Safety onMobChange={setMob} />}
       </div>
       <TabBar current={route.cluster} onNavigate={(c) => navigate(c)} />
     </div>

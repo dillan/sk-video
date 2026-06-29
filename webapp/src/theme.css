@@ -505,6 +505,73 @@ button.tile {
   cursor: pointer;
 }
 
+/* ---- MOB / Safety console ---- */
+.mob {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 0;
+}
+.mob__banner {
+  display: flex;
+  align-items: flex-start;
+  line-height: 1.45;
+}
+.mob__header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.mob__pulse {
+  width: 46px;
+  height: 46px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--status-live);
+  animation: safetyPulse 1.6s infinite;
+  box-shadow: 0 0 24px rgba(255, 59, 48, 0.5);
+}
+.mob__title {
+  flex: 1;
+  min-width: 160px;
+}
+.mob__title h1 {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 800;
+}
+.mob__sub {
+  font-size: 13px;
+  color: #ffb3ae;
+  margin-top: 2px;
+}
+.mob__row,
+.mob__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+.mob__arm {
+  min-height: 64px;
+  padding: 0 28px;
+  border: 0;
+  border-radius: 18px;
+  background: var(--status-live);
+  color: #fff;
+  font: inherit;
+  font-size: 18px;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: 0 10px 30px rgba(255, 59, 48, 0.4);
+}
+.mob__arm:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 3px;
+}
+
 /* ---- Responsive: phone gets a bottom tab bar and a single-column stack ---- */
 @media (max-width: 720px) {
   .rail {
