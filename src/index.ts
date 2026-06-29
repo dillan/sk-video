@@ -6,6 +6,7 @@ import { CredentialStore } from './cameras/credential-store';
 import { FileCameraPersistence, FileCredentialPersistence } from './cameras/file-persistence';
 import { createCameraResourceMethods } from './cameras/resource-provider';
 import { registerLayoutRoute } from './cameras/layout-routes';
+import { registerAppRoutes } from './web/app-routes';
 import { validateCamera, sourceEndpointChanged } from './cameras/camera-validation';
 import { assertHostAllowed, type ISsrfOptions } from './security/ssrf-guard';
 import { redactUrl } from './security/redact';
@@ -88,7 +89,7 @@ import { validateTriggerRequest } from './incidents/incident-validation';
 import { go2rtcApiUrl } from './gateway/go2rtc-proxy';
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { readFile as fsReadFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -969,6 +970,28 @@ export = function (app: ServerAPI): Plugin {
           cameras: cameras ? Object.keys(cameras.list()).length : 0,
           hardware,
         });
+      });
+
+      // Serve the SK Video web app (the built Vite bundle in public/) same-origin under /app, alongside
+      // — never shadowing — the API routes. Assets are read once and cached for the process lifetime
+      // (the bundle is static; the plugin restarts on redeploy). Path traversal is rejected upstream in
+      // resolveAssetPath, so a vetted rel can never escape public/.
+      const appPublicDir = join(__dirname, '..', 'public');
+      const appAssetCache = new Map<string, Buffer | null>();
+      registerAppRoutes(router, {
+        readAsset: (rel: string) => {
+          if (appAssetCache.has(rel)) {
+            return appAssetCache.get(rel) ?? null;
+          }
+          let bytes: Buffer | null;
+          try {
+            bytes = readFileSync(join(appPublicDir, rel));
+          } catch {
+            bytes = null;
+          }
+          appAssetCache.set(rel, bytes);
+          return bytes;
+        },
       });
 
       // Credential presence — booleans only, never the secret — so the UI can show a saved state.
