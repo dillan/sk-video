@@ -1,5 +1,13 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { deriveApiBase, describeAuth, fetchStatus, fetchSession, fetchMobStatus } from './api';
+import {
+  deriveApiBase,
+  describeAuth,
+  fetchStatus,
+  fetchSession,
+  fetchMobStatus,
+  login,
+  logout,
+} from './api';
 
 describe('describeAuth', () => {
   it('describes the auth posture for the header chip', () => {
@@ -76,5 +84,39 @@ describe('fetchMobStatus', () => {
   it('throws when the request is not ok (e.g. 503 before start)', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 503 }));
     await expect(fetchMobStatus()).rejects.toThrow('mob 503');
+  });
+});
+
+describe('login / logout (delegated to Signal K auth)', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('POSTs credentials to the Signal K login endpoint with cookies included', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ token: 'x' }) });
+    vi.stubGlobal('fetch', fetchMock);
+    await login('pilot', 'secret');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, opts] = fetchMock.mock.calls[0];
+    expect(url).toBe('/signalk/v1/auth/login');
+    expect(opts).toMatchObject({ method: 'POST', credentials: 'include' });
+    expect(JSON.parse(opts.body as string)).toEqual({ username: 'pilot', password: 'secret' });
+  });
+
+  it('reports a friendly message on bad credentials (401)', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 401 }));
+    await expect(login('pilot', 'nope')).rejects.toThrow('Incorrect username or password.');
+  });
+
+  it('surfaces other failures with the status code', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 500 }));
+    await expect(login('pilot', 'secret')).rejects.toThrow('Sign-in failed (500).');
+  });
+
+  it('logout PUTs to the Signal K logout endpoint with cookies included', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true });
+    vi.stubGlobal('fetch', fetchMock);
+    await logout();
+    const [url, opts] = fetchMock.mock.calls[0];
+    expect(url).toBe('/signalk/v1/auth/logout');
+    expect(opts).toMatchObject({ method: 'PUT', credentials: 'include' });
   });
 });
