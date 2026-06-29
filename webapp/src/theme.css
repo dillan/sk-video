@@ -397,6 +397,114 @@ button.tile {
   font-size: 13px;
 }
 
+/* ---- Camera Focus: full-bleed player + floating glass control dock ---- */
+.focus {
+  flex: 1;
+  min-height: 0;
+}
+.focus__stage {
+  position: relative;
+  height: 100%;
+  min-height: 440px;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: var(--video-mat);
+}
+.player,
+.player__media {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.player__media {
+  object-fit: cover;
+  background: var(--video-mat);
+}
+.focus__top {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  right: 16px;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+.focus__msg {
+  position: absolute;
+  left: 16px;
+  bottom: 92px;
+}
+.focus__dock {
+  position: absolute;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  padding: 10px 12px;
+  max-width: calc(100% - 32px);
+  border-radius: 22px;
+  background: var(--glass);
+  backdrop-filter: blur(22px);
+  -webkit-backdrop-filter: blur(22px);
+  box-shadow:
+    inset 0 0 0 1px var(--inset-ring),
+    0 10px 40px rgba(0, 0, 0, 0.45);
+}
+.dock__group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.iconbtn {
+  min-width: var(--tap-min);
+  height: var(--tap-min);
+  padding: 0 12px;
+  border: 0;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+.iconbtn--wide {
+  padding: 0 16px;
+}
+.iconbtn--stop {
+  background: rgba(255, 59, 48, 0.2);
+  box-shadow: inset 0 0 0 1.5px rgba(255, 59, 48, 0.55);
+  color: #ff7a72;
+  font-size: 11px;
+  font-weight: 800;
+}
+.iconbtn--rec {
+  background: rgba(255, 59, 48, 0.25);
+  color: #ff9a93;
+}
+.iconbtn:focus-visible,
+.btn--ghost:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.btn--ghost {
+  min-height: 38px;
+  padding: 7px 13px;
+  border: 0;
+  border-radius: 13px;
+  background: var(--glass);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow: inset 0 0 0 1px var(--inset-ring);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
 /* ---- Responsive: phone gets a bottom tab bar and a single-column stack ---- */
 @media (max-width: 720px) {
   .rail {

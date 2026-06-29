@@ -15,7 +15,13 @@ type Cams =
  * video + the rich per-tile states (LIVE / still-refresh / went dark) arrive with the player + health
  * wiring; until then tiles show identity + an honest "Connecting…" state.
  */
-export function LiveWall({ mob }: { mob: IMobStatus | null }) {
+export function LiveWall({
+  mob,
+  onOpenCamera,
+}: {
+  mob: IMobStatus | null;
+  onOpenCamera: (id: string) => void;
+}) {
   const [cams, setCams] = useState<Cams>({ state: 'loading' });
   const [vessel, setVessel] = useState<IVesselState | null>(null);
 
@@ -70,7 +76,7 @@ export function LiveWall({ mob }: { mob: IMobStatus | null }) {
       {cams.state === 'ready' && cams.cameras.length > 0 && (
         <div className="mosaic">
           {cams.cameras.map((c, i) => (
-            <CameraTile key={c.id} camera={c} hero={i === 0} />
+            <CameraTile key={c.id} camera={c} hero={i === 0} onOpen={onOpenCamera} />
           ))}
         </div>
       )}

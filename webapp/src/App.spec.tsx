@@ -33,6 +33,9 @@ function mockApi(
       if (u.includes('/vessels/self')) {
         return ok(opts.vessel ?? {});
       }
+      if (u.includes('/transport')) {
+        return ok({ recommended: ['mjpeg'], codecs: [], online: false, note: '' });
+      }
       return ok({});
     }),
   );
@@ -64,6 +67,14 @@ describe('App shell', () => {
     await waitFor(() => expect(screen.getByText('Bow')).toBeTruthy());
     expect(screen.getByText('Stern')).toBeTruthy();
     expect(screen.getByText('2 cameras')).toBeTruthy();
+  });
+
+  it('opens Camera Focus when a tile is tapped', async () => {
+    mockApi({ cameras: { bow: { name: 'Bow', enabled: true } } });
+    render(<App />);
+    const tile = await screen.findByRole('button', { name: /Bow —/ });
+    fireEvent.click(tile);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Back to Live' })).toBeTruthy());
   });
 
   it('shows an honest empty state when there are no cameras', async () => {

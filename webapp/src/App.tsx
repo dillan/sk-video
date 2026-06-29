@@ -9,6 +9,7 @@ import {
 import { useHashRoute } from './lib/router';
 import { NavRail, TabBar } from './components/Nav';
 import { LiveWall } from './screens/LiveWall';
+import { CameraFocus } from './screens/CameraFocus';
 import { Stub } from './screens/Stub';
 
 /**
@@ -42,34 +43,39 @@ export function App() {
 
   return (
     <div className="shell">
-      <NavRail current={route} onNavigate={navigate} authChip={authChip} />
+      <NavRail current={route.cluster} onNavigate={(c) => navigate(c)} authChip={authChip} />
       <div className="content">
         {signInRequired && (
           <div className="reauth" role="status">
             <span>Sign-in required — controls stay read-only until you sign in to Signal K.</span>
           </div>
         )}
-        {route === 'live' && <LiveWall mob={mob} />}
-        {route === 'review' && (
+        {route.cluster === 'live' &&
+          (route.id ? (
+            <CameraFocus cameraId={route.id} onBack={() => navigate('live')} />
+          ) : (
+            <LiveWall mob={mob} onOpenCamera={(id) => navigate('live', id)} />
+          ))}
+        {route.cluster === 'review' && (
           <Stub
             title="Review"
             note="Recordings, the event timeline, incidents, and snapshots land in a later slice."
           />
         )}
-        {route === 'cameras' && (
+        {route.cluster === 'cameras' && (
           <Stub
             title="Cameras"
             note="Camera management, zero-typing onboarding, and PTZ calibration land in a later slice."
           />
         )}
-        {route === 'safety' && (
+        {route.cluster === 'safety' && (
           <Stub
             title="Safety"
             note="The man-overboard and AIS-slew console lands in a later slice."
           />
         )}
       </div>
-      <TabBar current={route} onNavigate={navigate} />
+      <TabBar current={route.cluster} onNavigate={(c) => navigate(c)} />
     </div>
   );
 }

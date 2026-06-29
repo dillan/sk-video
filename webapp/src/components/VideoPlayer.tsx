@@ -1,0 +1,129 @@
+import { useEffect, useRef, useState } from 'react';
+import { frameUrl, hlsUrl, whepUrl, type TTransport } from '../api';
+import { nextTransport } from '../lib/transport';
+
+/**
+ * Same-origin player driven by the server's transport walk (webrtc → hls → mjpeg, reordered for
+ * H.265). It starts at the top rung and falls back on error/stall. Everything stays proxied: the
+ * browser only ever talks to /plugins/sk-video/* — never go2rtc or a camera directly.
+ *
+ * Rungs: MJPEG is a still-refresh <img> loop (always works through frame.jpeg); HLS uses the native
+ * player where supported (Safari) and otherwise falls back (hls.js is a later, lazy addition); WebRTC
+ * is a WHEP negotiation. The rung-selection/fallback orchestration is unit-tested; live media playback
+ * is verified against the e2e harness (a real go2rtc + stream), not in unit tests.
+ */
+
+const MJPEG_INTERVAL_MS = 1200;
+
+interface Props {
+  cameraId: string;
+  transports: TTransport[];
+  /** Notified when the active rung changes, so the caller can label it ("WebRTC" / "still-refresh"). */
+  onRung?: (t: TTransport) => void;
+}
+
+async function negotiateWhep(id: string, video: HTMLVideoElement): Promise<RTCPeerConnection> {
+  const pc = new RTCPeerConnection();
+  pc.addTransceiver('video', { direction: 'recvonly' });
+  pc.addTransceiver('audio', { direction: 'recvonly' });
+  pc.ontrack = (e) => {
+    video.srcObject = e.streams[0] ?? null;
+  };
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+  const res = await fetch(whepUrl(id), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/sdp' },
+    credentials: 'include',
+    body: offer.sdp ?? '',
+  });
+  if (!res.ok) {
+    pc.close();
+    throw new Error(`whep ${res.status}`);
+  }
+  await pc.setRemoteDescription({ type: 'answer', sdp: await res.text() });
+  return pc;
+}
+
+export function VideoPlayer({ cameraId, transports, onRung }: Props) {
+  const [rung, setRung] = useState<TTransport>(() => transports[0] ?? 'mjpeg');
+  const [frameTick, setFrameTick] = useState(0);
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  // Restart the walk whenever the camera or the recommended order changes.
+  useEffect(() => {
+    setRung(transports[0] ?? 'mjpeg');
+  }, [cameraId, transports]);
+
+  useEffect(() => {
+    onRung?.(rung);
+  }, [rung, onRung]);
+
+  const advance = (): void => setRung((cur) => nextTransport(transports, cur) ?? cur);
+
+  // MJPEG still-refresh: bump a counter to cache-bust the <img> src on a timer.
+  useEffect(() => {
+    if (rung !== 'mjpeg') return;
+    const iv = setInterval(() => setFrameTick((n) => n + 1), MJPEG_INTERVAL_MS);
+    return () => clearInterval(iv);
+  }, [rung]);
+
+  // HLS / WebRTC binding into the <video>, with cleanup on rung/camera change.
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || (rung !== 'hls' && rung !== 'webrtc')) return;
+    let cancelled = false;
+    let pc: RTCPeerConnection | null = null;
+
+    if (rung === 'hls') {
+      if (video.canPlayType('application/vnd.apple.mpegurl')) {
+        video.src = hlsUrl(cameraId);
+      } else {
+        // No native HLS and hls.js not yet bundled — fall back to the still-refresh rung.
+        advance();
+      }
+    } else if (typeof RTCPeerConnection === 'undefined') {
+      advance();
+    } else {
+      negotiateWhep(cameraId, video)
+        .then((conn) => {
+          if (cancelled) conn.close();
+          else pc = conn;
+        })
+        .catch(() => {
+          if (!cancelled) advance();
+        });
+    }
+
+    return () => {
+      cancelled = true;
+      if (pc) pc.close();
+      video.srcObject = null;
+      video.removeAttribute('src');
+    };
+    // advance/transports are stable enough for this effect; rung+cameraId drive it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rung, cameraId]);
+
+  return (
+    <div className="player">
+      {rung === 'mjpeg' ? (
+        <img
+          className="player__media"
+          src={frameUrl(cameraId, frameTick)}
+          alt=""
+          onError={advance}
+        />
+      ) : (
+        <video
+          className="player__media"
+          ref={videoRef}
+          autoPlay
+          muted
+          playsInline
+          onError={advance}
+        />
+      )}
+    </div>
+  );
+}

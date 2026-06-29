@@ -20,8 +20,16 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       include: ['src/**/*.{ts,tsx}'],
-      exclude: ['src/**/*.spec.{ts,tsx}', 'src/main.tsx', 'src/vite-env.d.ts'],
-      // A modest island threshold for the scaffold; raise it as real screens land.
+      exclude: [
+        'src/**/*.spec.{ts,tsx}',
+        'src/main.tsx',
+        'src/vite-env.d.ts',
+        // Media-IO binding (WHEP/HLS/MJPEG) — its WebRTC/native-HLS branches can't run under jsdom and
+        // are verified against the e2e harness (a real go2rtc + stream). The testable rung-selection /
+        // fallback logic lives in lib/transport.ts, which IS unit-tested.
+        'src/components/VideoPlayer.tsx',
+      ],
+      // A modest island threshold; raise it as real screens land.
       thresholds: { statements: 70, branches: 70, functions: 70, lines: 70 },
     },
   },

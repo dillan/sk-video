@@ -1,35 +1,35 @@
 import type { ComponentType, ReactNode, SVGProps } from 'react';
-import type { Route } from '../lib/router';
+import type { Cluster } from '../lib/router';
 import { LiveIcon, ReviewIcon, CamerasIcon, SafetyIcon } from './icons';
 
 interface NavItem {
-  route: Route;
+  cluster: Cluster;
   label: string;
   Icon: ComponentType<SVGProps<SVGSVGElement>>;
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { route: 'live', label: 'Live', Icon: LiveIcon },
-  { route: 'review', label: 'Review', Icon: ReviewIcon },
-  { route: 'cameras', label: 'Cameras', Icon: CamerasIcon },
-  { route: 'safety', label: 'Safety', Icon: SafetyIcon },
+  { cluster: 'live', label: 'Live', Icon: LiveIcon },
+  { cluster: 'review', label: 'Review', Icon: ReviewIcon },
+  { cluster: 'cameras', label: 'Cameras', Icon: CamerasIcon },
+  { cluster: 'safety', label: 'Safety', Icon: SafetyIcon },
 ];
 
 interface NavProps {
-  current: Route;
-  onNavigate: (r: Route) => void;
+  current: Cluster;
+  onNavigate: (c: Cluster) => void;
 }
 
 function NavButtons({ current, onNavigate }: NavProps) {
   return (
     <>
-      {NAV_ITEMS.map(({ route, label, Icon }) => (
+      {NAV_ITEMS.map(({ cluster, label, Icon }) => (
         <button
-          key={route}
+          key={cluster}
           type="button"
           className="navitem"
-          aria-current={current === route ? 'page' : undefined}
-          onClick={() => onNavigate(route)}
+          aria-current={current === cluster ? 'page' : undefined}
+          onClick={() => onNavigate(cluster)}
         >
           <Icon />
           <span>{label}</span>

@@ -137,6 +137,116 @@ export async function fetchVesselSelf(signal?: AbortSignal): Promise<unknown> {
   return res.json();
 }
 
+// ---- Stream health + transport (diagnostics / the player's rung walk) ----
+
+export type TTransport = 'webrtc' | 'hls' | 'mjpeg';
+
+export interface IStreamHealth {
+  online: boolean;
+  producers: number;
+  consumers: number;
+  codecs: string[];
+  sources: string[];
+}
+export interface ITransportHints {
+  recommended: TTransport[];
+  codecs: string[];
+  online: boolean;
+  note: string;
+}
+
+export const fetchHealth = (id: string, signal?: AbortSignal): Promise<IStreamHealth> =>
+  getJson<IStreamHealth>(`/cameras/${encodeURIComponent(id)}/health`, 'health', signal);
+
+export const fetchTransport = (id: string, signal?: AbortSignal): Promise<ITransportHints> =>
+  getJson<ITransportHints>(`/cameras/${encodeURIComponent(id)}/transport`, 'transport', signal);
+
+/** Build a same-origin frame.jpeg URL for the MJPEG still-refresh rung (cache-busted per frame). */
+export const frameUrl = (id: string, ts: number): string =>
+  `${API_BASE}/cameras/${encodeURIComponent(id)}/frame.jpeg?t=${ts}`;
+export const hlsUrl = (id: string): string =>
+  `${API_BASE}/cameras/${encodeURIComponent(id)}/stream.m3u8`;
+export const whepUrl = (id: string): string => `${API_BASE}/cameras/${encodeURIComponent(id)}/whep`;
+
+// ---- Mutating camera controls (auth-gated server-side; a 401 means sign-in required) ----
+
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+  }
+}
+
+async function send(path: string, init: RequestInit, what: string): Promise<Response> {
+  const res = await fetch(`${API_BASE}${path}`, {
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      ...(init.body ? { 'Content-Type': 'application/json' } : {}),
+    },
+    ...init,
+  });
+  if (!res.ok) {
+    throw new ApiError(`${what} failed (${res.status})`, res.status);
+  }
+  return res;
+}
+
+const cam = (id: string): string => `/cameras/${encodeURIComponent(id)}`;
+
+export const ptzNudge = (
+  id: string,
+  move: { pan?: number; tilt?: number; zoom?: number },
+): Promise<Response> =>
+  send(`${cam(id)}/ptz`, { method: 'POST', body: JSON.stringify(move) }, 'ptz');
+
+export const ptzStop = (id: string): Promise<Response> =>
+  send(`${cam(id)}/ptz/stop`, { method: 'POST' }, 'ptz stop');
+
+export interface IPtzPreset {
+  token: string;
+  name?: string;
+}
+export const listPtzPresets = (id: string, signal?: AbortSignal): Promise<IPtzPreset[]> =>
+  getJson<IPtzPreset[]>(`${cam(id)}/ptz/presets`, 'presets', signal);
+
+export const gotoPtzPreset = (id: string, token: string): Promise<Response> =>
+  send(`${cam(id)}/ptz/preset`, { method: 'POST', body: JSON.stringify({ token }) }, 'preset');
+
+export type TImagingPreset = 'day' | 'night' | 'fog' | 'glare' | 'auto';
+export const applyImagingPreset = async (id: string, preset: TImagingPreset): Promise<void> => {
+  await send(
+    `${cam(id)}/imaging/preset`,
+    { method: 'POST', body: JSON.stringify({ preset }) },
+    'imaging',
+  );
+};
+
+/** Telemetry-stamped snapshot; `hasFix:false` drives the honest "no GPS fix" result chip. */
+export interface ISnapshotResult {
+  hasFix?: boolean;
+  [k: string]: unknown;
+}
+export const captureSnapshot = async (id: string): Promise<ISnapshotResult> => {
+  const res = await send(`${cam(id)}/snapshot`, { method: 'POST' }, 'snapshot');
+  return (await res.json()) as ISnapshotResult;
+};
+
+export interface IRecordResult {
+  recording: boolean;
+  error?: string;
+}
+export const setRecording = async (id: string, active: boolean): Promise<IRecordResult> => {
+  const res = await send(
+    `${cam(id)}/record`,
+    { method: 'POST', body: JSON.stringify({ active }) },
+    'record',
+  );
+  return (await res.json()) as IRecordResult;
+};
+
 /**
  * Sign in against Signal K's own auth — SK Video delegates entirely. The same-origin POST sets the
  * `JAUTHENTICATION` cookie; the returned token isn't needed for cookie auth. After it resolves,
