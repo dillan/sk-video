@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { deriveApiBase, describeAuth, fetchStatus, fetchSession } from './api';
+import { deriveApiBase, describeAuth, fetchStatus, fetchSession, fetchMobStatus } from './api';
 
 describe('describeAuth', () => {
   it('describes the auth posture for the header chip', () => {
@@ -61,5 +61,20 @@ describe('fetchSession', () => {
   it('throws when the session request is not ok', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 500 }));
     await expect(fetchSession()).rejects.toThrow('session 500');
+  });
+});
+
+describe('fetchMobStatus', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('returns the parsed MOB status', async () => {
+    const status = { active: true, targetSource: 'datum', aimedCameras: 3 };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => status }));
+    await expect(fetchMobStatus()).resolves.toEqual(status);
+  });
+
+  it('throws when the request is not ok (e.g. 503 before start)', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 503 }));
+    await expect(fetchMobStatus()).rejects.toThrow('mob 503');
   });
 });

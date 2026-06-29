@@ -59,6 +59,21 @@ describe('MobController', () => {
     expect(mob.isActive()).toBe(true);
   });
 
+  it('status() reports a non-mutating snapshot: idle before, armed after, idle again after deactivate', () => {
+    const { mob, calls } = setup();
+    expect(mob.status()).toEqual({ active: false, targetSource: 'none', aimedCameras: 0 });
+
+    const status = mob.activate();
+    const aimsAfterActivate = calls.aims.length;
+    // The read mirrors what activate() reported, and crucially issues NO new camera commands.
+    expect(mob.status()).toEqual(status);
+    expect(mob.status()).toEqual(status); // idempotent
+    expect(calls.aims.length).toBe(aimsAfterActivate);
+
+    mob.deactivate();
+    expect(mob.status()).toEqual({ active: false, targetSource: 'none', aimedCameras: 0 });
+  });
+
   it('applies the low-light preset to all cameras on activation when it is dark', () => {
     const lowLight: string[][] = [];
     const { mob } = setup({ isDark: () => true, applyLowLight: (ids) => lowLight.push(ids) });

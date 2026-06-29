@@ -1079,6 +1079,17 @@ export = function (app: ServerAPI): Plugin {
         res.json(status);
       });
 
+      // Read-only MOB status so a client (e.g. the safety strip) can seed or repair the armed state on
+      // connect / tab-foreground without triggering a re-aim. A read of booleans + a count — no secret,
+      // so no auth gate, consistent with GET /status.
+      router.get('/mob', (_req: Request, res: Response) => {
+        if (!mob) {
+          res.status(503).json({ error: 'plugin not started' });
+          return;
+        }
+        res.json(mob.status());
+      });
+
       // Same-origin transport proxy to go2rtc (WHEP / frame.jpeg / HLS).
       registerProxyRoutes(router, {
         apiPort: () => gateway?.apiPort ?? 1984,

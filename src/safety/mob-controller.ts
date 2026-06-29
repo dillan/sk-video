@@ -83,6 +83,9 @@ export interface IMobStatus {
 export class MobController {
   private datum: ILatLon | null = null;
   private active = false;
+  // Cameras commanded at the target on the most recent re-aim, so read-only status() can report the
+  // count without itself re-aiming (which would send camera commands on every status poll).
+  private lastAimed = 0;
   private timer: ReturnType<typeof setInterval> | null = null;
   private readonly setIntervalImpl: NonNullable<IMobControllerDeps['setIntervalImpl']>;
   private readonly clearIntervalImpl: NonNullable<IMobControllerDeps['clearIntervalImpl']>;
@@ -147,6 +150,7 @@ export class MobController {
     }
     this.active = false;
     this.datum = null;
+    this.lastAimed = 0;
     this.deps.stopRecording?.();
     this.deps.clearNotification();
   }
@@ -155,8 +159,26 @@ export class MobController {
     return this.active;
   }
 
+  /**
+   * A non-mutating snapshot of the current MOB state — it NEVER commands a camera. Lets a client (the
+   * safety strip) seed or repair the armed state on connect / tab-foreground without triggering a
+   * re-aim. `aimedCameras` is the count from the most recent re-aim cycle, not a fresh computation.
+   */
+  status(): IMobStatus {
+    return {
+      active: this.active,
+      targetSource: this.targetSource(),
+      aimedCameras: this.active ? this.lastAimed : 0,
+    };
+  }
+
   /** Aim every capable camera at the current target; returns how many were aimed. */
   private reaim(): number {
+    this.lastAimed = this.dispatchAim();
+    return this.lastAimed;
+  }
+
+  private dispatchAim(): number {
     if (!this.active) {
       return 0;
     }

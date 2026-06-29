@@ -42,6 +42,29 @@ export async function fetchStatus(signal?: AbortSignal): Promise<IPluginStatus> 
   return (await res.json()) as IPluginStatus;
 }
 
+/** Read-only man-overboard status, mirrors the plugin's `IMobStatus`. Drives the safety strip. */
+export interface IMobStatus {
+  active: boolean;
+  targetSource: 'beacon' | 'datum' | 'none';
+  aimedCameras: number;
+}
+
+/**
+ * Seed the armed state on connect (and tab foreground). This is the authoritative current state — a
+ * client must read it before trusting delta-stream notifications, so the strip can never silently
+ * under-report an active MOB after a reconnect.
+ */
+export async function fetchMobStatus(signal?: AbortSignal): Promise<IMobStatus> {
+  const res = await fetch(`${API_BASE}/mob`, {
+    headers: { Accept: 'application/json' },
+    signal,
+  });
+  if (!res.ok) {
+    throw new Error(`mob ${res.status}`);
+  }
+  return (await res.json()) as IMobStatus;
+}
+
 /** Auth "whoami" — booleans only, mirrors the plugin's `ISessionInfo`. */
 export interface ISessionInfo {
   securityEnabled: boolean;
