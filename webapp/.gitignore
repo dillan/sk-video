@@ -1,0 +1,5 @@
+node_modules/
+coverage/
+# Build output goes to ../public (served + shipped by the plugin), not here.
+dist/
+*.log

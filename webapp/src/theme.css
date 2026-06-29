@@ -1,0 +1,134 @@
+/*
+ * Design tokens — the starting system for the SK Video console (see the plan's design brief).
+ * Three COLOR themes (Day / Dark / Night-Red) selected via [data-theme]; chrome changes only.
+ * INVARIANT: video always renders on a near-black mat (--video-mat) so feeds stay the brightest
+ * element. These values are a direction for the design work to sharpen, not a final palette.
+ */
+
+:root,
+[data-theme='dark'] {
+  --surface-0: #0b0f14;
+  --surface-1: #121821;
+  --surface-2: #1b2430;
+  --text-primary: #e8edf2;
+  --text-secondary: #9aa7b4;
+  --border: #243040;
+  --accent: #2e9bff;
+  --status-live: #ff3b30;
+  --status-online: #34c759;
+  --status-caution: #ff9f0a;
+  --status-alarm: #ff3b30;
+
+  --video-mat: #07090c;
+
+  --space: 8px;
+  --radius: 10px;
+  --tap-min: 44px;
+  --font-ui: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --font-num: ui-monospace, 'SF Mono', 'Roboto Mono', Menlo, Consolas, monospace;
+}
+
+[data-theme='day'] {
+  --surface-0: #f2f4f7;
+  --surface-1: #ffffff;
+  --surface-2: #e7ecf2;
+  --text-primary: #0b1220;
+  --text-secondary: #4a5763;
+  --border: #d3dae2;
+  --accent: #0b73e6;
+}
+
+/* Night-Red: red/amber on near-black for dark adaptation. No blue/green/white; glow disabled. */
+[data-theme='night'] {
+  --surface-0: #05070a;
+  --surface-1: #0c0f13;
+  --surface-2: #14181d;
+  --text-primary: #f2693c;
+  --text-secondary: #b9542f;
+  --border: #2a1a12;
+  --accent: #ff8159;
+  --status-online: #ff9f0a;
+  --status-caution: #ffb454;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--surface-0);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  -webkit-font-smoothing: antialiased;
+}
+
+.app-shell {
+  max-width: 880px;
+  margin: 0 auto;
+  padding: calc(var(--space) * 3) calc(var(--space) * 2)
+    calc(var(--space) * 3 + env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--space) * 2);
+}
+
+.app-header h1 {
+  margin: 0;
+  font-size: 1.6rem;
+  letter-spacing: 0.01em;
+}
+
+.tagline,
+.muted {
+  color: var(--text-secondary);
+}
+
+.tagline {
+  margin: calc(var(--space) * 0.5) 0 0;
+}
+
+.card {
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: calc(var(--space) * 2);
+}
+
+.status-grid {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: var(--space) calc(var(--space) * 2);
+  margin: 0;
+}
+
+.status-grid dt {
+  color: var(--text-secondary);
+}
+
+.status-grid dd {
+  margin: 0;
+  font-family: var(--font-num);
+}
+
+.status-bad {
+  color: var(--status-caution);
+  margin: 0;
+}
+
+.app-footer {
+  font-size: 0.85rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+}

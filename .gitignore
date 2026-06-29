@@ -1,5 +1,7 @@
 node_modules/
 dist/
+# Built web app bundle (shipped via package.json "files", served by the plugin) — build output, not source.
+public/
 *.log
 .DS_Store
 coverage/
