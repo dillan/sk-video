@@ -68,12 +68,41 @@ describe('draftFromIntrospect', () => {
       absolutePtz: true,
       audio: true,
       audioBackchannel: true,
+      substreams: false,
     });
+    expect(d.media).toBeUndefined(); // this fixture carries no codec/substream
   });
   it('falls back to the host when make/model are absent', () => {
     expect(
       draftFromIntrospect({ ...result, manufacturer: undefined, model: undefined }, 'cam').name,
     ).toBe('cam');
+  });
+
+  it('captures the main codec, the H.264 substream path and the substreams capability', () => {
+    const d = draftFromIntrospect(
+      { ...result, codec: 'h265', substreamPath: '/Preview_01_sub', substreams: true },
+      '192.168.1.100',
+    );
+    expect(d.capabilities.substreams).toBe(true);
+    expect(d.media).toEqual({ codec: 'h265', substreamPath: '/Preview_01_sub' });
+  });
+
+  it('drops a codec the camera resource would not accept, keeping the substream path', () => {
+    const d = draftFromIntrospect(
+      { ...result, codec: 'mpeg4', substreamPath: '/sub', substreams: true },
+      'cam',
+    );
+    expect(d.media).toEqual({ substreamPath: '/sub' }); // mpeg4 isn't an allowed media.codec
+  });
+
+  it('drops an unsafe substream path (query string) so the camera still saves', () => {
+    const d = draftFromIntrospect(
+      { ...result, codec: 'h265', substreamPath: '/sub?token=abc', substreams: true },
+      'cam',
+    );
+    // The path can't pass the resource validator, so we don't claim a substream at all.
+    expect(d.capabilities.substreams).toBe(false);
+    expect(d.media).toEqual({ codec: 'h265' });
   });
 });
 
@@ -89,7 +118,13 @@ describe('toResourceBody', () => {
       name: 'REOLINK RLC-823S2',
       enabled: true,
       source: { scheme: 'rtsp', host: '192.168.1.100', port: 554, path: '/Preview_01_main' },
-      capabilities: { ptz: true, absolutePtz: true, audio: true, audioBackchannel: true },
+      capabilities: {
+        ptz: true,
+        absolutePtz: true,
+        audio: true,
+        audioBackchannel: true,
+        substreams: false,
+      },
       role: 'security',
       placement: { mount: 'mast', bearingRelativeDeg: 90 },
     });
@@ -98,5 +133,19 @@ describe('toResourceBody', () => {
     const body = toResourceBody(draftFromIntrospect(result, '192.168.1.100'));
     expect(body.placement).toBeUndefined();
     expect(body.role).toBeUndefined();
+  });
+  it('emits media (codec + substream path) when introspection captured one', () => {
+    const body = toResourceBody(
+      draftFromIntrospect(
+        { ...result, codec: 'h265', substreamPath: '/Preview_01_sub', substreams: true },
+        '192.168.1.100',
+      ),
+    );
+    expect(body.media).toEqual({ codec: 'h265', substreamPath: '/Preview_01_sub' });
+    expect(body.capabilities?.substreams).toBe(true);
+  });
+  it('omits media entirely when no codec or substream was captured', () => {
+    const body = toResourceBody(draftFromIntrospect(result, '192.168.1.100'));
+    expect(body.media).toBeUndefined();
   });
 });

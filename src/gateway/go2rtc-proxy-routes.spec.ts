@@ -474,16 +474,18 @@ describe('registerProxyRoutes', () => {
   });
 
   describe('GET passthrough routes (frame.jpeg / stream.m3u8)', () => {
-    const cases: Array<{ name: string; key: string; expectedUrl: string }> = [
+    const cases: Array<{ name: string; key: string; expectedUrl: string; subUrl: string }> = [
       {
         name: 'frame.jpeg',
         key: 'GET /cameras/:id/frame.jpeg',
         expectedUrl: 'http://127.0.0.1:1984/api/frame.jpeg?src=foredeck',
+        subUrl: 'http://127.0.0.1:1984/api/frame.jpeg?src=foredeck_sub',
       },
       {
         name: 'stream.m3u8',
         key: 'GET /cameras/:id/stream.m3u8',
         expectedUrl: 'http://127.0.0.1:1984/api/stream.m3u8?src=foredeck',
+        subUrl: 'http://127.0.0.1:1984/api/stream.m3u8?src=foredeck_sub',
       },
     ];
 
@@ -521,6 +523,32 @@ describe('registerProxyRoutes', () => {
         await handlers.get(c.key)!(fakeReq({ params: { id: 'foredeck' } as never }), res);
         expect(res.statusCode).toBe(502);
         expect(res.body).toEqual({ error: 'gateway unavailable' });
+      });
+
+      it(`${c.name}: routes ?variant=sub to the camera's _sub stream (H.264 for an H.265 main)`, async () => {
+        const fetchImpl = vi
+          .fn()
+          .mockResolvedValue(upstreamRes({ status: 200, contentType: 'image/jpeg', bytes: [1] }));
+        const { handlers } = setup({ fetchImpl, hasSubstream: () => true });
+        const res = makeRes();
+        await handlers.get(c.key)!(
+          fakeReq({ params: { id: 'foredeck' } as never, query: { variant: 'sub' } as never }),
+          res,
+        );
+        expect(fetchImpl).toHaveBeenCalledWith(c.subUrl, { signal: expect.any(AbortSignal) });
+      });
+
+      it(`${c.name}: 404s ?variant=sub when the camera has no substream and never fetches`, async () => {
+        const fetchImpl = vi.fn();
+        const { handlers } = setup({ fetchImpl, hasSubstream: () => false });
+        const res = makeRes();
+        await handlers.get(c.key)!(
+          fakeReq({ params: { id: 'foredeck' } as never, query: { variant: 'sub' } as never }),
+          res,
+        );
+        expect(res.statusCode).toBe(404);
+        expect(res.body).toEqual({ error: 'no substream for this camera' });
+        expect(fetchImpl).not.toHaveBeenCalled();
       });
     }
 

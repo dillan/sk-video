@@ -32,3 +32,30 @@ export const ptzDelayed = (t: TTransport): boolean => t === 'mjpeg';
 export function isHevc(codecs: string[]): boolean {
   return codecs.some((c) => /h\.?265|hevc/i.test(c));
 }
+
+/** The walk for a known-H.264 stream: WebRTC first (lowest latency, broadly decodable incl. Chrome). */
+export const H264_TRANSPORTS: TTransport[] = ['webrtc', 'hls', 'mjpeg'];
+
+/**
+ * Which walk to actually play. The server's recommendation is derived from the MAIN stream's codec, so
+ * an H.265 main yields an HLS-first, WebRTC-last order — correct for the main, but wrong once we switch
+ * to the H.264 substream (where WebRTC is the best rung and Chrome can decode it). When playing the sub
+ * we therefore use the H.264 order instead of the H.265-derived one.
+ */
+export function transportsForVariant(useSub: boolean, recommended: TTransport[]): TTransport[] {
+  return useSub ? H264_TRANSPORTS : recommended;
+}
+
+/** Human label for a codec id — `h265` → "H.265" (so the UI never shows a bare "H265"). */
+export function codecLabel(codec: string): string {
+  switch (codec.toLowerCase()) {
+    case 'h265':
+      return 'H.265';
+    case 'h264':
+      return 'H.264';
+    case 'mjpeg':
+      return 'MJPEG';
+    default:
+      return codec.toUpperCase();
+  }
+}

@@ -196,8 +196,17 @@ export function registerProxyRoutes(router: IRouter, ctx: IProxyContext): void {
         res.status(404).json({ error: 'unknown camera' });
         return;
       }
+      // `?variant=sub` serves the low-res H.264 substream — the browser-decodable path when the main
+      // stream is H.265. Gated on the camera actually having one, mirroring the WHEP route.
+      const wantSub = req.query.variant === 'sub';
+      if (wantSub && !(ctx.hasSubstream?.(id) ?? false)) {
+        res.status(404).json({ error: 'no substream for this camera' });
+        return;
+      }
       try {
-        const url = go2rtcApiUrl(ctx.apiPort(), transport, id);
+        const url = wantSub
+          ? go2rtcVariantUrl(ctx.apiPort(), transport, id, 'sub')
+          : go2rtcApiUrl(ctx.apiPort(), transport, id);
         const upstream = await doFetch(url, { signal: loopbackSignal() });
         const contentType = upstream.headers.get('content-type');
         if (contentType) {

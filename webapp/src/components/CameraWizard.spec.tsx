@@ -16,7 +16,7 @@ const INTROSPECT = {
   audioBackchannel: true,
 };
 
-function mockApi(opts: { introspectOk?: boolean } = {}) {
+function mockApi(opts: { introspectOk?: boolean; introspect?: unknown } = {}) {
   const calls: { url: string; init?: RequestInit }[] = [];
   vi.stubGlobal(
     'fetch',
@@ -26,7 +26,7 @@ function mockApi(opts: { introspectOk?: boolean } = {}) {
       if (u.includes('/discover/introspect')) {
         return opts.introspectOk === false
           ? Promise.resolve({ ok: false, status: 502 })
-          : ok(INTROSPECT);
+          : ok(opts.introspect ?? INTROSPECT);
       }
       if (u.includes('/cameras/discover')) {
         return ok({
@@ -95,6 +95,52 @@ describe('CameraWizard', () => {
     expect(calls.some((c) => c.url.includes('/credentials') && c.init?.method === 'POST')).toBe(
       true,
     );
+  });
+
+  it('surfaces the H.264 sub-stream and writes media when the main is H.265', async () => {
+    const calls = mockApi({
+      introspect: {
+        ...INTROSPECT,
+        codec: 'h265',
+        substreams: true,
+        substreamPath: '/Preview_01_sub',
+        streams: [
+          {
+            codec: 'h265',
+            width: 3840,
+            height: 2160,
+            source: { scheme: 'rtsp', host: '192.168.1.100', path: '/Preview_01_main' },
+          },
+          {
+            codec: 'h264',
+            width: 640,
+            height: 480,
+            source: { scheme: 'rtsp', host: '192.168.1.100', path: '/Preview_01_sub' },
+          },
+        ],
+      },
+    });
+    render(<CameraWizard onDone={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Enter address manually' }));
+    fireEvent.change(screen.getByPlaceholderText('192.168.1.100'), {
+      target: { value: '192.168.1.100' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Connect & read' }));
+
+    await waitFor(() => expect(screen.getByText('REOLINK RLC-823S2')).toBeTruthy());
+    // The H.264 sub-stream is surfaced and the H.265 caveat is explained honestly.
+    expect(screen.getByText('H.264 sub-stream')).toBeTruthy();
+    expect(screen.getByText(/the live view will use the camera’s H.264 sub-stream/)).toBeTruthy();
+    // Both detected profiles are listed with their resolution.
+    expect(screen.getByText(/3840×2160/)).toBeTruthy();
+    expect(screen.getByText(/640×480/)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save camera' }));
+    await waitFor(() => expect(calls.some((c) => c.init?.method === 'PUT')).toBe(true));
+    const put = calls.find((c) => c.init?.method === 'PUT')!;
+    const body = JSON.parse(put.init!.body as string);
+    expect(body.media).toEqual({ codec: 'h265', substreamPath: '/Preview_01_sub' });
+    expect(body.capabilities.substreams).toBe(true);
   });
 
   it('is honest when the camera can’t be read (bad login / unreachable)', async () => {

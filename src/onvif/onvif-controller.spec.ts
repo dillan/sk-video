@@ -2,6 +2,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
   OnvifPtzController,
   type IOnvifCam,
+  type IOnvifProfile,
   type IImagingSettings,
   type IDeviceInformation,
 } from './onvif-controller';
@@ -23,6 +24,22 @@ class FakeCam implements IOnvifCam {
   imaging: IImagingSettings = { brightness: 50, irCutFilter: 'AUTO', focus: {} };
   streamUri = 'rtsp://cam/stream1';
   snapshotUri = 'http://cam/snap.jpg';
+  profiles: IOnvifProfile[] = [
+    {
+      $: { token: 'main' },
+      name: 'Main',
+      videoEncoderConfiguration: { encoding: 'H265', resolution: { width: 3840, height: 2160 } },
+    },
+    {
+      $: { token: 'sub' },
+      name: 'Sub',
+      videoEncoderConfiguration: { encoding: 'H264', resolution: { width: 640, height: 480 } },
+    },
+  ];
+  streamUriByToken: Record<string, string> = {
+    main: 'rtsp://cam:554/main',
+    sub: 'rtsp://cam:554/sub',
+  };
   deviceInfo: IDeviceInformation = {
     manufacturer: 'Acme',
     model: 'Dome',
@@ -42,6 +59,7 @@ class FakeCam implements IOnvifCam {
   failStatus = false;
   failStream = false;
   failAudio = false;
+  failProfiles = false;
 
   continuousMove(o: { x: number; y: number; zoom: number }, cb: (err?: Error | null) => void) {
     this.moves.push(o);
@@ -92,8 +110,16 @@ class FakeCam implements IOnvifCam {
     cb: (err: Error | null, uri?: { uri?: string }) => void,
   ) {
     this.streamUriOptions.push(o);
-    if (this.failStream) cb(new Error('no stream'));
-    else cb(null, { uri: this.streamUri });
+    if (this.failStream) {
+      cb(new Error('no stream'));
+      return;
+    }
+    const token = o.profileToken as string | undefined;
+    cb(null, { uri: (token && this.streamUriByToken[token]) || this.streamUri });
+  }
+  getProfiles(cb: (err: Error | null, profiles?: IOnvifProfile[]) => void) {
+    if (this.failProfiles) cb(new Error('no profiles'));
+    else cb(null, this.profiles);
   }
   getSnapshotUri(
     _o: Record<string, unknown>,
@@ -271,5 +297,49 @@ describe('OnvifPtzController — capability probe', () => {
     });
     // device info and snapshot still succeeded
     expect(caps.snapshotUri).toBe('http://cam/snap.jpg');
+    // every per-profile stream URI errored too, so no streams could be captured
+    expect(caps.streams).toEqual([]);
+  });
+});
+
+describe('OnvifPtzController — profile enumeration', () => {
+  it('lists the media profiles the camera advertises', async () => {
+    const profiles = await control(new FakeCam()).getProfiles();
+    expect(profiles.map((p) => p.$?.token)).toEqual(['main', 'sub']);
+  });
+
+  it('captures every profile stream with its codec, resolution and per-profile URI', async () => {
+    const caps = await control(new FakeCam()).probeCapabilities();
+    expect(caps.streams).toEqual([
+      {
+        profileToken: 'main',
+        name: 'Main',
+        codec: 'h265',
+        width: 3840,
+        height: 2160,
+        uri: 'rtsp://cam:554/main',
+      },
+      {
+        profileToken: 'sub',
+        name: 'Sub',
+        codec: 'h264',
+        width: 640,
+        height: 480,
+        uri: 'rtsp://cam:554/sub',
+      },
+    ]);
+  });
+
+  it('skips a profile that has no usable token, keeping the rest', async () => {
+    const cam = new FakeCam();
+    cam.profiles = [{ name: 'Tokenless' }, ...cam.profiles]; // a profile with no $.token
+    const caps = await control(cam).probeCapabilities();
+    expect(caps.streams.map((s) => s.profileToken)).toEqual(['main', 'sub']);
+  });
+
+  it('returns no streams when profile enumeration fails', async () => {
+    const cam = new FakeCam();
+    cam.failProfiles = true;
+    expect((await control(cam).probeCapabilities()).streams).toEqual([]);
   });
 });

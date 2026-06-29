@@ -42,10 +42,33 @@ export interface IImagingUpdate {
   irCutFilter?: 'AUTO' | 'ON' | 'OFF';
 }
 
+/** A media profile as returned by ONVIF getProfiles (only the fields this plugin reads). */
+export interface IOnvifProfile {
+  $?: { token?: string };
+  name?: string;
+  videoEncoderConfiguration?: {
+    encoding?: string;
+    resolution?: { width?: number; height?: number };
+  };
+}
+
+/** One media profile paired with the stream URI the camera reports for it. */
+export interface IDetectedStream {
+  profileToken: string;
+  name?: string;
+  /** Normalised codec: 'h264' | 'h265' | 'mjpeg', or the raw lowercased encoding when unrecognised. */
+  codec: string;
+  width?: number;
+  height?: number;
+  uri: string;
+}
+
 /** Per-camera capabilities detected by probing the device — never assumed. */
 export interface IDetectedCapabilities {
   deviceInformation: IDeviceInformation | null;
   streamUri: string | null;
+  /** Every advertised media profile + its stream (empty when profile enumeration is unavailable). */
+  streams: IDetectedStream[];
   snapshotUri: string | null;
   /** Absolute PTZ pointing is available (getStatus returned a position). */
   absolutePtz: boolean;
@@ -83,6 +106,7 @@ export interface IOnvifCam {
     options: Record<string, unknown>,
     cb: (err: Error | null, uri?: { uri?: string }) => void,
   ): void;
+  getProfiles(cb: (err: Error | null, profiles?: IOnvifProfile[]) => void): void;
   getSnapshotUri(
     options: Record<string, unknown>,
     cb: (err: Error | null, uri?: { uri?: string }) => void,
@@ -208,10 +232,14 @@ export class OnvifPtzController {
     });
   }
 
-  async getStreamUri(protocol = 'RTSP'): Promise<string> {
+  async getStreamUri(protocol = 'RTSP', profileToken?: string): Promise<string> {
     const cam = await this.connect();
+    const options: Record<string, unknown> = { protocol };
+    if (profileToken) {
+      options.profileToken = profileToken;
+    }
     return new Promise((resolve, reject) => {
-      cam.getStreamUri({ protocol }, (err, uri) => (err ? reject(err) : resolve(uri?.uri ?? '')));
+      cam.getStreamUri(options, (err, uri) => (err ? reject(err) : resolve(uri?.uri ?? '')));
     });
   }
 
@@ -220,6 +248,51 @@ export class OnvifPtzController {
     return new Promise((resolve, reject) => {
       cam.getSnapshotUri({}, (err, uri) => (err ? reject(err) : resolve(uri?.uri ?? '')));
     });
+  }
+
+  /** List the camera's media profiles (one per encoder configuration — typically a main + a substream). */
+  async getProfiles(): Promise<IOnvifProfile[]> {
+    const cam = await this.connect();
+    return new Promise((resolve, reject) => {
+      cam.getProfiles((err, profiles) => (err ? reject(err) : resolve(profiles ?? [])));
+    });
+  }
+
+  /**
+   * Enumerate every media profile and the RTSP URI the camera reports for each, so the caller can pick
+   * a browser-decodable (H.264) substream when the main stream is H.265. A profile whose stream URI
+   * can't be read (or that has no token) is skipped rather than failing the whole probe.
+   */
+  private async detectStreams(): Promise<IDetectedStream[]> {
+    const profiles = await this.getProfiles();
+    const out: IDetectedStream[] = [];
+    for (const p of profiles) {
+      const profileToken = p.$?.token;
+      if (!profileToken) {
+        continue;
+      }
+      const uri = await this.getStreamUri('RTSP', profileToken).catch(() => '');
+      if (!uri) {
+        continue;
+      }
+      const res = p.videoEncoderConfiguration?.resolution;
+      const stream: IDetectedStream = {
+        profileToken,
+        codec: normaliseCodec(p.videoEncoderConfiguration?.encoding),
+        uri,
+      };
+      if (p.name) {
+        stream.name = p.name;
+      }
+      if (typeof res?.width === 'number') {
+        stream.width = res.width;
+      }
+      if (typeof res?.height === 'number') {
+        stream.height = res.height;
+      }
+      out.push(stream);
+    }
+    return out;
   }
 
   async getDeviceInformation(): Promise<IDeviceInformation> {
@@ -243,17 +316,19 @@ export class OnvifPtzController {
    * error is treated as "unsupported" — capabilities are detected, never assumed.
    */
   async probeCapabilities(): Promise<IDetectedCapabilities> {
-    const [device, streamUri, snapshotUri, imaging, status, audio] = await Promise.all([
+    const [device, streamUri, snapshotUri, imaging, status, audio, streams] = await Promise.all([
       this.getDeviceInformation().catch(() => null),
       this.getStreamUri().catch(() => null),
       this.getSnapshotUri().catch(() => null),
       this.getImaging().catch(() => null),
       this.getStatus().catch(() => null),
       this.getAudioOutputs().catch(() => null),
+      this.detectStreams().catch(() => [] as IDetectedStream[]),
     ]);
     return {
       deviceInformation: device,
       streamUri: streamUri || null,
+      streams,
       snapshotUri: snapshotUri || null,
       absolutePtz: status !== null,
       imaging: imaging !== null,
@@ -290,6 +365,22 @@ const SETTABLE_IMAGING = [
   'colorSaturation',
   'sharpness',
 ] as const satisfies readonly (keyof IImagingUpdate)[];
+
+/** Map an ONVIF encoder `encoding` to the codec vocabulary the rest of the plugin reasons about. An
+ * unrecognised encoding passes through lowercased (honest — we don't silently claim a codec). */
+function normaliseCodec(encoding?: string): string {
+  const e = (encoding ?? '').toLowerCase();
+  if (/h\.?265|hevc/.test(e)) {
+    return 'h265';
+  }
+  if (/h\.?264|avc/.test(e)) {
+    return 'h264';
+  }
+  if (/jpe?g/.test(e)) {
+    return 'mjpeg';
+  }
+  return e;
+}
 
 const EMPTY_DEVICE_INFO: IDeviceInformation = {
   manufacturer: '',

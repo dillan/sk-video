@@ -9,12 +9,16 @@ function fakeCam(over: Partial<Record<string, unknown>> = {}): IOnvifCam {
     snapshotUri: 'http://192.168.1.50/snap.jpg',
     failStatus: false,
     audioOutputs: [{ token: 'AO1' }] as unknown[],
+    profiles: [] as unknown[],
+    streamUriByToken: {} as Record<string, string>,
     ...over,
   } as {
     streamUri: string;
     snapshotUri: string;
     failStatus: boolean;
     audioOutputs: unknown[];
+    profiles: unknown[];
+    streamUriByToken: Record<string, string>;
   };
   return {
     continuousMove: (_o, cb) => cb(null),
@@ -27,7 +31,11 @@ function fakeCam(over: Partial<Record<string, unknown>> = {}): IOnvifCam {
       o.failStatus ? cb(new Error('no ptz')) : cb(null, { position: { x: 0, y: 0, zoom: 0 } }),
     getImagingSettings: (_o, cb) => cb(null, { irCutFilter: 'AUTO', brightness: 50 }),
     setImagingSettings: (_o, cb) => cb(null),
-    getStreamUri: (_o, cb) => cb(null, { uri: o.streamUri }),
+    getStreamUri: (opts, cb) => {
+      const token = (opts as { profileToken?: string }).profileToken;
+      cb(null, { uri: (token && o.streamUriByToken[token]) || o.streamUri });
+    },
+    getProfiles: (cb) => cb(null, o.profiles as never),
     getSnapshotUri: (_o, cb) => cb(null, { uri: o.snapshotUri }),
     getDeviceInformation: (cb) =>
       cb(null, {
@@ -40,6 +48,27 @@ function fakeCam(over: Partial<Record<string, unknown>> = {}): IOnvifCam {
     getAudioOutputs: (cb) => cb(null, o.audioOutputs),
   };
 }
+
+/** A camera that advertises an H.265 main + an H.264 sub on the same RTSP endpoint (the Reolink shape). */
+const PROFILED = {
+  streamUri: 'rtsp://192.168.1.50:554/Preview_01_main',
+  profiles: [
+    {
+      $: { token: 'main' },
+      name: 'Main',
+      videoEncoderConfiguration: { encoding: 'H265', resolution: { width: 3840, height: 2160 } },
+    },
+    {
+      $: { token: 'sub' },
+      name: 'Sub',
+      videoEncoderConfiguration: { encoding: 'H264', resolution: { width: 640, height: 480 } },
+    },
+  ],
+  streamUriByToken: {
+    main: 'rtsp://192.168.1.50:554/Preview_01_main',
+    sub: 'rtsp://192.168.1.50:554/Preview_01_sub',
+  },
+};
 
 function deps(over: Partial<IIntrospectDeps> = {}): IIntrospectDeps {
   return {
@@ -119,5 +148,71 @@ describe('introspectOnvifCamera', () => {
     );
     expect(result.absolutePtz).toBe(false);
     expect(result.ptz).toBe(false);
+  });
+
+  it('captures all profiles, the main codec, and the H.264 substream path', async () => {
+    const result = await introspectOnvifCamera(
+      { host: '192.168.1.50' },
+      deps({ connectFactory: () => async () => fakeCam(PROFILED) }),
+    );
+    // source stays the main (recording) stream; codec is reported so the player can route around H.265
+    expect(result.source).toMatchObject({ path: '/Preview_01_main' });
+    expect(result.codec).toBe('h265');
+    // the lower-res H.264 profile on the same endpoint becomes the browser-decodable substream
+    expect(result.substreams).toBe(true);
+    expect(result.substreamPath).toBe('/Preview_01_sub');
+    expect(result.streams?.map((s) => ({ codec: s.codec, path: s.source.path }))).toEqual([
+      { codec: 'h265', path: '/Preview_01_main' },
+      { codec: 'h264', path: '/Preview_01_sub' },
+    ]);
+  });
+
+  it('does not adopt a substream that resolves to a forbidden host', async () => {
+    const result = await introspectOnvifCamera(
+      { host: '192.168.1.50' },
+      deps({
+        connectFactory: () => async () =>
+          fakeCam({
+            ...PROFILED,
+            streamUriByToken: {
+              main: 'rtsp://192.168.1.50:554/Preview_01_main',
+              sub: 'rtsp://169.254.169.254:554/Preview_01_sub',
+            },
+          }),
+        assertHostAllowed: async (h) => {
+          if (h === '169.254.169.254') throw new Error('blocked');
+        },
+      }),
+    );
+    expect(result.source).toMatchObject({ path: '/Preview_01_main' });
+    expect(result.substreams).toBeFalsy();
+    expect(result.substreamPath).toBeUndefined();
+    expect(result.streams?.map((s) => s.source.host)).toEqual(['192.168.1.50']); // sub dropped
+  });
+
+  it('flags no substream when the camera exposes only a single H.264 profile', async () => {
+    const result = await introspectOnvifCamera(
+      { host: '192.168.1.50' },
+      deps({
+        connectFactory: () => async () =>
+          fakeCam({
+            streamUri: 'rtsp://192.168.1.50:554/only',
+            profiles: [
+              {
+                $: { token: 'main' },
+                name: 'Main',
+                videoEncoderConfiguration: {
+                  encoding: 'H264',
+                  resolution: { width: 1920, height: 1080 },
+                },
+              },
+            ],
+            streamUriByToken: { main: 'rtsp://192.168.1.50:554/only' },
+          }),
+      }),
+    );
+    expect(result.codec).toBe('h264');
+    expect(result.substreams).toBeFalsy();
+    expect(result.substreamPath).toBeUndefined();
   });
 });

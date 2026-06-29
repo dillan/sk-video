@@ -168,12 +168,18 @@ export const fetchHealth = (id: string, signal?: AbortSignal): Promise<IStreamHe
 export const fetchTransport = (id: string, signal?: AbortSignal): Promise<ITransportHints> =>
   getJson<ITransportHints>(`/cameras/${encodeURIComponent(id)}/transport`, 'transport', signal);
 
+/** Stream variant: the full-res main, or the low-res H.264 `_sub` (browser-decodable when main is H.265). */
+export type TStreamVariant = 'main' | 'sub';
+const subQuery = (variant: TStreamVariant, sep: '?' | '&'): string =>
+  variant === 'sub' ? `${sep}variant=sub` : '';
+
 /** Build a same-origin frame.jpeg URL for the MJPEG still-refresh rung (cache-busted per frame). */
-export const frameUrl = (id: string, ts: number): string =>
-  `${API_BASE}/cameras/${encodeURIComponent(id)}/frame.jpeg?t=${ts}`;
-export const hlsUrl = (id: string): string =>
-  `${API_BASE}/cameras/${encodeURIComponent(id)}/stream.m3u8`;
-export const whepUrl = (id: string): string => `${API_BASE}/cameras/${encodeURIComponent(id)}/whep`;
+export const frameUrl = (id: string, ts: number, variant: TStreamVariant = 'main'): string =>
+  `${API_BASE}/cameras/${encodeURIComponent(id)}/frame.jpeg?t=${ts}${subQuery(variant, '&')}`;
+export const hlsUrl = (id: string, variant: TStreamVariant = 'main'): string =>
+  `${API_BASE}/cameras/${encodeURIComponent(id)}/stream.m3u8${subQuery(variant, '?')}`;
+export const whepUrl = (id: string, variant: TStreamVariant = 'main'): string =>
+  `${API_BASE}/cameras/${encodeURIComponent(id)}/whep${subQuery(variant, '?')}`;
 
 // ---- Mutating camera controls (auth-gated server-side; a 401 means sign-in required) ----
 
@@ -312,12 +318,29 @@ export const discoverCameras = async (signal?: AbortSignal): Promise<ICandidate[
   return body.cameras ?? [];
 };
 
+/** One advertised media profile (codec + resolution + source), as returned by introspection. */
+export interface IIntrospectStream {
+  codec: string;
+  width?: number;
+  height?: number;
+  source: { scheme: string; host: string; port?: number; path?: string };
+  profileToken?: string;
+  name?: string;
+}
+
 /** The pre-filled fields ONVIF introspection returns (mirrors the plugin's IIntrospectResult). */
 export interface IIntrospectResult {
   manufacturer?: string;
   model?: string;
   serialNumber?: string | number;
   source?: { scheme: string; host: string; port?: number; path?: string };
+  /** Codec of the main (recording) stream — lets the UI route around H.265 in the browser. */
+  codec?: string;
+  /** Every advertised profile; surfaced so the operator can see what the camera offers. */
+  streams?: IIntrospectStream[];
+  /** Path of a browser-decodable H.264 substream on the same endpoint as `source`, when present. */
+  substreamPath?: string;
+  substreams?: boolean;
   snapshotUri?: string;
   ptz: boolean;
   absolutePtz: boolean;
@@ -356,7 +379,10 @@ export interface ICameraWrite {
     absolutePtz?: boolean;
     audio?: boolean;
     audioBackchannel?: boolean;
+    substreams?: boolean;
   };
+  /** Codec + substream path captured at onboarding; drives go2rtc's `_sub` stream + transport routing. */
+  media?: { codec?: string; substreamPath?: string };
 }
 
 export const saveCamera = async (id: string, body: ICameraWrite): Promise<void> => {

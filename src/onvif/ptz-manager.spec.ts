@@ -21,6 +21,7 @@ function fakeCam(): IOnvifCam {
     getImagingSettings: (_o, cb) => cb(null, { irCutFilter: 'AUTO' }),
     setImagingSettings: (_o, cb) => cb(null),
     getStreamUri: (_o, cb) => cb(null, { uri: 'rtsp://cam/stream' }),
+    getProfiles: (cb) => cb(null, []),
     getSnapshotUri: (_o, cb) => cb(null, { uri: 'http://cam/snap.jpg' }),
     getDeviceInformation: (cb) =>
       cb(null, {

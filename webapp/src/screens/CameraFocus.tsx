@@ -13,7 +13,7 @@ import {
   type TTransport,
   type TImagingPreset,
 } from '../api';
-import { transportLabel, ptzDelayed } from '../lib/transport';
+import { transportLabel, ptzDelayed, isHevc, transportsForVariant } from '../lib/transport';
 import { VideoPlayer } from '../components/VideoPlayer';
 
 interface Props {
@@ -120,12 +120,26 @@ export function CameraFocus({ cameraId, onBack }: Props) {
 
   const ptz = camera?.capabilities?.ptz === true;
   const delayed = ptzDelayed(rung);
+  // The browser can't decode an H.265 main stream live, so when the camera has an H.264 substream we
+  // play that instead. We treat the main as H.265 if onboarding recorded it OR go2rtc negotiated HEVC.
+  // Gate on the actual stored substreamPath (what the server serves `?variant=sub` from) — never the
+  // capability flag alone, so we can't request a sub the server has no `_sub` stream for.
+  const mainIsHevc = camera?.media?.codec === 'h265' || isHevc(hints?.codecs ?? []);
+  const useSub = !!camera?.media?.substreamPath && mainIsHevc;
+  const variant = useSub ? 'sub' : 'main';
+  // Playing the H.264 sub flips the walk to WebRTC-first (the server's order is the H.265 main's).
+  const transports = hints ? transportsForVariant(useSub, hints.recommended) : [];
 
   return (
     <div className="focus">
       <div className="focus__stage">
-        {hints && (
-          <VideoPlayer cameraId={cameraId} transports={hints.recommended} onRung={setRung} />
+        {hints && camera && (
+          <VideoPlayer
+            cameraId={cameraId}
+            transports={transports}
+            variant={variant}
+            onRung={setRung}
+          />
         )}
         <div className="focus__top">
           <button
@@ -140,6 +154,7 @@ export function CameraFocus({ cameraId, onBack }: Props) {
             {camera?.name ?? cameraId}
             <span className="mono"> · {transportLabel(rung)}</span>
           </span>
+          {useSub && <span className="chip chip--caution">H.264 sub-stream · main is H.265</span>}
         </div>
         {msg && (
           <div className={`focus__msg chip chip--${msg.kind === 'caution' ? 'caution' : 'info'}`}>

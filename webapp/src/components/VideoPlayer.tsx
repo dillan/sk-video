@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { frameUrl, hlsUrl, whepUrl, type TTransport } from '../api';
+import { frameUrl, hlsUrl, whepUrl, type TTransport, type TStreamVariant } from '../api';
 import { nextTransport } from '../lib/transport';
 
 /**
@@ -18,11 +18,17 @@ const MJPEG_INTERVAL_MS = 1200;
 interface Props {
   cameraId: string;
   transports: TTransport[];
+  /** Which stream to play: the full-res main, or the low-res H.264 `sub` (for an H.265 main). */
+  variant?: TStreamVariant;
   /** Notified when the active rung changes, so the caller can label it ("WebRTC" / "still-refresh"). */
   onRung?: (t: TTransport) => void;
 }
 
-async function negotiateWhep(id: string, video: HTMLVideoElement): Promise<RTCPeerConnection> {
+async function negotiateWhep(
+  id: string,
+  video: HTMLVideoElement,
+  variant: TStreamVariant,
+): Promise<RTCPeerConnection> {
   const pc = new RTCPeerConnection();
   pc.addTransceiver('video', { direction: 'recvonly' });
   pc.addTransceiver('audio', { direction: 'recvonly' });
@@ -31,7 +37,7 @@ async function negotiateWhep(id: string, video: HTMLVideoElement): Promise<RTCPe
   };
   const offer = await pc.createOffer();
   await pc.setLocalDescription(offer);
-  const res = await fetch(whepUrl(id), {
+  const res = await fetch(whepUrl(id, variant), {
     method: 'POST',
     headers: { 'Content-Type': 'application/sdp' },
     credentials: 'include',
@@ -45,15 +51,15 @@ async function negotiateWhep(id: string, video: HTMLVideoElement): Promise<RTCPe
   return pc;
 }
 
-export function VideoPlayer({ cameraId, transports, onRung }: Props) {
+export function VideoPlayer({ cameraId, transports, variant = 'main', onRung }: Props) {
   const [rung, setRung] = useState<TTransport>(() => transports[0] ?? 'mjpeg');
   const [frameTick, setFrameTick] = useState(0);
   const videoRef = useRef<HTMLVideoElement>(null);
 
-  // Restart the walk whenever the camera or the recommended order changes.
+  // Restart the walk whenever the camera, the recommended order, or the stream variant changes.
   useEffect(() => {
     setRung(transports[0] ?? 'mjpeg');
-  }, [cameraId, transports]);
+  }, [cameraId, transports, variant]);
 
   useEffect(() => {
     onRung?.(rung);
@@ -77,7 +83,7 @@ export function VideoPlayer({ cameraId, transports, onRung }: Props) {
 
     if (rung === 'hls') {
       if (video.canPlayType('application/vnd.apple.mpegurl')) {
-        video.src = hlsUrl(cameraId);
+        video.src = hlsUrl(cameraId, variant);
       } else {
         // No native HLS and hls.js not yet bundled — fall back to the still-refresh rung.
         advance();
@@ -85,7 +91,7 @@ export function VideoPlayer({ cameraId, transports, onRung }: Props) {
     } else if (typeof RTCPeerConnection === 'undefined') {
       advance();
     } else {
-      negotiateWhep(cameraId, video)
+      negotiateWhep(cameraId, video, variant)
         .then((conn) => {
           if (cancelled) conn.close();
           else pc = conn;
@@ -101,16 +107,16 @@ export function VideoPlayer({ cameraId, transports, onRung }: Props) {
       video.srcObject = null;
       video.removeAttribute('src');
     };
-    // advance/transports are stable enough for this effect; rung+cameraId drive it.
+    // advance/transports are stable enough for this effect; rung+cameraId+variant drive it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rung, cameraId]);
+  }, [rung, cameraId, variant]);
 
   return (
     <div className="player">
       {rung === 'mjpeg' ? (
         <img
           className="player__media"
-          src={frameUrl(cameraId, frameTick)}
+          src={frameUrl(cameraId, frameTick, variant)}
           alt=""
           onError={advance}
         />

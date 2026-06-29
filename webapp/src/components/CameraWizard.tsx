@@ -20,6 +20,7 @@ import {
   type Mount,
   type Role,
 } from '../lib/onboard';
+import { codecLabel } from '../lib/transport';
 
 type Step = 'scan' | 'connect' | 'details';
 interface Msg {
@@ -263,7 +264,35 @@ export function CameraWizard({ onDone }: { onDone: (saved: boolean) => void }) {
             {draft.capabilities.audioBackchannel && (
               <span className="chip chip--info">two-way audio</span>
             )}
+            {draft.media?.codec && (
+              <span className="chip chip--neutral">main: {codecLabel(draft.media.codec)}</span>
+            )}
+            {draft.capabilities.substreams && (
+              <span className="chip chip--info">H.264 sub-stream</span>
+            )}
           </div>
+          {draft.streams && draft.streams.length > 0 && (
+            <ul className="streams">
+              {draft.streams.map((s, i) => (
+                <li key={i} className="mono">
+                  {codecLabel(s.codec)}
+                  {s.width && s.height ? ` · ${s.width}×${s.height}` : ''}
+                </li>
+              ))}
+            </ul>
+          )}
+          {draft.media?.codec === 'h265' && draft.capabilities.substreams && (
+            <p className="muted">
+              The main stream is H.265, which most browsers can’t decode for live view — so the live
+              view will use the camera’s H.264 sub-stream. The H.265 main still records.
+            </p>
+          )}
+          {draft.media?.codec === 'h265' && !draft.capabilities.substreams && (
+            <p className="muted">
+              Heads up: the main stream is H.265 and no H.264 sub-stream was found, so live view may
+              be blank in most browsers. It still records. Enable an H.264 sub-stream on the camera.
+            </p>
+          )}
           <label className="field">
             <span>Id</span>
             <input

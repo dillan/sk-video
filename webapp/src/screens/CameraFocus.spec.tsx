@@ -63,4 +63,83 @@ describe('CameraFocus', () => {
     render(<CameraFocus cameraId="ghost" onBack={() => undefined} />);
     await waitFor(() => expect(screen.getByText('Camera not found.')).toBeTruthy());
   });
+
+  const playerSrc = () => document.querySelector('img.player__media')?.getAttribute('src') ?? '';
+
+  it('plays the H.264 sub-stream when the main codec is H.265 and a substream exists', async () => {
+    mockApi({
+      cameras: {
+        bow: {
+          name: 'Foredeck',
+          enabled: true,
+          capabilities: { substreams: true },
+          media: { codec: 'h265', substreamPath: '/Preview_01_sub' },
+        },
+      },
+    });
+    render(<CameraFocus cameraId="bow" onBack={() => undefined} />);
+    await screen.findByText('Foredeck');
+    await waitFor(() => expect(playerSrc()).toContain('variant=sub'));
+    expect(screen.getByText(/H.264 sub-stream · main is H.265/)).toBeTruthy();
+  });
+
+  it('falls back to the sub-stream when go2rtc negotiated HEVC at runtime', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        const u = String(url);
+        if (u.includes('/transport'))
+          return ok({ recommended: ['mjpeg'], codecs: ['H265'], online: true, note: '' });
+        if (u.includes('/resources/cameras'))
+          return ok({
+            bow: {
+              name: 'Foredeck',
+              enabled: true,
+              capabilities: { substreams: true },
+              media: { substreamPath: '/Preview_01_sub' },
+            },
+          });
+        return ok({});
+      }),
+    );
+    render(<CameraFocus cameraId="bow" onBack={() => undefined} />);
+    await screen.findByText('Foredeck');
+    await waitFor(() => expect(playerSrc()).toContain('variant=sub'));
+  });
+
+  it('does not request the sub when the capability is set but no substream path was stored', async () => {
+    // The server serves `?variant=sub` from media.substreamPath, so a cap with no path must not switch.
+    mockApi({
+      cameras: {
+        bow: {
+          name: 'Foredeck',
+          enabled: true,
+          capabilities: { substreams: true },
+          media: { codec: 'h265' },
+        },
+      },
+    });
+    render(<CameraFocus cameraId="bow" onBack={() => undefined} />);
+    await screen.findByText('Foredeck');
+    await waitFor(() => expect(document.querySelector('img.player__media')).toBeTruthy());
+    expect(playerSrc()).not.toContain('variant=sub');
+  });
+
+  it('plays the main stream for an H.264 camera (no sub variant, no note)', async () => {
+    mockApi({
+      cameras: {
+        bow: {
+          name: 'Foredeck',
+          enabled: true,
+          capabilities: { substreams: true },
+          media: { codec: 'h264' },
+        },
+      },
+    });
+    render(<CameraFocus cameraId="bow" onBack={() => undefined} />);
+    await screen.findByText('Foredeck');
+    await waitFor(() => expect(document.querySelector('img.player__media')).toBeTruthy());
+    expect(playerSrc()).not.toContain('variant=sub');
+    expect(screen.queryByText(/H.264 sub-stream/)).toBeNull();
+  });
 });

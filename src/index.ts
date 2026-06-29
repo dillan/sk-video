@@ -1094,7 +1094,7 @@ export = function (app: ServerAPI): Plugin {
       registerProxyRoutes(router, {
         apiPort: () => gateway?.apiPort ?? 1984,
         hasCamera: (id: string) => cameras?.get(id) !== null && cameras?.get(id) !== undefined,
-        hasSubstream: (id: string) => cameras?.get(id)?.media?.substreamPath !== undefined,
+        hasSubstream: (id: string) => !!cameras?.get(id)?.media?.substreamPath,
         hasBackchannel: (id: string) => cameras?.get(id)?.capabilities?.audioBackchannel === true,
       });
 
