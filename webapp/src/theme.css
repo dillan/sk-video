@@ -690,6 +690,38 @@ button.tile {
   outline-offset: 1px;
 }
 
+/* ---- Camera Health diagnostics + calibration ---- */
+.diag {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.diag__row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: baseline;
+}
+.diag__note {
+  display: block;
+  line-height: 1.45;
+  margin-top: 4px;
+}
+.calib__slot {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+.calib__pad {
+  margin: 6px 0;
+}
+.calib__val {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
 /* ---- Responsive: phone gets a bottom tab bar and a single-column stack ---- */
 @media (max-width: 720px) {
   .rail {

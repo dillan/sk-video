@@ -60,6 +60,7 @@ function makeController() {
     stop: vi.fn(),
     getPresets: vi.fn().mockResolvedValue([{ token: 'p1', name: 'Dock' }]),
     gotoPreset: vi.fn(),
+    getStatus: vi.fn().mockResolvedValue({ pan: 0.5, tilt: -0.2, zoom: 0 }),
   };
 }
 
@@ -92,13 +93,23 @@ const ROUTE_KEYS = [
   'POST /cameras/:id/ptz',
   'POST /cameras/:id/ptz/stop',
   'GET /cameras/:id/ptz/presets',
+  'GET /cameras/:id/ptz/position',
   'POST /cameras/:id/ptz/preset',
 ] as const;
 
 describe('registerPtzRoutes', () => {
-  it('registers exactly the four expected routes', () => {
+  it('registers exactly the expected routes', () => {
     const handlers = setup(() => makeManager(makeController()));
     expect([...handlers.keys()].sort()).toEqual([...ROUTE_KEYS].sort());
+  });
+
+  it('GET ptz/position returns the normalized status and is not gated', async () => {
+    const controller = makeController();
+    const res = await invoke(
+      setup(() => makeManager(controller), DENY).get('GET /cameras/:id/ptz/position')!,
+    );
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toEqual({ pan: 0.5, tilt: -0.2, zoom: 0 });
   });
 
   it('rejects an unauthenticated caller with 401 on every mutating route, before touching the camera', async () => {

@@ -27,3 +27,8 @@ export function transportLabel(t: TTransport): string {
 /** Whether continuous PTZ should be disabled — true on the MJPEG still-refresh rung (panning a
  * ~1 fps feed near a dock is dangerous; the design greys continuous PTZ there). */
 export const ptzDelayed = (t: TTransport): boolean => t === 'mjpeg';
+
+/** True for an HEVC/H.265 codec name — the one browsers (notably Chrome) can't decode for live view. */
+export function isHevc(codecs: string[]): boolean {
+  return codecs.some((c) => /h\.?265|hevc/i.test(c));
+}

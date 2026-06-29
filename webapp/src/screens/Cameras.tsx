@@ -9,11 +9,19 @@ import {
   type ICameraWrite,
 } from '../api';
 import { CameraWizard } from '../components/CameraWizard';
+import { CameraHealth } from '../components/CameraHealth';
+import { CalibrationWizard } from '../components/CalibrationWizard';
 
 type Load =
   | { state: 'loading' }
   | { state: 'ready'; cameras: ICameraEntry[] }
   | { state: 'error'; message: string };
+
+type View =
+  | { kind: 'list' }
+  | { kind: 'add' }
+  | { kind: 'health'; id: string; name: string }
+  | { kind: 'calibrate'; id: string; name: string };
 
 interface Msg {
   kind: 'caution' | 'info';
@@ -32,13 +40,13 @@ function bodyFrom(entry: ICameraEntry, enabled: boolean): ICameraWrite | null {
 
 /**
  * The single source of truth for camera management: every camera the boat knows, with enable/disable,
- * delete, and the front door to zero-typing onboarding. Cameras are shared Signal K resources, so a
- * change here is reflected on every client.
+ * delete, diagnostics, calibration, and the front door to zero-typing onboarding. Cameras are shared
+ * Signal K resources, so a change here is reflected on every client.
  */
 export function Cameras() {
   const [load, setLoad] = useState<Load>({ state: 'loading' });
   const [creds, setCreds] = useState<Record<string, boolean>>({});
-  const [mode, setMode] = useState<'list' | 'add'>('list');
+  const [view, setView] = useState<View>({ kind: 'list' });
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [msg, setMsg] = useState<Msg | null>(null);
 
@@ -47,7 +55,6 @@ export function Cameras() {
     fetchCameras(ctrl.signal)
       .then((cameras) => {
         setLoad({ state: 'ready', cameras });
-        // Credential presence is best-effort (auth-gated); a failure just leaves it unknown.
         cameras.forEach((c) =>
           getCredentialPresence(c.id, ctrl.signal)
             .then((p) => setCreds((m) => ({ ...m, [c.id]: p.hasPassword })))
@@ -93,15 +100,30 @@ export function Cameras() {
       .catch((err: unknown) => fail(err, 'delete the camera'));
   };
 
-  if (mode === 'add') {
+  if (view.kind === 'add') {
     return (
       <CameraWizard
         onDone={(saved) => {
-          setMode('list');
+          setView({ kind: 'list' });
           if (saved) {
             setMsg({ kind: 'info', text: 'Camera added.' });
             refresh();
           }
+        }}
+      />
+    );
+  }
+  if (view.kind === 'health') {
+    return <CameraHealth id={view.id} name={view.name} onBack={() => setView({ kind: 'list' })} />;
+  }
+  if (view.kind === 'calibrate') {
+    return (
+      <CalibrationWizard
+        id={view.id}
+        name={view.name}
+        onDone={(saved) => {
+          setView({ kind: 'list' });
+          if (saved) setMsg({ kind: 'info', text: 'Calibration saved.' });
         }}
       />
     );
@@ -112,7 +134,7 @@ export function Cameras() {
       <header className="page-head">
         <h1>Cameras</h1>
         <div className="page-head__spacer" />
-        <button type="button" className="btn" onClick={() => setMode('add')}>
+        <button type="button" className="btn" onClick={() => setView({ kind: 'add' })}>
           Add a camera
         </button>
       </header>
@@ -126,7 +148,7 @@ export function Cameras() {
       {load.state === 'ready' && load.cameras.length === 0 && (
         <div className="empty">
           <p>No cameras yet.</p>
-          <button type="button" className="btn" onClick={() => setMode('add')}>
+          <button type="button" className="btn" onClick={() => setView({ kind: 'add' })}>
             Add your first camera
           </button>
         </div>
@@ -149,6 +171,22 @@ export function Cameras() {
                 {!c.enabled && <span className="chip chip--caution">disabled</span>}
               </div>
               <div className="camrow__actions">
+                <button
+                  type="button"
+                  className="btn btn--ghost"
+                  onClick={() => setView({ kind: 'health', id: c.id, name: c.name })}
+                >
+                  Diagnostics
+                </button>
+                {c.capabilities?.absolutePtz && (
+                  <button
+                    type="button"
+                    className="btn btn--ghost"
+                    onClick={() => setView({ kind: 'calibrate', id: c.id, name: c.name })}
+                  >
+                    Calibrate
+                  </button>
+                )}
                 <button type="button" className="btn btn--ghost" onClick={() => toggle(c)}>
                   {c.enabled ? 'Disable' : 'Enable'}
                 </button>

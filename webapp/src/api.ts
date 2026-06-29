@@ -270,6 +270,32 @@ export const markIncident = (): Promise<Response> =>
 export const slewToCue = (id: string): Promise<Response> =>
   send(`${cam(id)}/slew-to-cue`, { method: 'POST' }, 'slew');
 
+// ---- PTZ position + calibration (for the calibration wizard) ----
+
+export interface IPtzPosition {
+  pan: number;
+  tilt: number;
+  zoom?: number;
+}
+export const fetchPtzPosition = (id: string, signal?: AbortSignal): Promise<IPtzPosition> =>
+  getJson<IPtzPosition>(`${cam(id)}/ptz/position`, 'position', signal);
+
+export interface ICalibrationSample {
+  deg: number;
+  normalized: number;
+}
+/** Two {deg, normalized} samples per axis solve the degrees→normalised map for absolute aiming. */
+export const submitCalibration = async (
+  id: string,
+  samples: { pan: ICalibrationSample[]; tilt: ICalibrationSample[] },
+): Promise<void> => {
+  await send(
+    `${cam(id)}/calibration`,
+    { method: 'POST', body: JSON.stringify(samples) },
+    'calibration',
+  );
+};
+
 // ---- Discovery + onboarding ----
 
 /** A device found by the LAN scan (WS-Discovery + mDNS). A genuine ONVIF camera's onvifUrl ends in

@@ -65,6 +65,14 @@ export function registerPtzRoutes(
     }),
   );
 
+  // Current normalised PTZ position (a read; no gate). The calibration wizard captures this alongside
+  // an observed real-world bearing to solve the degrees→normalised map.
+  router.get('/cameras/:id/ptz/position', (req: Request, res: Response) =>
+    withController(req, res, async (ctrl) => {
+      res.json(await ctrl.getStatus());
+    }),
+  );
+
   router.post('/cameras/:id/ptz/preset', (req: Request, res: Response) => {
     if (gate(req, res)) return;
     return withController(req, res, async (ctrl) => {
