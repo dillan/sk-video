@@ -7,6 +7,7 @@ import { FileCameraPersistence, FileCredentialPersistence } from './cameras/file
 import { createCameraResourceMethods } from './cameras/resource-provider';
 import { registerLayoutRoute } from './cameras/layout-routes';
 import { registerAppRoutes } from './web/app-routes';
+import { registerSessionRoute } from './web/session-routes';
 import { validateCamera, sourceEndpointChanged } from './cameras/camera-validation';
 import { assertHostAllowed, type ISsrfOptions } from './security/ssrf-guard';
 import { redactUrl } from './security/redact';
@@ -971,6 +972,19 @@ export = function (app: ServerAPI): Plugin {
           hardware,
         });
       });
+
+      // Auth-only whoami the web app calls to learn whether security is on and whether it is signed in,
+      // plus the plugin version (so a stale shell can prompt a reload). Booleans only — safe to leave open.
+      let pluginVersion = 'unknown';
+      try {
+        const pkg = JSON.parse(readFileSync(join(__dirname, '..', 'package.json'), 'utf8')) as {
+          version?: string;
+        };
+        pluginVersion = pkg.version ?? 'unknown';
+      } catch {
+        // Keep 'unknown' if the manifest can't be read; the version is advisory.
+      }
+      registerSessionRoute(router, { securityStrategy, pluginVersion });
 
       // Serve the SK Video web app (the built Vite bundle in public/) same-origin under /app, alongside
       // — never shadowing — the API routes. Assets are read once and cached for the process lifetime

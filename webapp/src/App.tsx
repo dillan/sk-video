@@ -1,5 +1,11 @@
 import { useEffect, useState } from 'react';
-import { fetchStatus, type IPluginStatus } from './api';
+import {
+  describeAuth,
+  fetchSession,
+  fetchStatus,
+  type IPluginStatus,
+  type ISessionInfo,
+} from './api';
 
 type Load =
   | { state: 'loading' }
@@ -14,6 +20,7 @@ type Load =
  */
 export function App() {
   const [load, setLoad] = useState<Load>({ state: 'loading' });
+  const [session, setSession] = useState<ISessionInfo | null>(null);
 
   useEffect(() => {
     const ctrl = new AbortController();
@@ -28,6 +35,10 @@ export function App() {
           message: err instanceof Error ? err.message : 'unreachable',
         });
       });
+    // The session probe is best-effort: a failure just leaves the chip in its "checking…" state.
+    fetchSession(ctrl.signal)
+      .then((info) => setSession(info))
+      .catch(() => undefined);
     return () => ctrl.abort();
   }, []);
 
@@ -36,6 +47,9 @@ export function App() {
       <header className="app-header">
         <h1>SK Video</h1>
         <p className="tagline">Marine video — live, recorded, and as a safety instrument.</p>
+        <span className="auth-chip" data-secured={session?.securityEnabled ? 'true' : 'false'}>
+          {describeAuth(session)}
+        </span>
       </header>
 
       <section className="card" aria-live="polite">

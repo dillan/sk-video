@@ -1,5 +1,27 @@
 import { describe, it, expect } from 'vitest';
-import { isAuthorizedSensitiveRequest } from './request-auth';
+import { isAuthorizedSensitiveRequest, isSecurityEnabled } from './request-auth';
+
+describe('isSecurityEnabled', () => {
+  it('is false when no strategy is present (security not configured)', () => {
+    expect(isSecurityEnabled(undefined)).toBe(false);
+  });
+  it('is false on the open/dummy strategy', () => {
+    expect(isSecurityEnabled({ isDummy: () => true })).toBe(false);
+  });
+  it('is true for a real strategy', () => {
+    expect(isSecurityEnabled({ isDummy: () => false })).toBe(true);
+    expect(isSecurityEnabled({})).toBe(true); // a strategy with no isDummy is a real one
+  });
+  it('treats a throwing isDummy as secured (fails to the safe side)', () => {
+    expect(
+      isSecurityEnabled({
+        isDummy: () => {
+          throw new Error('boom');
+        },
+      }),
+    ).toBe(true);
+  });
+});
 
 describe('isAuthorizedSensitiveRequest', () => {
   it('allows when the server exposes no security strategy (security not in play)', () => {

@@ -94,6 +94,21 @@ body {
   margin: calc(var(--space) * 0.5) 0 0;
 }
 
+.auth-chip {
+  display: inline-block;
+  margin-top: var(--space);
+  padding: calc(var(--space) * 0.5) var(--space);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.auth-chip[data-secured='true'] {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
 .card {
   background: var(--surface-1);
   border: 1px solid var(--border);

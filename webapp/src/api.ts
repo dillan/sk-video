@@ -41,3 +41,35 @@ export async function fetchStatus(signal?: AbortSignal): Promise<IPluginStatus> 
   }
   return (await res.json()) as IPluginStatus;
 }
+
+/** Auth "whoami" — booleans only, mirrors the plugin's `ISessionInfo`. */
+export interface ISessionInfo {
+  securityEnabled: boolean;
+  authenticated: boolean;
+  pluginVersion: string;
+}
+
+/** A one-line description of the auth posture, for the header chip. */
+export function describeAuth(session: ISessionInfo | null): string {
+  if (!session) {
+    return 'checking…';
+  }
+  if (!session.securityEnabled) {
+    return 'open server';
+  }
+  return session.authenticated ? 'secured · signed in' : 'secured · sign in required';
+}
+
+export async function fetchSession(signal?: AbortSignal): Promise<ISessionInfo> {
+  // Same-origin: the browser rides the existing Signal K session (cookie) automatically. A bearer-token
+  // server will need explicit header attachment — wired once the auth model is confirmed.
+  const res = await fetch(`${API_BASE}/session`, {
+    headers: { Accept: 'application/json' },
+    credentials: 'same-origin',
+    signal,
+  });
+  if (!res.ok) {
+    throw new Error(`session ${res.status}`);
+  }
+  return (await res.json()) as ISessionInfo;
+}

@@ -1,5 +1,20 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { deriveApiBase, fetchStatus } from './api';
+import { deriveApiBase, describeAuth, fetchStatus, fetchSession } from './api';
+
+describe('describeAuth', () => {
+  it('describes the auth posture for the header chip', () => {
+    expect(describeAuth(null)).toBe('checking…');
+    expect(describeAuth({ securityEnabled: false, authenticated: true, pluginVersion: '1' })).toBe(
+      'open server',
+    );
+    expect(describeAuth({ securityEnabled: true, authenticated: true, pluginVersion: '1' })).toBe(
+      'secured · signed in',
+    );
+    expect(describeAuth({ securityEnabled: true, authenticated: false, pluginVersion: '1' })).toBe(
+      'secured · sign in required',
+    );
+  });
+});
 
 describe('deriveApiBase', () => {
   it('derives the plugin API base from the app mount path', () => {
@@ -31,5 +46,20 @@ describe('fetchStatus', () => {
   it('throws with the HTTP status when the request is not ok', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 503 }));
     await expect(fetchStatus()).rejects.toThrow('status 503');
+  });
+});
+
+describe('fetchSession', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('returns the parsed session info on success', async () => {
+    const info = { securityEnabled: true, authenticated: false, pluginVersion: '1.1.0' };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => info }));
+    await expect(fetchSession()).resolves.toEqual(info);
+  });
+
+  it('throws when the session request is not ok', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 500 }));
+    await expect(fetchSession()).rejects.toThrow('session 500');
   });
 });

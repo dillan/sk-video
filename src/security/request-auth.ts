@@ -37,6 +37,22 @@ export interface IAuthenticatableRequest {
  */
 export type AuthGate = (req: ExpressRequest, res: ExpressResponse) => boolean;
 
+/**
+ * Whether the server is running with security enabled (a real strategy that isn't the open "dummy"
+ * one). Used by the web app's session probe to decide whether to show sign-in UI. Fails to the safe
+ * side: a strategy whose `isDummy` throws is treated as secured.
+ */
+export function isSecurityEnabled(strategy: ISecurityStrategy | undefined): boolean {
+  if (!strategy) {
+    return false;
+  }
+  try {
+    return strategy.isDummy?.() !== true;
+  } catch {
+    return true;
+  }
+}
+
 export function isAuthorizedSensitiveRequest(
   strategy: ISecurityStrategy | undefined,
   req: IAuthenticatableRequest,
