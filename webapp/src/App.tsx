@@ -1,75 +1,75 @@
 import { useEffect, useState } from 'react';
 import {
-  describeAuth,
   fetchSession,
-  fetchStatus,
-  type IPluginStatus,
+  fetchMobStatus,
+  describeAuth,
   type ISessionInfo,
+  type IMobStatus,
 } from './api';
-
-type Load =
-  | { state: 'loading' }
-  | { state: 'ready'; status: IPluginStatus }
-  | { state: 'error'; message: string };
+import { useHashRoute } from './lib/router';
+import { NavRail, TabBar } from './components/Nav';
+import { LiveWall } from './screens/LiveWall';
+import { Stub } from './screens/Stub';
 
 /**
- * Scaffold shell for the SK Video operator console. It proves the same-origin contract end to end
- * (built bundle → served under /plugins/sk-video/app → calls GET /status on the parent path) and
- * gives the design work a themed frame to grow into. The real screens (Live Wall, Camera Focus,
- * Review, etc.) land here behind routing in later phases.
+ * The Deference app shell: a side rail (tablet/desktop) or bottom tab bar (phone) around the active
+ * screen. Live is the hero. Session + MOB are shell-level concerns (auth chip, safety state); each
+ * screen owns its own data. Read-only / sign-in-required shows a non-modal banner rather than blocking.
  */
 export function App() {
-  const [load, setLoad] = useState<Load>({ state: 'loading' });
+  const [route, navigate] = useHashRoute();
   const [session, setSession] = useState<ISessionInfo | null>(null);
+  const [mob, setMob] = useState<IMobStatus | null>(null);
 
   useEffect(() => {
     const ctrl = new AbortController();
-    fetchStatus(ctrl.signal)
-      .then((status) => setLoad({ state: 'ready', status }))
-      .catch((err: unknown) => {
-        if (ctrl.signal.aborted) {
-          return;
-        }
-        setLoad({
-          state: 'error',
-          message: err instanceof Error ? err.message : 'unreachable',
-        });
-      });
-    // The session probe is best-effort: a failure just leaves the chip in its "checking…" state.
+    // Best-effort: a failed probe just leaves the chip "checking…" and the strip without MOB state.
     fetchSession(ctrl.signal)
-      .then((info) => setSession(info))
+      .then(setSession)
+      .catch(() => undefined);
+    fetchMobStatus(ctrl.signal)
+      .then(setMob)
       .catch(() => undefined);
     return () => ctrl.abort();
   }, []);
 
+  const authChip = (
+    <span className="chip chip--neutral" title="Authentication">
+      {describeAuth(session)}
+    </span>
+  );
+  const signInRequired = session?.securityEnabled === true && session.authenticated === false;
+
   return (
-    <main className="app-shell">
-      <header className="app-header">
-        <h1>SK Video</h1>
-        <p className="tagline">Marine video — live, recorded, and as a safety instrument.</p>
-        <span className="auth-chip" data-secured={session?.securityEnabled ? 'true' : 'false'}>
-          {describeAuth(session)}
-        </span>
-      </header>
-
-      <section className="card" aria-live="polite">
-        {load.state === 'loading' && <p className="muted">Connecting to the plugin…</p>}
-        {load.state === 'error' && (
-          <p className="status-bad">Can’t reach SK Video ({load.message}).</p>
+    <div className="shell">
+      <NavRail current={route} onNavigate={navigate} authChip={authChip} />
+      <div className="content">
+        {signInRequired && (
+          <div className="reauth" role="status">
+            <span>Sign-in required — controls stay read-only until you sign in to Signal K.</span>
+          </div>
         )}
-        {load.state === 'ready' && (
-          <dl className="status-grid">
-            <dt>Status</dt>
-            <dd>{load.status.ready ? 'ready' : 'starting…'}</dd>
-            <dt>Cameras</dt>
-            <dd>{typeof load.status.cameras === 'number' ? load.status.cameras : '—'}</dd>
-            <dt>Hardware tier</dt>
-            <dd>{load.status.hardware?.tier ?? 'unknown'}</dd>
-          </dl>
+        {route === 'live' && <LiveWall mob={mob} />}
+        {route === 'review' && (
+          <Stub
+            title="Review"
+            note="Recordings, the event timeline, incidents, and snapshots land in a later slice."
+          />
         )}
-      </section>
-
-      <footer className="app-footer muted">Scaffold — the operator console UI lands here.</footer>
-    </main>
+        {route === 'cameras' && (
+          <Stub
+            title="Cameras"
+            note="Camera management, zero-typing onboarding, and PTZ calibration land in a later slice."
+          />
+        )}
+        {route === 'safety' && (
+          <Stub
+            title="Safety"
+            note="The man-overboard and AIS-slew console lands in a later slice."
+          />
+        )}
+      </div>
+      <TabBar current={route} onNavigate={navigate} />
+    </div>
   );
 }

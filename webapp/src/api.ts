@@ -95,6 +95,48 @@ export function fetchSession(signal?: AbortSignal): Promise<ISessionInfo> {
   return getJson<ISessionInfo>('/session', 'session', signal);
 }
 
+/** A camera definition from the Signal K `cameras` resource (subset; never includes credentials). */
+export interface ICamera {
+  name: string;
+  enabled: boolean;
+  placement?: { mount?: string; bearingRelativeDeg?: number; heightM?: number };
+  role?: string;
+  capabilities?: { ptz?: boolean; absolutePtz?: boolean; audio?: boolean; substreams?: boolean };
+  media?: { codec?: string; substreamPath?: string; projection?: string };
+}
+export interface ICameraEntry extends ICamera {
+  id: string;
+}
+
+/** Cameras are shared Signal K resources, read same-origin from the Resources API (keyed by id). */
+export async function fetchCameras(signal?: AbortSignal): Promise<ICameraEntry[]> {
+  const res = await fetch(`${SK_ROOT}/signalk/v2/api/resources/cameras`, {
+    headers: { Accept: 'application/json' },
+    credentials: 'include',
+    signal,
+  });
+  if (!res.ok) {
+    throw new Error(`cameras ${res.status}`);
+  }
+  const map = (await res.json()) as Record<string, ICamera> | null;
+  return Object.entries(map ?? {})
+    .map(([id, camera]) => ({ id, ...camera }))
+    .sort((a, b) => a.id.localeCompare(b.id));
+}
+
+/** Raw `vessels/self` tree for the telemetry strip; parsed by lib/format's parseVesselState. */
+export async function fetchVesselSelf(signal?: AbortSignal): Promise<unknown> {
+  const res = await fetch(`${SK_ROOT}/signalk/v1/api/vessels/self`, {
+    headers: { Accept: 'application/json' },
+    credentials: 'include',
+    signal,
+  });
+  if (!res.ok) {
+    throw new Error(`vessel ${res.status}`);
+  }
+  return res.json();
+}
+
 /**
  * Sign in against Signal K's own auth — SK Video delegates entirely. The same-origin POST sets the
  * `JAUTHENTICATION` cookie; the returned token isn't needed for cookie auth. After it resolves,

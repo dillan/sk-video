@@ -1,59 +1,93 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, screen, waitFor, cleanup } from '@testing-library/react';
+import { render, screen, waitFor, cleanup, fireEvent } from '@testing-library/react';
 import { App } from './App';
 
-afterEach(() => {
-  cleanup();
-  vi.restoreAllMocks();
-});
+const ok = (json: unknown) => Promise.resolve({ ok: true, json: async () => json });
 
-/** Mock fetch, routing by URL to a status and a session payload. */
-function mockApi(opts: {
-  status?: unknown;
-  statusOk?: boolean;
-  session?: unknown;
-  sessionOk?: boolean;
-}) {
+function mockApi(
+  opts: {
+    session?: unknown;
+    mob?: unknown;
+    cameras?: Record<string, unknown>;
+    camerasOk?: boolean;
+    vessel?: unknown;
+  } = {},
+) {
   vi.stubGlobal(
     'fetch',
     vi.fn((url: string) => {
-      if (String(url).endsWith('/session')) {
-        return Promise.resolve({
-          ok: opts.sessionOk ?? true,
-          json: async () => opts.session ?? {},
-        });
+      const u = String(url);
+      if (u.includes('/session')) {
+        return ok(
+          opts.session ?? { securityEnabled: false, authenticated: true, pluginVersion: '1' },
+        );
       }
-      return Promise.resolve({ ok: opts.statusOk ?? true, json: async () => opts.status ?? {} });
+      if (u.endsWith('/mob')) {
+        return ok(opts.mob ?? { active: false, targetSource: 'none', aimedCameras: 0 });
+      }
+      if (u.includes('/resources/cameras')) {
+        return opts.camerasOk === false
+          ? Promise.resolve({ ok: false, status: 500 })
+          : ok(opts.cameras ?? {});
+      }
+      if (u.includes('/vessels/self')) {
+        return ok(opts.vessel ?? {});
+      }
+      return ok({});
     }),
   );
 }
 
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+  window.location.hash = '';
+});
+
 describe('App shell', () => {
-  it('renders the SK Video header', () => {
-    mockApi({ status: { ready: true } });
+  it('renders the primary navigation', () => {
+    mockApi();
     render(<App />);
-    expect(screen.getByRole('heading', { name: 'SK Video' })).toBeTruthy();
+    for (const label of ['Live', 'Review', 'Cameras', 'Safety']) {
+      expect(screen.getAllByRole('button', { name: label }).length).toBeGreaterThan(0);
+    }
   });
 
-  it('shows status read from the same-origin /status endpoint', async () => {
-    mockApi({ status: { ready: true, cameras: 2, hardware: { tier: 'pi4' } } });
-    render(<App />);
-    await waitFor(() => expect(screen.getByText('pi4')).toBeTruthy());
-    expect(screen.getByText('2')).toBeTruthy();
-  });
-
-  it('shows an honest error when the plugin is unreachable', async () => {
-    mockApi({ statusOk: false });
-    render(<App />);
-    await waitFor(() => expect(screen.getByText(/Can’t reach SK Video/)).toBeTruthy());
-  });
-
-  it('reflects the auth posture from /session', async () => {
+  it('shows the boat’s cameras on the Live Wall', async () => {
     mockApi({
-      status: { ready: true },
-      session: { securityEnabled: true, authenticated: false, pluginVersion: '1.1.0' },
+      cameras: {
+        bow: { name: 'Bow', enabled: true, placement: { mount: 'bow', bearingRelativeDeg: 350 } },
+        stern: { name: 'Stern', enabled: true },
+      },
     });
     render(<App />);
-    await waitFor(() => expect(screen.getByText('secured · sign in required')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('Bow')).toBeTruthy());
+    expect(screen.getByText('Stern')).toBeTruthy();
+    expect(screen.getByText('2 cameras')).toBeTruthy();
+  });
+
+  it('shows an honest empty state when there are no cameras', async () => {
+    mockApi({ cameras: {} });
+    render(<App />);
+    await waitFor(() => expect(screen.getByText('No cameras yet.')).toBeTruthy());
+  });
+
+  it('shows "No GPS fix" honestly when the vessel has no position', async () => {
+    mockApi({ cameras: { bow: { name: 'Bow', enabled: true } }, vessel: {} });
+    render(<App />);
+    await waitFor(() => expect(screen.getByText('No GPS fix')).toBeTruthy());
+  });
+
+  it('navigates to a cluster stub when its nav item is tapped', async () => {
+    mockApi();
+    render(<App />);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Cameras' })[0]);
+    await waitFor(() => expect(screen.getByText(/onboarding, and PTZ calibration/)).toBeTruthy());
+  });
+
+  it('shows a sign-in-required banner on a secured server when not authenticated', async () => {
+    mockApi({ session: { securityEnabled: true, authenticated: false, pluginVersion: '1' } });
+    render(<App />);
+    await waitFor(() => expect(screen.getByText(/Sign-in required/)).toBeTruthy());
   });
 });

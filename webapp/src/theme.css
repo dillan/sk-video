@@ -1,66 +1,81 @@
 /*
- * Design tokens — the starting system for the SK Video console (see the plan's design brief).
- * Three COLOR themes (Day / Dark / Night-Red) selected via [data-theme]; chrome changes only.
- * INVARIANT: video always renders on a near-black mat (--video-mat) so feeds stay the brightest
- * element. These values are a direction for the design work to sharpen, not a final palette.
+ * SK Video — "Deference" design system (from the approved Claude Design canvas, Dark-led).
+ * Live is the hero; chrome defers to the content; honest states use one consistent amber treatment.
+ * Tokens are CSS custom properties so a theme is a value swap and the bundle stays lean. Dark is the
+ * canvas's primary theme; Day / Night-Red slots are kept for later (the design leads with Dark).
  */
 
 :root,
 [data-theme='dark'] {
-  --surface-0: #0b0f14;
-  --surface-1: #121821;
-  --surface-2: #1b2430;
+  /* Surfaces */
+  --surface-0: #0b0f14; /* app background */
+  --surface-1: #0d1117; /* nav rail / bars */
+  --surface-2: #121821; /* raised panels */
+  --video-mat: #07090c; /* INVARIANT: video always on near-black */
+  --glass: rgba(13, 17, 23, 0.55); /* control docks / overlays (with backdrop-blur) */
+  --hairline: rgba(255, 255, 255, 0.08);
+  --inset-ring: rgba(255, 255, 255, 0.12);
+
+  /* Text */
   --text-primary: #e8edf2;
-  --text-secondary: #9aa7b4;
-  --border: #243040;
+  --text-secondary: #aeb9c4;
+  --text-dim: #8593a1;
+  --text-faint: #6b7886;
+
+  /* Accent + status */
   --accent: #2e9bff;
-  --status-live: #ff3b30;
-  --status-online: #34c759;
-  --status-caution: #ff9f0a;
-  --status-alarm: #ff3b30;
+  --accent-bright: #6cbaff;
+  --accent-grad: linear-gradient(160deg, #3aa5ff, #0b73e6);
+  --status-live: #ff3b30; /* live / recording */
+  --status-online: #34c759; /* GPS fix, healthy */
+  --status-caution: #ff9f0a; /* honesty/degraded */
+  --status-caution-text: #ffd79a;
+  --status-caution-bright: #ffb84d;
+  --status-dark: #5b6775; /* went dark */
+  --status-never: #3a4654; /* never seen */
 
-  --video-mat: #07090c;
-
+  /* Geometry + type */
+  --radius-sm: 9px;
+  --radius: 14px;
+  --radius-lg: 18px;
   --space: 8px;
-  --radius: 10px;
   --tap-min: 44px;
   --font-ui: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   --font-num: ui-monospace, 'SF Mono', 'Roboto Mono', Menlo, Consolas, monospace;
+
+  color-scheme: dark;
 }
 
-[data-theme='day'] {
-  --surface-0: #f2f4f7;
-  --surface-1: #ffffff;
-  --surface-2: #e7ecf2;
-  --text-primary: #0b1220;
-  --text-secondary: #4a5763;
-  --border: #d3dae2;
-  --accent: #0b73e6;
+@keyframes recPulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
 }
-
-/* Night-Red: red/amber on near-black for dark adaptation. No blue/green/white; glow disabled. */
-[data-theme='night'] {
-  --surface-0: #05070a;
-  --surface-1: #0c0f13;
-  --surface-2: #14181d;
-  --text-primary: #f2693c;
-  --text-secondary: #b9542f;
-  --border: #2a1a12;
-  --accent: #ff8159;
-  --status-online: #ff9f0a;
-  --status-caution: #ffb454;
+@keyframes safetyPulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 59, 48, 0.5);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(255, 59, 48, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 59, 48, 0);
+  }
 }
 
 * {
   box-sizing: border-box;
 }
-
 html,
 body,
 #root {
   height: 100%;
 }
-
 body {
   margin: 0;
   background: var(--surface-0);
@@ -68,77 +83,364 @@ body {
   font-family: var(--font-ui);
   -webkit-font-smoothing: antialiased;
 }
-
-.app-shell {
-  max-width: 880px;
-  margin: 0 auto;
-  padding: calc(var(--space) * 3) calc(var(--space) * 2)
-    calc(var(--space) * 3 + env(safe-area-inset-bottom));
-  display: flex;
-  flex-direction: column;
-  gap: calc(var(--space) * 2);
-}
-
-.app-header h1 {
-  margin: 0;
-  font-size: 1.6rem;
-  letter-spacing: 0.01em;
-}
-
-.tagline,
-.muted {
-  color: var(--text-secondary);
-}
-
-.tagline {
-  margin: calc(var(--space) * 0.5) 0 0;
-}
-
-.auth-chip {
-  display: inline-block;
-  margin-top: var(--space);
-  padding: calc(var(--space) * 0.5) var(--space);
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  font-size: 0.8rem;
-  color: var(--text-secondary);
-}
-
-.auth-chip[data-secured='true'] {
-  color: var(--accent);
-  border-color: var(--accent);
-}
-
-.card {
-  background: var(--surface-1);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: calc(var(--space) * 2);
-}
-
-.status-grid {
-  display: grid;
-  grid-template-columns: max-content 1fr;
-  gap: var(--space) calc(var(--space) * 2);
-  margin: 0;
-}
-
-.status-grid dt {
-  color: var(--text-secondary);
-}
-
-.status-grid dd {
-  margin: 0;
+.mono {
   font-family: var(--font-num);
 }
 
-.status-bad {
-  color: var(--status-caution);
-  margin: 0;
+/* ---- App shell: side rail (tablet/desktop) + content; phone uses a bottom tab bar ---- */
+.shell {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+}
+.rail {
+  width: 108px;
+  flex: none;
+  background: var(--surface-1);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 18px 0;
+  gap: 30px;
+}
+.rail__logo {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: var(--accent-grad);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 15px;
+  color: #021019;
+  box-shadow: 0 6px 18px rgba(46, 155, 255, 0.4);
+}
+.rail__items {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  align-items: center;
+}
+.navitem {
+  width: 76px;
+  min-height: var(--tap-min);
+  padding: 12px 0;
+  border: 0;
+  background: transparent;
+  border-radius: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.navitem[aria-current='page'] {
+  background: rgba(46, 155, 255, 0.16);
+  color: var(--accent-bright);
+  box-shadow: inset 0 0 0 1px rgba(46, 155, 255, 0.28);
+  font-weight: 600;
+}
+.navitem:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
-.app-footer {
-  font-size: 0.85rem;
+.content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 22px 24px 24px;
+}
+
+/* phone bottom tab bar — hidden on wider screens */
+.tabbar {
+  display: none;
+}
+
+/* ---- Telemetry status strip ---- */
+.telemetry {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  font-family: var(--font-num);
+  font-size: 13px;
+  color: var(--text-secondary);
+  flex-wrap: wrap;
+}
+.telemetry__item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  white-space: nowrap;
+}
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+}
+.dot--online {
+  background: var(--status-online);
+  box-shadow: 0 0 7px rgba(52, 199, 89, 0.6);
+}
+.dot--rec {
+  background: var(--status-live);
+  animation: recPulse 1.4s infinite;
+}
+.dot--caution {
+  background: var(--status-caution);
+}
+.dot--dark {
+  background: var(--status-dark);
+}
+.dot--never {
+  background: var(--status-never);
+}
+
+/* ---- Chips (the one consistent honesty treatment + neutral) ---- */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  line-height: 1.2;
+}
+.chip--live {
+  background: rgba(255, 59, 48, 0.92);
+  color: #fff;
+  font-weight: 700;
+}
+.chip--caution {
+  background: rgba(255, 159, 10, 0.14);
+  box-shadow: inset 0 0 0 1px rgba(255, 159, 10, 0.34);
+  color: var(--status-caution-bright);
+  font-weight: 600;
+}
+.chip--info {
+  background: rgba(46, 155, 255, 0.12);
+  box-shadow: inset 0 0 0 1px rgba(46, 155, 255, 0.28);
+  color: var(--accent-bright);
+}
+.chip--neutral {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-secondary);
+}
+
+/* ---- Page header ---- */
+.page-head {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+.page-head h1 {
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+.page-head__sub {
+  font-size: 13px;
+  color: var(--text-dim);
+  margin-top: 1px;
+}
+.page-head__spacer {
+  flex: 1;
+}
+
+/* ---- Live Wall mosaic ---- */
+.mosaic {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1.55fr 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 14px;
+  min-height: 0;
+}
+.mosaic__hero {
+  grid-row: span 2;
+}
+
+/* ---- Camera tile ---- */
+.tile {
+  position: relative;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: var(--video-mat);
+  color: var(--text-primary);
+  min-height: 0;
+}
+.tile__sheen {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, #243a52 0%, #192a3d 46%, #0b1623 52%, #06090f 100%);
+}
+.tile--dark .tile__sheen {
+  filter: brightness(0.62) saturate(0.7);
+}
+.tile--offline .tile__sheen {
+  background: repeating-linear-gradient(45deg, #0c0f14, #0c0f14 10px, #0a0d11 10px, #0a0d11 20px);
+  opacity: 0.5;
+}
+.tile__scrim {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(0, 0, 0, 0.28),
+    transparent 26%,
+    transparent 68%,
+    rgba(0, 0, 0, 0.5)
+  );
+}
+.tile__top {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  right: 12px;
+  display: flex;
+}
+.tile__label {
+  position: absolute;
+  bottom: 12px;
+  left: 14px;
+  right: 14px;
+}
+.tile__name {
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.tile__meta {
+  font-family: var(--font-num);
+  font-size: 11px;
+  color: #aab9c8;
+  margin-top: 2px;
+}
+.tile__center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  flex-direction: column;
+  gap: 3px;
+}
+.tile:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+button.tile {
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  width: 100%;
+}
+
+/* ---- Empty / loading / error blocks ---- */
+.panel {
+  background: var(--surface-2);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  padding: 24px;
+}
+.empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  text-align: center;
+  color: var(--text-secondary);
+}
+.muted {
+  color: var(--text-dim);
+}
+.btn {
+  min-height: var(--tap-min);
+  padding: 11px 18px;
+  border: 0;
+  border-radius: var(--radius);
+  background: rgba(46, 155, 255, 0.2);
+  color: var(--accent-bright);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ---- Re-auth banner (non-modal; keeps the picture) ---- */
+.reauth {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 20px;
+  background: rgba(255, 159, 10, 0.12);
+  border-bottom: 1px solid rgba(255, 159, 10, 0.3);
+  color: var(--status-caution-text);
+  font-size: 13px;
+}
+
+/* ---- Responsive: phone gets a bottom tab bar and a single-column stack ---- */
+@media (max-width: 720px) {
+  .rail {
+    display: none;
+  }
+  .content {
+    padding: 14px 14px calc(14px + env(safe-area-inset-bottom));
+    overflow-y: auto;
+  }
+  .mosaic {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .mosaic__hero,
+  .tile {
+    height: 150px;
+    flex: none;
+  }
+  .mosaic__hero {
+    height: 188px;
+  }
+  .tabbar {
+    display: flex;
+    flex: none;
+    border-top: 1px solid var(--hairline);
+    background: var(--surface-1);
+    padding: 8px 10px calc(8px + env(safe-area-inset-bottom));
+  }
+  .tabbar .navitem {
+    flex: 1;
+    width: auto;
+    border-radius: 12px;
+  }
+  .shell {
+    flex-direction: column;
+  }
+}
+
+/* ---- Desktop: a touch more density ---- */
+@media (min-width: 1280px) {
+  .content {
+    padding: 26px 32px 30px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
