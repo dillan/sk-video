@@ -572,6 +572,124 @@ button.tile {
   outline-offset: 3px;
 }
 
+/* ---- Cameras manage + onboarding wizard ---- */
+.cameras,
+.wizard {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 0;
+}
+.camlist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.camrow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  background: var(--surface-2);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+}
+.camrow__main {
+  flex: 1;
+  min-width: 160px;
+}
+.camrow__name {
+  font-weight: 600;
+}
+.camrow__meta {
+  display: block;
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+.camrow__chips,
+.camrow__actions,
+.caps,
+.wizard__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.btn--danger {
+  background: rgba(255, 59, 48, 0.2);
+  color: #ff9a93;
+  box-shadow: inset 0 0 0 1px rgba(255, 59, 48, 0.5);
+}
+.wizard__step {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.candidates {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.candidate {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  background: var(--surface-1);
+  color: var(--text-primary);
+  font: inherit;
+  padding: 12px 14px;
+  cursor: pointer;
+}
+.candidate--other {
+  opacity: 0.6;
+}
+.candidate__name {
+  font-weight: 600;
+}
+.candidate__addr {
+  flex: 1;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.candidate:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.field input,
+.field select {
+  min-height: var(--tap-min);
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface-1);
+  color: var(--text-primary);
+  font: inherit;
+}
+.field input:focus-visible,
+.field select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
 /* ---- Responsive: phone gets a bottom tab bar and a single-column stack ---- */
 @media (max-width: 720px) {
   .rail {

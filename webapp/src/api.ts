@@ -99,9 +99,16 @@ export function fetchSession(signal?: AbortSignal): Promise<ISessionInfo> {
 export interface ICamera {
   name: string;
   enabled: boolean;
+  source?: { scheme: string; host: string; port?: number; path?: string };
   placement?: { mount?: string; bearingRelativeDeg?: number; heightM?: number };
   role?: string;
-  capabilities?: { ptz?: boolean; absolutePtz?: boolean; audio?: boolean; substreams?: boolean };
+  capabilities?: {
+    ptz?: boolean;
+    absolutePtz?: boolean;
+    audio?: boolean;
+    audioBackchannel?: boolean;
+    substreams?: boolean;
+  };
   media?: { codec?: string; substreamPath?: string; projection?: string };
 }
 export interface ICameraEntry extends ICamera {
@@ -262,6 +269,114 @@ export const markIncident = (): Promise<Response> =>
 /** Aim one calibrated PTZ camera at the nearest-CPA AIS target (a single deterministic aim). */
 export const slewToCue = (id: string): Promise<Response> =>
   send(`${cam(id)}/slew-to-cue`, { method: 'POST' }, 'slew');
+
+// ---- Discovery + onboarding ----
+
+/** A device found by the LAN scan (WS-Discovery + mDNS). A genuine ONVIF camera's onvifUrl ends in
+ * `/onvif/...`; other WSD responders (NAS, printers) surface here too and should be dismissible. */
+export interface ICandidate {
+  name: string;
+  host: string;
+  port?: number;
+  onvifUrl?: string;
+}
+
+export const discoverCameras = async (signal?: AbortSignal): Promise<ICandidate[]> => {
+  const body = await getJson<{ cameras?: ICandidate[] }>('/cameras/discover', 'discover', signal);
+  return body.cameras ?? [];
+};
+
+/** The pre-filled fields ONVIF introspection returns (mirrors the plugin's IIntrospectResult). */
+export interface IIntrospectResult {
+  manufacturer?: string;
+  model?: string;
+  serialNumber?: string | number;
+  source?: { scheme: string; host: string; port?: number; path?: string };
+  snapshotUri?: string;
+  ptz: boolean;
+  absolutePtz: boolean;
+  imaging: boolean;
+  imagingControls: string[];
+  audio: boolean;
+  audioBackchannel: boolean;
+}
+
+export interface IIntrospectInput {
+  host: string;
+  port?: number;
+  username?: string;
+  password?: string;
+}
+export const introspectCamera = async (input: IIntrospectInput): Promise<IIntrospectResult> => {
+  const res = await send(
+    '/cameras/discover/introspect',
+    { method: 'POST', body: JSON.stringify(input) },
+    'introspect',
+  );
+  return (await res.json()) as IIntrospectResult;
+};
+
+// ---- Camera resource CRUD + credentials ----
+
+/** The camera definition written to the Signal K resource (closed field-set; no credentials). */
+export interface ICameraWrite {
+  name: string;
+  enabled: boolean;
+  source: { scheme: string; host: string; port?: number; path?: string };
+  placement?: { mount?: string; bearingRelativeDeg?: number };
+  role?: string;
+  capabilities?: {
+    ptz?: boolean;
+    absolutePtz?: boolean;
+    audio?: boolean;
+    audioBackchannel?: boolean;
+  };
+}
+
+export const saveCamera = async (id: string, body: ICameraWrite): Promise<void> => {
+  const res = await fetch(`${SK_ROOT}/signalk/v2/api/resources/cameras/${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    throw new ApiError(`save camera (${res.status})`, res.status);
+  }
+};
+
+export const deleteCamera = async (id: string): Promise<void> => {
+  const res = await fetch(`${SK_ROOT}/signalk/v2/api/resources/cameras/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+    credentials: 'include',
+  });
+  if (!res.ok) {
+    throw new ApiError(`delete camera (${res.status})`, res.status);
+  }
+};
+
+export interface ICredentialPresence {
+  hasUsername: boolean;
+  hasPassword: boolean;
+}
+export const getCredentialPresence = (
+  id: string,
+  signal?: AbortSignal,
+): Promise<ICredentialPresence> =>
+  getJson<ICredentialPresence>(`${cam(id)}/credentials`, 'credentials', signal);
+
+/** Store a write-only camera login (never echoed back). */
+export const setCredentials = async (
+  id: string,
+  username: string,
+  password: string,
+): Promise<void> => {
+  await send(
+    `${cam(id)}/credentials`,
+    { method: 'POST', body: JSON.stringify({ username, password }) },
+    'credentials',
+  );
+};
 
 /**
  * Sign in against Signal K's own auth — SK Video delegates entirely. The same-origin POST sets the

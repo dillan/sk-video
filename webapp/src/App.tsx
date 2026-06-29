@@ -11,6 +11,7 @@ import { NavRail, TabBar } from './components/Nav';
 import { LiveWall } from './screens/LiveWall';
 import { CameraFocus } from './screens/CameraFocus';
 import { Safety } from './screens/Safety';
+import { Cameras } from './screens/Cameras';
 import { Stub } from './screens/Stub';
 
 /**
@@ -63,12 +64,7 @@ export function App() {
             note="Recordings, the event timeline, incidents, and snapshots land in a later slice."
           />
         )}
-        {route.cluster === 'cameras' && (
-          <Stub
-            title="Cameras"
-            note="Camera management, zero-typing onboarding, and PTZ calibration land in a later slice."
-          />
-        )}
+        {route.cluster === 'cameras' && <Cameras />}
         {route.cluster === 'safety' && <Safety onMobChange={setMob} />}
       </div>
       <TabBar current={route.cluster} onNavigate={(c) => navigate(c)} />

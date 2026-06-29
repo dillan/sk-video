@@ -89,11 +89,11 @@ describe('App shell', () => {
     await waitFor(() => expect(screen.getByText('No GPS fix')).toBeTruthy());
   });
 
-  it('navigates to a cluster stub when its nav item is tapped', async () => {
+  it('navigates to the Cameras manage screen when its nav item is tapped', async () => {
     mockApi();
     render(<App />);
     fireEvent.click(screen.getAllByRole('button', { name: 'Cameras' })[0]);
-    await waitFor(() => expect(screen.getByText(/onboarding, and PTZ calibration/)).toBeTruthy());
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Add a camera' })).toBeTruthy());
   });
 
   it('shows a sign-in-required banner on a secured server when not authenticated', async () => {
