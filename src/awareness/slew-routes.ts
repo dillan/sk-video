@@ -1,6 +1,7 @@
 import type { IRouter, Request, Response } from 'express';
 import type { ICamera } from '../cameras/camera-validation';
 import { redactUrl } from '../security/redact';
+import type { AuthGate } from '../security/request-auth';
 import { planSlew, type ISlewOwnShip } from './slew-to-cue';
 import { slewCameraAimConfig } from './slew-wiring';
 import type { IAisTarget, INearestCpaOptions } from './ais-targets';
@@ -24,7 +25,8 @@ export interface ISlewRouteDeps {
 
 const round = (n: number): number => Math.round(n);
 
-export function registerSlewRoutes(router: IRouter, deps: ISlewRouteDeps): void {
+export function registerSlewRoutes(router: IRouter, deps: ISlewRouteDeps, gate: AuthGate): void {
+  void gate; // RED: accepted but not yet enforced — enforcement lands in the GREEN step
   router.post('/cameras/:id/slew-to-cue', (req: Request, res: Response) => {
     if (!deps.ready()) {
       res.status(503).json({ error: 'plugin not started' });

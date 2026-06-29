@@ -1,7 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import type { IRouter, Request, Response } from 'express';
 import { registerImagingRoutes, type IImagingRouteDeps } from './imaging-routes';
+import type { AuthGate } from '../security/request-auth';
 import type { IImagingSettings, IImagingUpdate } from './onvif-controller';
+
+const ALLOW: AuthGate = () => false;
+const DENY: AuthGate = (_req, res) => {
+  res.status(401).json({ error: 'authentication required' });
+  return true;
+};
 
 function fakeRouter() {
   const handlers = new Map<string, (req: Request, res: Response) => void>();
@@ -38,7 +45,7 @@ const CURRENT: IImagingSettings = {
   irCutFilter: 'AUTO',
 };
 
-function setup(over: Partial<IImagingRouteDeps> = {}) {
+function setup(over: Partial<IImagingRouteDeps> = {}, gate: AuthGate = ALLOW) {
   const writes: { id: string; update: IImagingUpdate }[] = [];
   const { router, handlers } = fakeRouter();
   const deps: IImagingRouteDeps = {
@@ -50,9 +57,34 @@ function setup(over: Partial<IImagingRouteDeps> = {}) {
     },
     ...over,
   };
-  registerImagingRoutes(router, deps);
+  registerImagingRoutes(router, deps, gate);
   return { handlers, writes };
 }
+
+describe('auth gating', () => {
+  it('rejects an unauthenticated POST /imaging/preset with 401 and never writes imaging', async () => {
+    const { handlers, writes } = setup({}, DENY);
+    const res = new FakeRes();
+    handlers.get('POST /cameras/:id/imaging/preset')!(
+      req({ params: { id: 'bow' }, body: { preset: 'night' } }),
+      res as unknown as Response,
+    );
+    await flush(() => res.statusCode !== 200);
+    expect(res.statusCode).toBe(401);
+    expect(writes).toHaveLength(0);
+  });
+
+  it('does NOT gate the read-only GET /cameras/:id/imaging route', async () => {
+    const { handlers } = setup({}, DENY);
+    const res = new FakeRes();
+    handlers.get('GET /cameras/:id/imaging')!(
+      req({ params: { id: 'bow' } }),
+      res as unknown as Response,
+    );
+    await flush(() => res.body !== undefined);
+    expect(res.statusCode).toBe(200);
+  });
+});
 
 describe('GET /cameras/:id/imaging', () => {
   it('returns the current settings plus the controls/presets the camera can act on', async () => {

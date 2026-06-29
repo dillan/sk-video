@@ -1,5 +1,6 @@
 import type { IRouter, Request, Response } from 'express';
 import { redactUrl } from '../security/redact';
+import type { AuthGate } from '../security/request-auth';
 import type { IImagingSettings, IImagingUpdate } from './onvif-controller';
 import {
   isImagingPreset,
@@ -26,7 +27,12 @@ function errorBody(err: unknown, fallback: string): { error: string } {
   return { error: redactUrl(err instanceof Error ? err.message : fallback) };
 }
 
-export function registerImagingRoutes(router: IRouter, deps: IImagingRouteDeps): void {
+export function registerImagingRoutes(
+  router: IRouter,
+  deps: IImagingRouteDeps,
+  gate: AuthGate,
+): void {
+  void gate; // RED: accepted but not yet enforced — enforcement lands in the GREEN step
   // Per-camera session baseline: the settings the first time a preset is applied. Presets are computed
   // relative to this fixed baseline, so re-applying never compounds and Auto/Day restore it.
   const baselines = new Map<string, IImagingSettings>();

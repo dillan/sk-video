@@ -1,7 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import type { IRouter, Request, Response } from 'express';
 import { registerSlewRoutes, type ISlewRouteDeps } from './slew-routes';
+import type { AuthGate } from '../security/request-auth';
 import type { ICamera } from '../cameras/camera-validation';
+
+const ALLOW: AuthGate = () => false;
+const DENY: AuthGate = (_req, res) => {
+  res.status(401).json({ error: 'authentication required' });
+  return true;
+};
 import type { IAisTarget } from './ais-targets';
 import type { ISlewOwnShip } from './slew-to-cue';
 import type { ILatLon } from '../safety/mob-geo';
@@ -65,7 +72,7 @@ const threat: IAisTarget = {
   motionAssumed: false,
 };
 
-function setup(over: Partial<ISlewRouteDeps> = {}) {
+function setup(over: Partial<ISlewRouteDeps> = {}, gate: AuthGate = ALLOW) {
   const aimed: { id: string; pan: number; tilt: number }[] = [];
   const { router, handlers } = fakeRouter();
   const deps: ISlewRouteDeps = {
@@ -78,7 +85,7 @@ function setup(over: Partial<ISlewRouteDeps> = {}) {
     },
     ...over,
   };
-  registerSlewRoutes(router, deps);
+  registerSlewRoutes(router, deps, gate);
   return { handler: handlers.get('POST /cameras/:id/slew-to-cue')!, aimed };
 }
 const flush = async (until: () => boolean): Promise<void> => {
@@ -89,6 +96,15 @@ const flush = async (until: () => boolean): Promise<void> => {
 };
 
 describe('registerSlewRoutes', () => {
+  it('rejects an unauthenticated caller with 401 and never aims the camera', async () => {
+    const { handler, aimed } = setup({}, DENY);
+    const res = new FakeRes();
+    handler(req({ params: { id: 'mast' } }), res as unknown as Response);
+    await flush(() => res.statusCode !== 200);
+    expect(res.statusCode).toBe(401);
+    expect(aimed).toHaveLength(0);
+  });
+
   it('aims the camera at the nearest CPA target and returns its cue data', async () => {
     const { handler, aimed } = setup();
     const res = new FakeRes();

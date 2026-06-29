@@ -1,7 +1,14 @@
 import { describe, it, expect, vi } from 'vitest';
 import type { IRouter, Request, Response } from 'express';
 import { registerCalibrationRoute, type ICalibrationContext } from './calibration-routes';
+import type { AuthGate } from '../security/request-auth';
 import type { ICamera } from '../cameras/camera-validation';
+
+const ALLOW: AuthGate = () => false;
+const DENY: AuthGate = (_req, res) => {
+  res.status(401).json({ error: 'authentication required' });
+  return true;
+};
 
 function makeRes() {
   const res = {
@@ -38,7 +45,7 @@ const SAMPLES = {
   ],
 };
 
-function setup(overrides: Partial<ICalibrationContext> = {}) {
+function setup(overrides: Partial<ICalibrationContext> = {}, gate: AuthGate = ALLOW) {
   const ctx: ICalibrationContext = {
     ready: () => true,
     getCamera: vi.fn(() => CAMERA),
@@ -51,7 +58,7 @@ function setup(overrides: Partial<ICalibrationContext> = {}) {
       captured = h;
     },
   } as unknown as IRouter;
-  registerCalibrationRoute(router, ctx);
+  registerCalibrationRoute(router, ctx, gate);
   const call = async (body: unknown, id = 'mast') => {
     const res = makeRes();
     await captured({ body, params: { id } } as unknown as Request, res);
@@ -65,6 +72,13 @@ describe('registerCalibrationRoute', () => {
     const { call } = setup({ ready: () => false });
     const res = await call(SAMPLES);
     expect(res.statusCode).toBe(503);
+  });
+
+  it('rejects an unauthenticated caller with 401 and never persists calibration', async () => {
+    const { ctx, call } = setup({}, DENY);
+    const res = await call(SAMPLES);
+    expect(res.statusCode).toBe(401);
+    expect(ctx.setCalibration).not.toHaveBeenCalled();
   });
 
   it('returns 404 for an unknown camera', async () => {

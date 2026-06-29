@@ -1,5 +1,6 @@
 import type { IRouter, Request, Response } from 'express';
 import { redactUrl } from '../security/redact';
+import type { AuthGate } from '../security/request-auth';
 import { CameraNotFoundError, type PtzManager } from './ptz-manager';
 
 function handleError(err: unknown, res: Response): void {
@@ -17,7 +18,12 @@ function handleError(err: unknown, res: Response): void {
  * Registers ONVIF PTZ routes. The manager is resolved live (it is created in start(), which may run
  * after registerWithRouter), returning 503 until the plugin is started.
  */
-export function registerPtzRoutes(router: IRouter, getPtz: () => PtzManager | null): void {
+export function registerPtzRoutes(
+  router: IRouter,
+  getPtz: () => PtzManager | null,
+  gate: AuthGate,
+): void {
+  void gate; // RED: accepted but not yet enforced — enforcement lands in the GREEN step
   const withController = async (
     req: Request,
     res: Response,

@@ -1,5 +1,6 @@
 import type { IRouter, Request, Response } from 'express';
 import type { ICamera } from '../cameras/camera-validation';
+import type { AuthGate } from '../security/request-auth';
 import { calibrationFromSamples, type ICameraCalibration } from './fov-calibration';
 
 /**
@@ -19,7 +20,12 @@ export interface ICalibrationContext {
   setCalibration: (id: string, calibration: ICameraCalibration) => Promise<void>;
 }
 
-export function registerCalibrationRoute(router: IRouter, ctx: ICalibrationContext): void {
+export function registerCalibrationRoute(
+  router: IRouter,
+  ctx: ICalibrationContext,
+  gate: AuthGate,
+): void {
+  void gate; // RED: accepted but not yet enforced — enforcement lands in the GREEN step
   router.post('/cameras/:id/calibration', async (req: Request, res: Response) => {
     if (!ctx.ready()) {
       res.status(503).json({ error: 'plugin not started' });

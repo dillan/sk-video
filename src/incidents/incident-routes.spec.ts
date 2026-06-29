@@ -2,9 +2,16 @@ import { describe, it, expect } from 'vitest';
 import { Readable, Writable } from 'node:stream';
 import type { IRouter, Request, Response } from 'express';
 import { registerIncidentRoutes } from './incident-routes';
+import type { AuthGate } from '../security/request-auth';
 import type { IncidentController } from './incident-controller';
 import type { IIncidentStore } from './incident-store';
 import type { IIncidentBundle } from './incident-validation';
+
+const ALLOW: AuthGate = () => false;
+const DENY: AuthGate = (_req, res) => {
+  res.status(401).json({ error: 'authentication required' });
+  return true;
+};
 
 function fakeRouter() {
   const handlers = new Map<string, (req: Request, res: Response) => void>();
@@ -73,6 +80,7 @@ const bundle = (id: string, over: Partial<IIncidentBundle> = {}): IIncidentBundl
 function setup(
   seed: Record<string, IIncidentBundle> = {},
   controller?: Partial<IncidentController>,
+  gate: AuthGate = ALLOW,
 ) {
   const map = new Map(Object.entries(seed));
   const marked: unknown[] = [];
@@ -103,18 +111,63 @@ function setup(
   } as unknown as IncidentController;
 
   const { router, handlers } = fakeRouter();
-  registerIncidentRoutes(router, {
-    getController: () => ctrl,
-    getStore: () => store,
-    streamFactory: (_p, opts) => {
-      const full = Buffer.from('CLIPDATA');
-      return Readable.from(opts ? full.subarray(opts.start, opts.end + 1) : full) as never;
+  registerIncidentRoutes(
+    router,
+    {
+      getController: () => ctrl,
+      getStore: () => store,
+      streamFactory: (_p, opts) => {
+        const full = Buffer.from('CLIPDATA');
+        return Readable.from(opts ? full.subarray(opts.start, opts.end + 1) : full) as never;
+      },
     },
-  });
+    gate,
+  );
   return { handlers, marked, deleted, map };
 }
 
 describe('registerIncidentRoutes', () => {
+  it('rejects unauthenticated POST /incidents with 401 and marks nothing', () => {
+    const { handlers, marked } = setup({}, undefined, DENY);
+    const res = new FakeRes();
+    handlers.get('POST /incidents')!(
+      fakeReq({ body: { preMs: 30000, postMs: 0 } }),
+      res as unknown as Response,
+    );
+    expect(res.statusCode).toBe(401);
+    expect(marked).toHaveLength(0);
+  });
+
+  it('rejects unauthenticated PATCH /incidents/:id with 401 and leaves the bundle unchanged', () => {
+    const { handlers, map } = setup({ inc1: bundle('inc1') }, undefined, DENY);
+    const res = new FakeRes();
+    handlers.get('PATCH /incidents/:id')!(
+      fakeReq({ params: { id: 'inc1' }, body: { pinned: true } }),
+      res as unknown as Response,
+    );
+    expect(res.statusCode).toBe(401);
+    expect(map.get('inc1')!.pinned).toBeUndefined();
+  });
+
+  it('rejects unauthenticated DELETE /incidents/:id with 401 and deletes nothing', () => {
+    const { handlers, deleted, map } = setup({ inc1: bundle('inc1') }, undefined, DENY);
+    const res = new FakeRes();
+    handlers.get('DELETE /incidents/:id')!(
+      fakeReq({ params: { id: 'inc1' } }),
+      res as unknown as Response,
+    );
+    expect(res.statusCode).toBe(401);
+    expect(deleted).toHaveLength(0);
+    expect(map.has('inc1')).toBe(true);
+  });
+
+  it('does NOT gate the read-only GET /incidents route', () => {
+    const { handlers } = setup({ inc1: bundle('inc1') }, undefined, DENY);
+    const res = new FakeRes();
+    handlers.get('GET /incidents')!(fakeReq(), res as unknown as Response);
+    expect(res.statusCode).toBe(200);
+  });
+
   it('POST /incidents validates and triggers a manual mark -> 202 with id + Location', () => {
     const { handlers, marked } = setup();
     const res = new FakeRes();
@@ -225,7 +278,7 @@ describe('registerIncidentRoutes', () => {
 
   it('returns 503 before the plugin has started', () => {
     const { router, handlers } = fakeRouter();
-    registerIncidentRoutes(router, { getController: () => null, getStore: () => null });
+    registerIncidentRoutes(router, { getController: () => null, getStore: () => null }, ALLOW);
     const res = new FakeRes();
     handlers.get('GET /incidents')!(fakeReq(), res as unknown as Response);
     expect(res.statusCode).toBe(503);

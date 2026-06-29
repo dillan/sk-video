@@ -2,6 +2,7 @@ import { createReadStream, type ReadStream } from 'node:fs';
 import { basename } from 'node:path';
 import type { IRouter, Request, Response } from 'express';
 import { parseRange } from '../uploads/range';
+import type { AuthGate } from '../security/request-auth';
 import { isValidSegmentName } from './file-recordings';
 import type { RecordingManager } from './recording-manager';
 import type { ISegment } from './recording-segments';
@@ -33,7 +34,12 @@ export interface IRecordingRoutesDeps {
  * The manager is resolved live (created in start()), returning 503 until the plugin is started.
  * Recording is tier-gated: a host with no recording channels answers 409.
  */
-export function registerRecordingRoutes(router: IRouter, deps: IRecordingRoutesDeps): void {
+export function registerRecordingRoutes(
+  router: IRouter,
+  deps: IRecordingRoutesDeps,
+  gate: AuthGate,
+): void {
+  void gate; // RED: accepted but not yet enforced — enforcement lands in the GREEN step
   const openStream = deps.streamFactory ?? (createReadStream as StreamFactory);
   const cacheTtlMs = deps.segmentCacheTtlMs ?? 1500;
   const now = deps.now ?? (() => Date.now());

@@ -2,8 +2,15 @@ import { describe, it, expect } from 'vitest';
 import { Readable, Writable } from 'node:stream';
 import type { IRouter, Request, Response } from 'express';
 import { registerRecordingRoutes } from './recording-routes';
+import type { AuthGate } from '../security/request-auth';
 import { RecordingManager } from './recording-manager';
 import type { ISegment } from './recording-segments';
+
+const ALLOW: AuthGate = () => false;
+const DENY: AuthGate = (_req, res) => {
+  res.status(401).json({ error: 'authentication required' });
+  return true;
+};
 
 /** A router that captures handlers keyed by "METHOD path". */
 function fakeRouter() {
@@ -73,19 +80,23 @@ const SEGMENTS: ISegment[] = [
   { cameraId: 'bow', path: '/rec/bow_20260627_143100.mp4', startedAt: 2000, bytes: 4 },
 ];
 
-function setup(maxChannels = 2, segments: ISegment[] = SEGMENTS) {
+function setup(maxChannels = 2, segments: ISegment[] = SEGMENTS, gate: AuthGate = ALLOW) {
   const { router, handlers } = fakeRouter();
   const { manager, spawned, stopped } = makeManager(maxChannels);
-  registerRecordingRoutes(router, {
-    getManager: () => manager,
-    hasCamera: (id) => id === 'bow' || id === 'stern',
-    listSegments: () => segments,
-    streamFactory: (_path, opts) => {
-      const full = Buffer.from('MP4DATA!');
-      const slice = opts ? full.subarray(opts.start, opts.end + 1) : full;
-      return Readable.from(slice) as never;
+  registerRecordingRoutes(
+    router,
+    {
+      getManager: () => manager,
+      hasCamera: (id) => id === 'bow' || id === 'stern',
+      listSegments: () => segments,
+      streamFactory: (_path, opts) => {
+        const full = Buffer.from('MP4DATA!');
+        const slice = opts ? full.subarray(opts.start, opts.end + 1) : full;
+        return Readable.from(slice) as never;
+      },
     },
-  });
+    gate,
+  );
   return { handlers, manager, spawned, stopped };
 }
 
@@ -95,23 +106,46 @@ describe('registerRecordingRoutes', () => {
     const { manager } = makeManager(2);
     let scans = 0;
     let clock = 0;
-    registerRecordingRoutes(router, {
-      getManager: () => manager,
-      hasCamera: () => true,
-      listSegments: () => {
-        scans += 1;
-        return SEGMENTS;
+    registerRecordingRoutes(
+      router,
+      {
+        getManager: () => manager,
+        hasCamera: () => true,
+        listSegments: () => {
+          scans += 1;
+          return SEGMENTS;
+        },
+        streamFactory: () => Readable.from(Buffer.from('MP4DATA!')) as never,
+        segmentCacheTtlMs: 1000,
+        now: () => clock,
       },
-      streamFactory: () => Readable.from(Buffer.from('MP4DATA!')) as never,
-      segmentCacheTtlMs: 1000,
-      now: () => clock,
-    });
+      ALLOW,
+    );
     handlers.get('GET /recordings')!(fakeReq(), new FakeRes() as unknown as Response);
     handlers.get('GET /recordings')!(fakeReq(), new FakeRes() as unknown as Response);
     expect(scans).toBe(1); // second request within the TTL hits the cache
     clock = 2000; // past the TTL
     handlers.get('GET /recordings')!(fakeReq(), new FakeRes() as unknown as Response);
     expect(scans).toBe(2); // re-scanned after the cache expired
+  });
+
+  it('rejects an unauthenticated POST /cameras/:id/record with 401 and starts no recorder', () => {
+    const { handlers, spawned, manager } = setup(2, SEGMENTS, DENY);
+    const res = new FakeRes();
+    handlers.get('POST /cameras/:id/record')!(
+      fakeReq({ params: { id: 'bow' }, body: { active: true } }),
+      res as unknown as Response,
+    );
+    expect(res.statusCode).toBe(401);
+    expect(spawned).toHaveLength(0);
+    expect(manager.isRecording('bow')).toBe(false);
+  });
+
+  it('does NOT gate the read-only GET /recordings route', () => {
+    const { handlers } = setup(2, SEGMENTS, DENY);
+    const res = new FakeRes();
+    handlers.get('GET /recordings')!(fakeReq(), res as unknown as Response);
+    expect(res.statusCode).toBe(200);
   });
 
   it('POST /cameras/:id/record starts a recorder and reports recording:true', () => {
@@ -199,11 +233,15 @@ describe('registerRecordingRoutes', () => {
 
   it('GET /recordings/timeline returns 503 before the plugin has started', () => {
     const { router, handlers } = fakeRouter();
-    registerRecordingRoutes(router, {
-      getManager: () => null,
-      hasCamera: () => false,
-      listSegments: () => [],
-    });
+    registerRecordingRoutes(
+      router,
+      {
+        getManager: () => null,
+        hasCamera: () => false,
+        listSegments: () => [],
+      },
+      ALLOW,
+    );
     const res = new FakeRes();
     handlers.get('GET /recordings/timeline')!(fakeReq(), res as unknown as Response);
     expect(res.statusCode).toBe(503);
@@ -243,11 +281,15 @@ describe('registerRecordingRoutes', () => {
 
   it('returns 503 before the plugin is started', () => {
     const { router, handlers } = fakeRouter();
-    registerRecordingRoutes(router, {
-      getManager: () => null,
-      hasCamera: () => true,
-      listSegments: () => [],
-    });
+    registerRecordingRoutes(
+      router,
+      {
+        getManager: () => null,
+        hasCamera: () => true,
+        listSegments: () => [],
+      },
+      ALLOW,
+    );
     const res = new FakeRes();
     handlers.get('GET /recordings')!(fakeReq(), res as unknown as Response);
     expect(res.statusCode).toBe(503);

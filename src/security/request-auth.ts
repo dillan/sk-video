@@ -1,3 +1,5 @@
+import type { Request as ExpressRequest, Response as ExpressResponse } from 'express';
+
 /**
  * Authorisation gate for a plugin's own sensitive HTTP routes. Signal K enforces security at the
  * server, but a plugin route registered through `registerWithRouter` must still gate itself for
@@ -24,6 +26,16 @@ export interface IAuthenticatableRequest {
   /** Set by the Signal K server on an authenticated request when security is enabled. */
   skPrincipal?: unknown;
 }
+
+/**
+ * A route guard for a plugin's sensitive/mutating endpoints. Returns true — and has ALREADY sent a
+ * `401` — when the caller is not authorized on a secured server; returns false (sending nothing) when
+ * the caller may proceed. This is the shape of the `unauthorized(req, res)` helper wired in index.ts
+ * from {@link isAuthorizedSensitiveRequest}; route modules accept one so every mutating handler can
+ * fail closed the same way without each module re-deriving the security strategy. Express's `Request`
+ * is imported as a type only, so this stays free of a runtime dependency on express.
+ */
+export type AuthGate = (req: ExpressRequest, res: ExpressResponse) => boolean;
 
 export function isAuthorizedSensitiveRequest(
   strategy: ISecurityStrategy | undefined,

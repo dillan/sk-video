@@ -1052,59 +1052,71 @@ export = function (app: ServerAPI): Plugin {
       registerLayoutRoute(router, () => (cameras ? cameras.list() : null));
 
       // ONVIF PTZ control.
-      registerPtzRoutes(router, () => ptz);
+      registerPtzRoutes(router, () => ptz, unauthorized);
 
       // ONVIF imaging presets (Day/Night/Fog/Glare/Auto), capability-gated + relative to current.
-      registerImagingRoutes(router, {
-        ready: () => cameras !== null,
-        hasCamera: (id: string) => cameras?.get(id) !== null && cameras?.get(id) !== undefined,
-        getImaging: async (id) => {
-          const controller = await ptz?.controllerFor(id);
-          if (!controller) {
-            throw new Error('PTZ controller unavailable');
-          }
-          return controller.getImaging();
+      registerImagingRoutes(
+        router,
+        {
+          ready: () => cameras !== null,
+          hasCamera: (id: string) => cameras?.get(id) !== null && cameras?.get(id) !== undefined,
+          getImaging: async (id) => {
+            const controller = await ptz?.controllerFor(id);
+            if (!controller) {
+              throw new Error('PTZ controller unavailable');
+            }
+            return controller.getImaging();
+          },
+          setImaging: async (id, update) => {
+            const controller = await ptz?.controllerFor(id);
+            if (!controller) {
+              throw new Error('PTZ controller unavailable');
+            }
+            await controller.setImaging(update);
+          },
         },
-        setImaging: async (id, update) => {
-          const controller = await ptz?.controllerFor(id);
-          if (!controller) {
-            throw new Error('PTZ controller unavailable');
-          }
-          await controller.setImaging(update);
-        },
-      });
+        unauthorized,
+      );
 
       // AIS slew-to-cue: aim a calibrated PTZ camera once at the nearest-CPA AIS target. A single
       // deterministic geo-point (shares the MOB engine), not tracking; re-POST to re-cue.
-      registerSlewRoutes(router, {
-        ready: () => cameras !== null,
-        getCamera: (id) => cameras?.get(id) ?? null,
-        getOwnShip: () => (bridge ? slewOwnShipFromSelfState(bridge.getSelfState()) : null),
-        getTargets: () => parseAisTargets(safeGetPath('vessels'), app.selfId),
-        aimCamera: async (id, pan, tilt) => {
-          const controller = await ptz?.controllerFor(id);
-          if (!controller) {
-            throw new Error('PTZ controller unavailable');
-          }
-          await controller.moveAbsolute({ pan, tilt });
+      registerSlewRoutes(
+        router,
+        {
+          ready: () => cameras !== null,
+          getCamera: (id) => cameras?.get(id) ?? null,
+          getOwnShip: () => (bridge ? slewOwnShipFromSelfState(bridge.getSelfState()) : null),
+          getTargets: () => parseAisTargets(safeGetPath('vessels'), app.selfId),
+          aimCamera: async (id, pan, tilt) => {
+            const controller = await ptz?.controllerFor(id);
+            if (!controller) {
+              throw new Error('PTZ controller unavailable');
+            }
+            await controller.moveAbsolute({ pan, tilt });
+          },
         },
-      });
+        unauthorized,
+      );
 
       // One-time FOV calibration capture: solve degrees → normalised-ONVIF from a two-point-per-axis
       // capture and persist it on the camera, so geo-pointing (MOB) and slew-to-cue can aim it.
-      registerCalibrationRoute(router, {
-        ready: () => cameras !== null,
-        getCamera: (id) => cameras?.get(id) ?? null,
-        setCalibration: async (id, calibration) => {
-          const store = cameras;
-          const camera = store?.get(id);
-          if (!store || !camera) {
-            throw new Error('unknown camera');
-          }
-          // Re-validate the whole record through the store (closed field-set + clamps) before saving.
-          store.set(id, { ...camera, calibration });
+      registerCalibrationRoute(
+        router,
+        {
+          ready: () => cameras !== null,
+          getCamera: (id) => cameras?.get(id) ?? null,
+          setCalibration: async (id, calibration) => {
+            const store = cameras;
+            const camera = store?.get(id);
+            if (!store || !camera) {
+              throw new Error('unknown camera');
+            }
+            // Re-validate the whole record through the store (closed field-set + clamps) before saving.
+            store.set(id, { ...camera, calibration });
+          },
         },
-      });
+        unauthorized,
+      );
 
       // Camera auto-discovery (WS-Discovery + mDNS), rate-limited.
       registerDiscoveryRoutes(router, () => discovery);
@@ -1151,17 +1163,25 @@ export = function (app: ServerAPI): Plugin {
       });
 
       // DVR recording: per-camera start/stop, segment listing, and Range-served segment playback.
-      registerRecordingRoutes(router, {
-        getManager: () => recordings,
-        hasCamera: (id: string) => cameras?.get(id) !== null && cameras?.get(id) !== undefined,
-        listSegments: () => (recordingsDir ? scanRecordings(recordingsDir) : []),
-      });
+      registerRecordingRoutes(
+        router,
+        {
+          getManager: () => recordings,
+          hasCamera: (id: string) => cameras?.get(id) !== null && cameras?.get(id) !== undefined,
+          listSegments: () => (recordingsDir ? scanRecordings(recordingsDir) : []),
+        },
+        unauthorized,
+      );
 
       // Incident bundles: trigger, list, manifest, Range-served assets, patch + delete.
-      registerIncidentRoutes(router, {
-        getController: () => incidents,
-        getStore: () => incidentStore,
-      });
+      registerIncidentRoutes(
+        router,
+        {
+          getController: () => incidents,
+          getStore: () => incidentStore,
+        },
+        unauthorized,
+      );
 
       // Connection test for an unsaved camera (ffprobe / TCP reachability, SSRF-guarded).
       registerTestRoutes(router, {
