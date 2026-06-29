@@ -13,7 +13,7 @@ The plugin reaches out to cameras on the LAN, runs a child process, downloads a 
 3. **Sources come from validated structured fields** against a scheme **allow-list** (`rtsp`/`rtsps`/`rtmp`/`http`/`https`/`onvif`). `exec:`/`ffmpeg:`/`pipe:` and anything else are blocked — go2rtc's dangerous source schemes can never be reached.
 4. **SSRF egress guard on every outbound host.** Hostnames are resolved and **every** resolved IP must pass; loopback, link-local + the cloud-metadata address, and IPv4-embedding IPv6 forms are always denied. Any URL ONVIF hands back is re-validated.
 5. **`validateCamera` is a security control.** The field set is **closed**; unknown keys and credential-looking fields are rejected. Every new model field gets its own validator and is optional (no migration).
-6. **PUT/action handlers inherit the server's auth.** There's no unauthenticated MOB or snapshot trigger.
+6. **Mutating routes require auth on a secured server.** PUT/action handlers inherit the server's auth, and every state-changing plugin HTTP route (PTZ, imaging, calibration, recording, snapshot, MOB, slew, incidents, video upload/delete, credentials) gates itself the same way via `src/security/request-auth.ts` — the check runs **first** (before any `503`/`404`), so it can't be used to probe, and it **fails closed** if the security strategy misbehaves. There's no unauthenticated MOB, snapshot, or record trigger. (Streaming negotiation — `…/whep`, `…/talk` — and the rate-limited `…/discover`, `…/test`, `…/discover/introspect` probes are not yet gated.)
 7. **go2rtc is bound to loopback**, and the binary download is HTTPS from a pinned URL, installed atomically.
 8. **Brute-forceable routes are rate-limited** (credentials, connection test, introspect, discovery scan) — but never the safety trigger (rate-limiting a MOB button could lock out an operator mid-incident).
 
@@ -72,7 +72,7 @@ The id is validated against the known cameras on every request, so there's nothi
 | --- | --- | --- |
 | Credential leakage in logs | URL/userinfo redaction | `src/security/redact.ts` |
 | Brute force / enumeration | token-bucket rate limiter | `src/security/rate-limit.ts` |
-| Credential-route enumeration | auth gate on a secured server (feature-detects the SK security strategy; fails closed) | `src/security/request-auth.ts` |
+| Unauthenticated mutation / enumeration | auth gate on every state-changing route (feature-detects the SK security strategy; runs before any 503/404; fails closed) | `src/security/request-auth.ts` |
 | A stalled dependency hanging a handler | per-call timeouts / `AbortSignal` | `src/security/with-timeout.ts`, loopback fetches |
 | Path traversal on stored files | opaque ids only; `..` rejected; names validated | upload/recording/incident stores |
 | Malicious uploads | magic-byte sniff (not the filename/Content-Type) | `src/uploads/video-sniff.ts` |

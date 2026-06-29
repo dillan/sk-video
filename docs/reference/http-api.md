@@ -6,6 +6,7 @@ Two ground rules hold everywhere:
 
 - **Same-origin only.** The browser talks to these endpoints; the plugin talks to go2rtc and the cameras. A browser never reaches go2rtc or a camera directly, and a client-supplied `src=` is never honored.
 - **`503` until started.** Anything that needs the plugin's services returns `503` until the plugin has finished starting.
+- **Auth on mutating routes.** On a server with **security enabled**, every state-changing route — PTZ moves, imaging presets, calibration, recording start/stop, snapshots, MOB activate, AIS slew, incident create/edit/delete, and video upload/delete (plus the credential routes) — requires an authenticated request and answers `401` otherwise. The auth check runs first, so it can't be used to probe which cameras or bundles exist. Read-only routes and the live stream stay open to the same-origin browser session, and on an open server (security disabled) everything passes through. _(Not yet gated: the streaming-negotiation routes `…/whep` and `…/talk`, which need a token-on-signaling design, and the rate-limited, SSRF-guarded `…/discover`, `…/test`, and `…/discover/introspect` probes — see the [security model](../developers/security-model.md).)_
 
 Camera definitions are managed through the standard Signal K Resources API at `/signalk/v2/api/resources/cameras` — not through these routes.
 
