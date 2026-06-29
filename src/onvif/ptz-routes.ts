@@ -23,7 +23,6 @@ export function registerPtzRoutes(
   getPtz: () => PtzManager | null,
   gate: AuthGate,
 ): void {
-  void gate; // RED: accepted but not yet enforced — enforcement lands in the GREEN step
   const withController = async (
     req: Request,
     res: Response,
@@ -42,32 +41,36 @@ export function registerPtzRoutes(
     }
   };
 
-  router.post('/cameras/:id/ptz', (req: Request, res: Response) =>
-    withController(req, res, async (ctrl) => {
+  router.post('/cameras/:id/ptz', (req: Request, res: Response) => {
+    if (gate(req, res)) return;
+    return withController(req, res, async (ctrl) => {
       const body = (req.body ?? {}) as { pan?: number; tilt?: number; zoom?: number };
       await ctrl.move({ pan: body.pan, tilt: body.tilt, zoom: body.zoom });
       res.status(204).end();
-    }),
-  );
+    });
+  });
 
-  router.post('/cameras/:id/ptz/stop', (req: Request, res: Response) =>
-    withController(req, res, async (ctrl) => {
+  router.post('/cameras/:id/ptz/stop', (req: Request, res: Response) => {
+    if (gate(req, res)) return;
+    return withController(req, res, async (ctrl) => {
       await ctrl.stop();
       res.status(204).end();
-    }),
-  );
+    });
+  });
 
+  // Listing presets is a read; it stays open (no gate).
   router.get('/cameras/:id/ptz/presets', (req: Request, res: Response) =>
     withController(req, res, async (ctrl) => {
       res.json(await ctrl.getPresets());
     }),
   );
 
-  router.post('/cameras/:id/ptz/preset', (req: Request, res: Response) =>
-    withController(req, res, async (ctrl) => {
+  router.post('/cameras/:id/ptz/preset', (req: Request, res: Response) => {
+    if (gate(req, res)) return;
+    return withController(req, res, async (ctrl) => {
       const token = String((req.body as { token?: unknown })?.token ?? '');
       await ctrl.gotoPreset(token);
       res.status(204).end();
-    }),
-  );
+    });
+  });
 }

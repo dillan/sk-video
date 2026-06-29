@@ -32,7 +32,6 @@ export function registerImagingRoutes(
   deps: IImagingRouteDeps,
   gate: AuthGate,
 ): void {
-  void gate; // RED: accepted but not yet enforced — enforcement lands in the GREEN step
   // Per-camera session baseline: the settings the first time a preset is applied. Presets are computed
   // relative to this fixed baseline, so re-applying never compounds and Auto/Day restore it.
   const baselines = new Map<string, IImagingSettings>();
@@ -60,6 +59,7 @@ export function registerImagingRoutes(
   });
 
   router.post('/cameras/:id/imaging/preset', async (req: Request, res: Response) => {
+    if (gate(req, res)) return;
     if (!deps.ready()) {
       res.status(503).json({ error: 'plugin not started' });
       return;

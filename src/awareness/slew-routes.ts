@@ -26,8 +26,8 @@ export interface ISlewRouteDeps {
 const round = (n: number): number => Math.round(n);
 
 export function registerSlewRoutes(router: IRouter, deps: ISlewRouteDeps, gate: AuthGate): void {
-  void gate; // RED: accepted but not yet enforced — enforcement lands in the GREEN step
   router.post('/cameras/:id/slew-to-cue', (req: Request, res: Response) => {
+    if (gate(req, res)) return;
     if (!deps.ready()) {
       res.status(503).json({ error: 'plugin not started' });
       return;

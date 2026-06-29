@@ -25,8 +25,8 @@ export function registerCalibrationRoute(
   ctx: ICalibrationContext,
   gate: AuthGate,
 ): void {
-  void gate; // RED: accepted but not yet enforced — enforcement lands in the GREEN step
   router.post('/cameras/:id/calibration', async (req: Request, res: Response) => {
+    if (gate(req, res)) return;
     if (!ctx.ready()) {
       res.status(503).json({ error: 'plugin not started' });
       return;

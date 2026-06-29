@@ -7,6 +7,7 @@ import {
   isValidAssetId,
   type AssetStore,
 } from './asset-store';
+import type { AuthGate } from '../security/request-auth';
 import { parseRange } from './range';
 
 type StreamFactory = (path: string, opts?: { start: number; end: number }) => ReadStream;
@@ -27,6 +28,7 @@ export interface IUploadRouteOptions {
 export function registerUploadRoutes(
   router: IRouter,
   getStore: () => AssetStore | null,
+  gate: AuthGate,
   options: IUploadRouteOptions = {},
 ): void {
   const openStream = options.streamFactory ?? (createReadStream as StreamFactory);
@@ -41,6 +43,7 @@ export function registerUploadRoutes(
   };
 
   router.post('/videos', (req: Request, res: Response) => {
+    if (gate(req, res)) return;
     const store = requireStore(res);
     if (!store) {
       return;
@@ -126,6 +129,7 @@ export function registerUploadRoutes(
   });
 
   router.delete('/videos/:id', (req: Request, res: Response) => {
+    if (gate(req, res)) return;
     const store = requireStore(res);
     if (!store) {
       return;

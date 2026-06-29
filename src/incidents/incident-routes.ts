@@ -32,7 +32,6 @@ export function registerIncidentRoutes(
   deps: IIncidentRouteDeps,
   gate: AuthGate,
 ): void {
-  void gate; // RED: accepted but not yet enforced — enforcement lands in the GREEN step
   const openStream = deps.streamFactory ?? (createReadStream as StreamFactory);
 
   const requireController = (res: Response): IncidentController | null => {
@@ -52,6 +51,7 @@ export function registerIncidentRoutes(
 
   // Trigger an incident. Body optional: { cameras?, preMs?, postMs?, note? }.
   router.post('/incidents', (req: Request, res: Response) => {
+    if (gate(req, res)) return;
     const controller = requireController(res);
     if (!controller) {
       return;
@@ -168,6 +168,7 @@ export function registerIncidentRoutes(
 
   // Operator patch: label / notes / pinned only.
   router.patch('/incidents/:id', (req: Request, res: Response) => {
+    if (gate(req, res)) return;
     const store = requireStore(res);
     if (!store) {
       return;
@@ -192,6 +193,7 @@ export function registerIncidentRoutes(
 
   // Delete a bundle (refuses a pinned one).
   router.delete('/incidents/:id', (req: Request, res: Response) => {
+    if (gate(req, res)) return;
     const store = requireStore(res);
     if (!store) {
       return;

@@ -1023,8 +1023,10 @@ export = function (app: ServerAPI): Plugin {
         res.status(existed ? 204 : 404).end();
       });
 
-      // Man-overboard activate/deactivate (also exposed as a Signal K PUT action).
+      // Man-overboard activate/deactivate (also exposed as a Signal K PUT action). The PUT action
+      // path inherits the server's auth; this same-origin HTTP route must gate itself the same way.
       router.post('/mob', (req: Request, res: Response) => {
+        if (unauthorized(req, res)) return;
         if (!mob) {
           res.status(503).json({ error: 'plugin not started' });
           return;
@@ -1136,7 +1138,7 @@ export = function (app: ServerAPI): Plugin {
       });
 
       // Uploaded video library: store + Range-served playback.
-      registerUploadRoutes(router, () => videos);
+      registerUploadRoutes(router, () => videos, unauthorized);
 
       // Cached Frigate clips: read-only list + Range-served playback (same-origin).
       registerFrigateClipRoutes(router, { getStore: () => frigateClips });
@@ -1144,6 +1146,7 @@ export = function (app: ServerAPI): Plugin {
       // Capture a telemetry-stamped snapshot (position/heading/… from the Signal K bus burned into
       // the stored frame's sidecar). Same-origin and keyed by a known camera id.
       router.post('/cameras/:id/snapshot', async (req: Request, res: Response) => {
+        if (unauthorized(req, res)) return;
         if (!snapshots || !cameras) {
           res.status(503).json({ error: 'plugin not started' });
           return;

@@ -37,4 +37,24 @@ describe('isAuthorizedSensitiveRequest', () => {
     };
     expect(isAuthorizedSensitiveRequest(strat, {})).toBe(false);
   });
+
+  it('denies (fails closed) when isDummy throws on a secured server', () => {
+    const strat = {
+      isDummy: () => {
+        throw new Error('boom');
+      },
+    };
+    expect(isAuthorizedSensitiveRequest(strat, {})).toBe(false);
+  });
+
+  it('still allows an authenticated principal even if isDummy throws', () => {
+    const strat = {
+      isDummy: () => {
+        throw new Error('boom');
+      },
+    };
+    expect(isAuthorizedSensitiveRequest(strat, { skPrincipal: { identifier: 'alice' } })).toBe(
+      true,
+    );
+  });
 });

@@ -3,7 +3,14 @@ import { once } from 'node:events';
 import { Readable, Writable } from 'node:stream';
 import type { IRouter, Request, Response } from 'express';
 import { registerUploadRoutes } from './upload-routes';
+import type { AuthGate } from '../security/request-auth';
 import { AssetStore, type IAssetIndexPersistence, type IBlobStore } from './asset-store';
+
+const ALLOW: AuthGate = () => false;
+const DENY: AuthGate = (_req, res) => {
+  res.status(401).json({ error: 'authentication required' });
+  return true;
+};
 
 function mp4(size = 100): Buffer {
   const head = [0, 0, 0, 0x20, ...'ftypisom'.split('').map((c) => c.charCodeAt(0))];
@@ -126,9 +133,9 @@ function uploadReq(body: Buffer | Uint8Array, headers: Record<string, string> = 
 }
 
 describe('registerUploadRoutes', () => {
-  function setup(store = makeStore(), streamBytes = 100) {
+  function setup(store = makeStore(), streamBytes = 100, gate: AuthGate = ALLOW) {
     const { router, handlers } = fakeRouter();
-    registerUploadRoutes(router, () => store, {
+    registerUploadRoutes(router, () => store, gate, {
       streamFactory: (_path, opts) => {
         const full = Buffer.alloc(streamBytes, 1);
         const slice = opts ? full.subarray(opts.start, opts.end + 1) : full;
@@ -137,6 +144,33 @@ describe('registerUploadRoutes', () => {
     });
     return { store, handlers };
   }
+
+  it('rejects an unauthenticated POST /videos with 401 and stores nothing', async () => {
+    const store = makeStore();
+    const { handlers } = setup(store, 100, DENY);
+    const res = new FakeRes();
+    handlers.get('POST /videos')!(uploadReq(mp4(), { 'x-filename': 'clip.mp4' }), res as never);
+    await once(res, 'finish');
+    expect(res.statusCode).toBe(401);
+    expect(store.list()).toHaveLength(0);
+  });
+
+  it('rejects an unauthenticated DELETE /videos/:id with 401 and deletes nothing', () => {
+    const store = makeStore();
+    const asset = store.add(new Uint8Array(mp4()), 'a.mp4');
+    const { handlers } = setup(store, 100, DENY);
+    const res = new FakeRes();
+    handlers.get('DELETE /videos/:id')!(fakeReq({ params: { id: asset.id } }), res as never);
+    expect(res.statusCode).toBe(401);
+    expect(store.get(asset.id)).toBeTruthy();
+  });
+
+  it('does NOT gate the read-only GET /videos list route', () => {
+    const { handlers } = setup(makeStore(), 100, DENY);
+    const res = new FakeRes();
+    handlers.get('GET /videos')!(fakeReq(), res as never);
+    expect(res.statusCode).toBe(200);
+  });
 
   it('stores a valid upload and returns 201 with the asset', async () => {
     const { handlers } = setup();

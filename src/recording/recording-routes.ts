@@ -39,7 +39,6 @@ export function registerRecordingRoutes(
   deps: IRecordingRoutesDeps,
   gate: AuthGate,
 ): void {
-  void gate; // RED: accepted but not yet enforced — enforcement lands in the GREEN step
   const openStream = deps.streamFactory ?? (createReadStream as StreamFactory);
   const cacheTtlMs = deps.segmentCacheTtlMs ?? 1500;
   const now = deps.now ?? (() => Date.now());
@@ -68,6 +67,7 @@ export function registerRecordingRoutes(
   };
 
   router.post('/cameras/:id/record', (req: Request, res: Response) => {
+    if (gate(req, res)) return;
     const manager = requireManager(res);
     if (!manager) {
       return;

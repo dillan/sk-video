@@ -44,14 +44,15 @@ export function isAuthorizedSensitiveRequest(
   if (!strategy) {
     return true; // the server exposes no strategy → security is not configured
   }
-  if (strategy.isDummy?.() === true) {
-    return true; // security explicitly disabled → open by the operator's choice
-  }
-  // Security is enabled: require a demonstrably authenticated caller.
+  // An authenticated principal is always allowed, independent of the strategy's internals.
   if (req.skPrincipal !== undefined && req.skPrincipal !== null) {
     return true;
   }
+  // Every call into the (untyped, version-varying) strategy is wrapped so ANY throw fails closed.
   try {
+    if (strategy.isDummy?.() === true) {
+      return true; // security explicitly disabled → open by the operator's choice
+    }
     return strategy.getLoginStatus?.(req)?.status === 'loggedIn';
   } catch {
     return false; // fail closed on a misbehaving strategy
