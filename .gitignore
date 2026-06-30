@@ -1,7 +1,9 @@
 node_modules/
 dist/
-# Built web app bundle (shipped via package.json "files", served by the plugin) — build output, not source.
-public/
+# Built web app bundle (shipped via package.json "files", served by the plugin) — build output, not
+# source. Anchored to the repo root so it does NOT swallow webapp/public/ (the Vite static-source dir
+# holding the PWA manifest, icon, and service worker, which ARE tracked).
+/public/
 *.log
 .DS_Store
 coverage/

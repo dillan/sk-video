@@ -1,0 +1,19 @@
+{
+  "name": "SK Video",
+  "short_name": "SK Video",
+  "description": "Marine video operator console for Signal K — live, review, and safety.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#07090c",
+  "theme_color": "#0b0f14",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

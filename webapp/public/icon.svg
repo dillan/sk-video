@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="SK Video">
+  <!-- Full-bleed dark mat so the icon is safe under a maskable crop. -->
+  <rect width="512" height="512" fill="#0b0f14"/>
+  <!-- Camera body -->
+  <rect x="116" y="188" width="208" height="136" rx="26" fill="#2e9bff"/>
+  <!-- Lens -->
+  <circle cx="220" cy="256" r="40" fill="#0b0f14"/>
+  <circle cx="220" cy="256" r="20" fill="#2e9bff"/>
+  <!-- Viewfinder / live tally -->
+  <path d="M340 224 L404 192 V320 L340 288 Z" fill="#2e9bff"/>
+  <circle cx="372" cy="156" r="16" fill="#ff3b30"/>
+</svg>
