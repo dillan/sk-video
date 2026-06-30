@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   fetchMobStatus,
   fetchCameras,
@@ -9,6 +9,8 @@ import {
   type IMobStatus,
   type ICameraEntry,
 } from '../api';
+import { VideoPlayer } from '../components/VideoPlayer';
+import { H264_TRANSPORTS } from '../lib/transport';
 
 interface Msg {
   kind: 'caution' | 'info';
@@ -16,6 +18,13 @@ interface Msg {
 }
 
 const DISARM_HOLD_MS = 800;
+/** While armed, poll the MOB status so the re-aim heartbeat + aimed cameras stay live. */
+const MOB_POLL_MS = 3000;
+
+/** Format an epoch-ms heartbeat as HH:MM:SS, or "—" when absent. */
+function clock(ms: number | null | undefined): string {
+  return typeof ms === 'number' ? new Date(ms).toLocaleTimeString([], { hour12: false }) : '—';
+}
 
 function targetLine(s: IMobStatus): { text: string; caution: boolean } {
   switch (s.targetSource) {
@@ -47,10 +56,13 @@ export function Safety({ onMobChange }: { onMobChange?: (s: IMobStatus) => void 
   const [msg, setMsg] = useState<Msg | null>(null);
   const holdRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const apply = (s: IMobStatus): void => {
-    setStatus(s);
-    onMobChange?.(s);
-  };
+  const apply = useCallback(
+    (s: IMobStatus): void => {
+      setStatus(s);
+      onMobChange?.(s);
+    },
+    [onMobChange],
+  );
 
   useEffect(() => {
     const ctrl = new AbortController();
@@ -66,6 +78,17 @@ export function Safety({ onMobChange }: { onMobChange?: (s: IMobStatus) => void 
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // While armed, keep the heartbeat + aimed-camera state live.
+  useEffect(() => {
+    if (!status?.active) return;
+    const t = setInterval(() => {
+      fetchMobStatus()
+        .then(apply)
+        .catch(() => undefined);
+    }, MOB_POLL_MS);
+    return () => clearInterval(t);
+  }, [status?.active, apply]);
 
   const capablePtz = cams.filter((c) => c.capabilities?.absolutePtz);
 
@@ -139,13 +162,20 @@ export function Safety({ onMobChange }: { onMobChange?: (s: IMobStatus) => void 
   }
 
   const target = targetLine(status);
+  const capable = status.capableCameras || capablePtz.length;
+  const aimedIds = new Set(status.aimedCameraIds ?? []);
+  // The featured aimed camera for the reticle view: prefer a commanded one, else the first capable PTZ.
+  const primaryId = status.aimedCameraIds?.[0] ?? capablePtz[0]?.id;
+  const primary = cams.find((c) => c.id === primaryId);
   return (
     <div className="mob mob--armed">
       <header className="mob__header">
         <span className="mob__pulse" aria-hidden="true" />
         <div className="mob__title">
           <h1>Man overboard</h1>
-          <div className="mono mob__sub">armed · re-aiming every 3 s</div>
+          <div className="mono mob__sub">
+            armed {clock(status.armedAt)} · re-aiming every 3 s · last {clock(status.lastReaimAt)}
+          </div>
         </div>
         <button type="button" className="iconbtn iconbtn--wide" onClick={mark}>
           Mark incident
@@ -165,14 +195,53 @@ export function Safety({ onMobChange }: { onMobChange?: (s: IMobStatus) => void 
       <div className="mob__row">
         <span className={`chip chip--${target.caution ? 'caution' : 'info'}`}>{target.text}</span>
         <span className="chip chip--neutral">
-          <b>{status.aimedCameras}</b>&nbsp;of {capablePtz.length} cameras aimed
+          <b>{status.aimedCameras}</b>&nbsp;of {capable} cameras aimed
         </span>
-      </div>
-      <div className="mob__actions">
         <button type="button" className="btn" onClick={slewAll}>
           Slew all to AIS cue
         </button>
         {msg && <span className={`chip chip--${msg.kind}`}>{msg.text}</span>}
+      </div>
+
+      <div className="mob__grid">
+        <div className="mob__stage">
+          {primary?.enabled ? (
+            <VideoPlayer cameraId={primary.id} transports={H264_TRANSPORTS} variant="main" />
+          ) : (
+            <div className="tile__sheen" />
+          )}
+          <div className="mob__reticle" aria-hidden="true" />
+          <div className="mob__stagelabel">
+            {primary?.name ?? '—'}
+            {aimedIds.has(primaryId ?? '') && <span className="mono"> · aimed</span>}
+          </div>
+        </div>
+
+        <div className="mob__cams" role="list" aria-label="Aimed cameras">
+          <div className="mob__camshead">
+            <span>Aimed cameras</span>
+            <span className="mono">
+              {status.aimedCameras}/{capable}
+            </span>
+          </div>
+          {capablePtz.length === 0 && (
+            <div className="muted">No calibrated PTZ camera to aim.</div>
+          )}
+          {capablePtz.map((c) => {
+            const aimed = aimedIds.has(c.id);
+            const offline = c.enabled === false;
+            return (
+              <div className="mob__cam" role="listitem" key={c.id}>
+                <span
+                  className={`chip ${offline ? 'chip--caution' : aimed ? 'chip--neutral mob__ok' : 'chip--neutral'}`}
+                >
+                  {offline ? 'offline' : aimed ? '✓ aimed' : '…'}
+                </span>
+                <span className="mob__camname">{c.name}</span>
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );

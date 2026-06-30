@@ -65,6 +65,8 @@ export interface IMobControllerDeps {
   reaimIntervalMs?: number;
   setIntervalImpl?: (cb: () => void, ms: number) => ReturnType<typeof setInterval>;
   clearIntervalImpl?: (token: ReturnType<typeof setInterval>) => void;
+  /** Injectable clock (ms) for the armed/last-reaim heartbeat timestamps; defaults to Date.now. */
+  now?: () => number;
   /** Optional logger so a re-aim failure is recorded rather than silently swallowed. */
   log?: (msg: string) => void;
 }
@@ -78,6 +80,14 @@ export interface IMobStatus {
    * NOT a confirmation the PTZ move completed — a flaky camera may reject the command (logged upstream).
    */
   aimedCameras: number;
+  /** Total enabled cameras with absolute PTZ — the denominator for "N of M aimed". */
+  capableCameras: number;
+  /** The ids of the cameras commanded at the target on the most recent re-aim. */
+  aimedCameraIds: string[];
+  /** Epoch ms the event was armed, or null when idle. */
+  armedAt: number | null;
+  /** Epoch ms of the most recent re-aim (the heartbeat), or null when idle. */
+  lastReaimAt: number | null;
 }
 
 export class MobController {
@@ -86,15 +96,25 @@ export class MobController {
   // Cameras commanded at the target on the most recent re-aim, so read-only status() can report the
   // count without itself re-aiming (which would send camera commands on every status poll).
   private lastAimed = 0;
+  private lastAimedIds: string[] = [];
+  private armedAt: number | null = null;
+  private lastReaimAt: number | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
   private readonly setIntervalImpl: NonNullable<IMobControllerDeps['setIntervalImpl']>;
   private readonly clearIntervalImpl: NonNullable<IMobControllerDeps['clearIntervalImpl']>;
   private readonly reaimIntervalMs: number;
+  private readonly now: () => number;
 
   constructor(private readonly deps: IMobControllerDeps) {
     this.setIntervalImpl = deps.setIntervalImpl ?? setInterval;
     this.clearIntervalImpl = deps.clearIntervalImpl ?? clearInterval;
     this.reaimIntervalMs = deps.reaimIntervalMs ?? DEFAULT_REAIM_MS;
+    this.now = deps.now ?? (() => Date.now());
+  }
+
+  /** Count of enabled cameras that can be absolutely aimed (the "of M" denominator). */
+  private capableCount(): number {
+    return this.deps.getCameras().filter((c) => c.hasAbsolutePtz).length;
   }
 
   /** Trigger the MOB response: capture the datum, alert + snapshot, aim, and start re-aiming. */
@@ -103,11 +123,13 @@ export class MobController {
       // Re-triggering an already-active MOB must NOT recapture the datum — a panicked double-press
       // would otherwise move the search datum from where the person went over to the boat's now-drifted
       // position. Just re-aim at the existing datum and report status.
-      return { active: true, targetSource: this.targetSource(), aimedCameras: this.reaim() };
+      this.reaim();
+      return this.status();
     }
     const ship = this.deps.getOwnShip();
     this.datum = ship ? ship.position : null;
     this.active = true;
+    this.armedAt = this.now();
 
     const target = this.currentTarget();
     this.deps.snapshotAll();
@@ -130,7 +152,7 @@ export class MobController {
     if (this.timer === null) {
       this.timer = this.setIntervalImpl(() => this.safeReaim(), this.reaimIntervalMs);
     }
-    return { active: true, targetSource: source, aimedCameras: aimed };
+    return this.status();
   }
 
   /** Re-aim, never letting a throw escape into the interval timer (which would crash the process). */
@@ -151,6 +173,9 @@ export class MobController {
     this.active = false;
     this.datum = null;
     this.lastAimed = 0;
+    this.lastAimedIds = [];
+    this.armedAt = null;
+    this.lastReaimAt = null;
     this.deps.stopRecording?.();
     this.deps.clearNotification();
   }
@@ -169,16 +194,24 @@ export class MobController {
       active: this.active,
       targetSource: this.targetSource(),
       aimedCameras: this.active ? this.lastAimed : 0,
+      capableCameras: this.capableCount(),
+      aimedCameraIds: this.active ? [...this.lastAimedIds] : [],
+      armedAt: this.armedAt,
+      lastReaimAt: this.lastReaimAt,
     };
   }
 
   /** Aim every capable camera at the current target; returns how many were aimed. */
   private reaim(): number {
     this.lastAimed = this.dispatchAim();
+    if (this.active) {
+      this.lastReaimAt = this.now();
+    }
     return this.lastAimed;
   }
 
   private dispatchAim(): number {
+    this.lastAimedIds = [];
     if (!this.active) {
       return 0;
     }
@@ -202,6 +235,7 @@ export class MobController {
       this.deps.aimCamera(camera.id, aim.pan, aim.tilt);
       if (!aim.panClamped) {
         commanded += 1;
+        this.lastAimedIds.push(camera.id);
       }
     }
     return commanded;

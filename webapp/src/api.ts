@@ -62,6 +62,14 @@ export interface IMobStatus {
   active: boolean;
   targetSource: 'beacon' | 'datum' | 'none';
   aimedCameras: number;
+  /** Total enabled cameras with absolute PTZ — the "of M" denominator. */
+  capableCameras: number;
+  /** Ids of the cameras commanded at the target on the most recent re-aim. */
+  aimedCameraIds: string[];
+  /** Epoch ms the event was armed, or null when idle. */
+  armedAt: number | null;
+  /** Epoch ms of the most recent re-aim (the heartbeat), or null when idle. */
+  lastReaimAt: number | null;
 }
 
 /**

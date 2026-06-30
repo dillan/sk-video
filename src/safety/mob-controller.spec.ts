@@ -61,7 +61,15 @@ describe('MobController', () => {
 
   it('status() reports a non-mutating snapshot: idle before, armed after, idle again after deactivate', () => {
     const { mob, calls } = setup();
-    expect(mob.status()).toEqual({ active: false, targetSource: 'none', aimedCameras: 0 });
+    expect(mob.status()).toEqual({
+      active: false,
+      targetSource: 'none',
+      aimedCameras: 0,
+      capableCameras: 1,
+      aimedCameraIds: [],
+      armedAt: null,
+      lastReaimAt: null,
+    });
 
     const status = mob.activate();
     const aimsAfterActivate = calls.aims.length;
@@ -71,7 +79,26 @@ describe('MobController', () => {
     expect(calls.aims.length).toBe(aimsAfterActivate);
 
     mob.deactivate();
-    expect(mob.status()).toEqual({ active: false, targetSource: 'none', aimedCameras: 0 });
+    expect(mob.status()).toEqual({
+      active: false,
+      targetSource: 'none',
+      aimedCameras: 0,
+      capableCameras: 1,
+      aimedCameraIds: [],
+      armedAt: null,
+      lastReaimAt: null,
+    });
+  });
+
+  it('reports the armed/last-reaim timestamps, capable count, and aimed ids', () => {
+    let t = 1000;
+    const { mob } = setup({ now: () => (t += 5) });
+    const s = mob.activate();
+    expect(s.capableCameras).toBe(1); // only the absolute-PTZ camera counts
+    expect(s.aimedCameraIds).toEqual(['bow']);
+    expect(s.armedAt).toBe(1005); // first now() call, on arm
+    expect(typeof s.lastReaimAt).toBe('number');
+    expect(s.lastReaimAt).toBeGreaterThanOrEqual(s.armedAt as number);
   });
 
   it('applies the low-light preset to all cameras on activation when it is dark', () => {
