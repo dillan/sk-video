@@ -2,10 +2,10 @@ import type { ICamera } from '../api';
 import { formatBearing } from './format';
 
 /**
- * Pure camera-tile derivations for the Live Wall. With only the resource (no per-camera health yet),
- * we honestly report two states: a disabled camera, and an enabled one we're still connecting to. The
- * richer states from the design (LIVE / still-refresh ~1 fps / reconnecting / went dark / never seen)
- * land when stream health is wired in — we don't fabricate a "live" state we can't confirm.
+ * Pure camera-tile derivations for the Live Wall. An enabled tile plays its sub-stream and labels the
+ * live transport itself; this covers the resource-only fallback states: a disabled camera, and an
+ * enabled one before its player reports a rung. The richer health states from the design (reconnecting
+ * / went dark / never seen) land when stream health is wired in — we don't fabricate a confirmed state.
  */
 
 /** "Bow · 350° · substream" — built from placement + capabilities, omitting whatever is unknown. */

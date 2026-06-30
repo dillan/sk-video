@@ -11,9 +11,9 @@ type Cams =
 
 /**
  * The hero surface: a glanceable mosaic of the boat's cameras, arranged with the first as the hero
- * tile. Cameras come from the shared Signal K resource; the telemetry strip from vessels/self. Live
- * video + the rich per-tile states (LIVE / still-refresh / went dark) arrive with the player + health
- * wiring; until then tiles show identity + an honest "Connecting…" state.
+ * tile. Cameras come from the shared Signal K resource; the telemetry strip from vessels/self. Each
+ * enabled tile plays its low-res H.264 sub-stream (substream-in-grid); the richer health states
+ * (went-dark / never-seen) arrive with the per-camera health wiring.
  */
 export function LiveWall({
   mob,
