@@ -42,6 +42,14 @@ npm test                 # Chromium + WebKit
 ./run.sh --down          # tear down
 ```
 
+### Iterating on the plugin or webapp while the stack is up
+
+`./run.sh` builds the plugin **and** webapp before starting, so a fresh stack always serves the current code. But if you rebuild **while the stack is running**, the Signal K container can keep serving the old assets — Vite recreates `public/`, which breaks the bind-mount's view on Docker Desktop. After a rebuild, re-sync the container:
+
+```bash
+npm run refresh        # rebuilds plugin + webapp, then restarts the signalk container
+```
+
 The first camera triggers a one-time download of the pinned go2rtc binary into the plugin data dir, so the Signal K container needs internet egress on first run. To run fully offline, drop a matching `go2rtc` binary into `signalk-config/plugins/sk-video/` before starting (see the plugin's binary manager for the expected name).
 
 ## ONVIF / PTZ (opt-in)

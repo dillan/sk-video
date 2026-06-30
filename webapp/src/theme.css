@@ -313,9 +313,12 @@ body {
   flex: 1;
   display: grid;
   grid-template-columns: 1.55fr 1fr 1fr;
-  grid-template-rows: 1fr 1fr;
+  /* Auto-flow rows so the wall never clips cameras past the first two rows: ≤5 cameras stretch to fill
+   * (1fr), and a crowded wall keeps tiles ≥190px and scrolls instead of hiding them in a 0-height row. */
+  grid-auto-rows: minmax(190px, 1fr);
   gap: 14px;
   min-height: 0;
+  overflow-y: auto;
 }
 .mosaic__hero {
   grid-row: span 2;

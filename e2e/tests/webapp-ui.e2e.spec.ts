@@ -88,4 +88,20 @@ test.describe('SK Video webapp — Live Wall + Camera Focus', () => {
     await expect(page.locator('.player')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Full res' })).toHaveCount(0);
   });
+
+  test('shows every tile on a crowded wall (mosaic does not clip past 5 cameras)', async ({
+    page,
+    request,
+  }) => {
+    // Seed enough cameras to exceed the old 5-tile grid; names sort last so they'd land in the rows
+    // that the previous fixed 2-row mosaic hid.
+    const extra = ['zcam1', 'zcam2', 'zcam3', 'zcam4', 'zcam5', 'zcam6'];
+    for (const id of extra) await ensureCamera(request, id, { name: id });
+    await page.goto(`${APP}#/live`);
+    // Every tile renders with real size (the bug left late tiles, e.g. zcam6, in a 0-height row →
+    // "hidden"). These ids sort last, so they land in exactly the rows the old fixed grid clipped.
+    for (const id of extra) {
+      await expect(page.getByRole('button', { name: new RegExp(id) })).toBeVisible();
+    }
+  });
 });
