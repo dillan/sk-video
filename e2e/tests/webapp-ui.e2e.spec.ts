@@ -45,6 +45,28 @@ test.describe('SK Video webapp — shell + navigation', () => {
     await page.getByRole('button', { name: 'Settings' }).first().click();
     await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible();
   });
+
+  test('is an installable PWA: serves a manifest and registers an app-shell service worker', async ({
+    page,
+    request,
+  }) => {
+    // The manifest is served same-origin with the right content type and a usable install identity.
+    const manifestRes = await request.get(`${BASE}${APP}manifest.webmanifest`);
+    expect(manifestRes.ok()).toBeTruthy();
+    expect(manifestRes.headers()['content-type']).toContain('application/manifest+json');
+    const manifest = JSON.parse(await manifestRes.text());
+    expect(manifest.name).toBe('SK Video');
+    expect(manifest.display).toBe('standalone');
+    expect(manifest.icons.length).toBeGreaterThan(0);
+
+    // The service worker registers and becomes active (localhost is a secure context).
+    await page.goto(`${APP}#/live`);
+    const scope = await page.evaluate(async () => {
+      const reg = await navigator.serviceWorker.ready;
+      return reg.scope;
+    });
+    expect(scope).toContain('/plugins/sk-video/app/'); // scoped to the app, not the API
+  });
 });
 
 test.describe('SK Video webapp — Settings theme', () => {

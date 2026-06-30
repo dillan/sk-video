@@ -27,4 +27,9 @@ export default tseslint.config(
     files: ['vite.config.ts'],
     languageOptions: { globals: { ...globals.node } },
   },
+  // The service worker runs in the ServiceWorkerGlobalScope (self, caches, clients, …).
+  {
+    files: ['public/sw.js'],
+    languageOptions: { globals: { ...globals.serviceworker, ...globals.browser } },
+  },
 );
