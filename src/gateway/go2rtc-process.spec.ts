@@ -16,29 +16,36 @@ class FakeChild extends EventEmitter {
   }
 }
 
-/** A controllable timer harness: timers fire only when flush() is called. */
+/** A controllable timer harness: timers fire only when flush() is called; delays() exposes the pending
+ * timers' requested delays so a test can tell a fast retry from a slow one. */
 function fakeTimers() {
   let id = 0;
-  const pending = new Map<number, () => void>();
-  const setTimeoutImpl = ((cb: () => void) => {
+  const pending = new Map<number, { cb: () => void; ms: number }>();
+  const setTimeoutImpl = ((cb: () => void, ms: number) => {
     const t = ++id;
-    pending.set(t, cb);
+    pending.set(t, { cb, ms });
     return { __id: t, unref() {} } as unknown as ReturnType<typeof setTimeout>;
   }) as typeof setTimeout;
   const clearTimeoutImpl = ((h: { __id: number }) => {
     if (h) pending.delete(h.__id);
   }) as typeof clearTimeout;
   const flush = (): void => {
-    const cbs = [...pending.values()];
+    const entries = [...pending.values()];
     pending.clear();
-    cbs.forEach((cb) => cb());
+    entries.forEach((e) => e.cb());
   };
-  return { setTimeoutImpl, clearTimeoutImpl, flush, size: () => pending.size };
+  const delays = (): number[] => [...pending.values()].map((e) => e.ms);
+  return { setTimeoutImpl, clearTimeoutImpl, flush, delays, size: () => pending.size };
 }
 
 const settle = () => new Promise((r) => setImmediate(r));
 
-function setup() {
+interface SetupOpts {
+  onDegraded?: (n: number) => void;
+  onHealthy?: () => void;
+}
+
+function setup(opts: SetupOpts = {}) {
   const children: FakeChild[] = [];
   const spawnImpl = vi.fn(() => {
     const c = new FakeChild();
@@ -49,11 +56,23 @@ function setup() {
   const timers = fakeTimers();
   const proc = new Go2rtcProcess({
     log: (m) => logs.push(m),
+    onDegraded: opts.onDegraded,
+    onHealthy: opts.onHealthy,
     spawnImpl,
     setTimeoutImpl: timers.setTimeoutImpl,
     clearTimeoutImpl: timers.clearTimeoutImpl,
   });
   return { proc, children, spawnImpl, logs, timers };
+}
+
+/** Crash the most recently spawned child and fire the resulting respawn backoff timer. */
+async function crashAndRespawn(
+  children: FakeChild[],
+  timers: ReturnType<typeof fakeTimers>,
+): Promise<void> {
+  children[children.length - 1].exit(1);
+  timers.flush();
+  await settle();
 }
 
 describe('Go2rtcProcess', () => {
@@ -132,16 +151,65 @@ describe('Go2rtcProcess', () => {
     expect(spawnImpl).toHaveBeenCalledTimes(1); // no respawn after an intentional stop
   });
 
-  it('gives up auto-restarting after repeated crashes', async () => {
-    const { proc, children, spawnImpl, timers } = setup();
+  it('keeps retrying on a slower cadence (never gives up) after repeated crashes', async () => {
+    const onDegraded = vi.fn();
+    const { proc, children, spawnImpl, timers } = setup({ onDegraded });
     proc.start('/bin/go2rtc', '/cfg.yaml');
     await settle();
-    // Crash-and-respawn repeatedly; after the cap it stops trying.
+
+    // The first crash schedules a FAST respawn.
+    children[children.length - 1].exit(1);
+    const fastDelay = timers.delays()[0];
+    timers.flush();
+    await settle();
+
+    // Crash through the fast budget and well past the old give-up cap.
     for (let i = 0; i < 8; i++) {
-      children[children.length - 1].exit(1);
-      timers.flush();
-      await settle();
+      await crashAndRespawn(children, timers);
     }
-    expect(spawnImpl.mock.calls.length).toBeLessThanOrEqual(6); // initial + at most 5 restarts
+    // Old behaviour stopped at 6 spawns; now it keeps respawning.
+    expect(spawnImpl.mock.calls.length).toBeGreaterThan(6);
+
+    // The next respawn uses a SLOWER backoff than the initial fast one, and the gateway was flagged down.
+    children[children.length - 1].exit(1);
+    expect(timers.delays()[0]).toBeGreaterThan(fastDelay);
+    expect(onDegraded).toHaveBeenCalled();
+  });
+
+  it('recovers: a stable run clears the degraded state and resumes fast retries', async () => {
+    const onDegraded = vi.fn();
+    const onHealthy = vi.fn();
+    const { proc, children, timers } = setup({ onDegraded, onHealthy });
+    proc.start('/bin/go2rtc', '/cfg.yaml');
+    await settle();
+
+    // Capture the fast delay, then drive into the degraded (slow-retry) state.
+    children[children.length - 1].exit(1);
+    const fastDelay = timers.delays()[0];
+    timers.flush();
+    await settle();
+    for (let i = 0; i < 6; i++) {
+      await crashAndRespawn(children, timers);
+    }
+    expect(onDegraded).toHaveBeenCalledTimes(1); // flagged down exactly once on entering slow retry
+
+    // The latest child survives: firing its stable-run timer marks it healthy again.
+    timers.flush();
+    await settle();
+    expect(onHealthy).toHaveBeenCalledTimes(1);
+
+    // A subsequent crash is treated as fresh — fast retry, no second degraded flag.
+    children[children.length - 1].exit(1);
+    expect(timers.delays()[0]).toBe(fastDelay);
+    expect(onDegraded).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not flag the gateway down for a single crash within the fast budget', async () => {
+    const onDegraded = vi.fn();
+    const { proc, children, timers } = setup({ onDegraded });
+    proc.start('/bin/go2rtc', '/cfg.yaml');
+    await settle();
+    await crashAndRespawn(children, timers); // one crash, fast respawn
+    expect(onDegraded).not.toHaveBeenCalled();
   });
 });

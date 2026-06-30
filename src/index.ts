@@ -279,6 +279,13 @@ export = function (app: ServerAPI): Plugin {
     syncTimer = setTimeout(() => void runSync(), SYNC_DEBOUNCE_MS);
   }
 
+  /** The normal "all good" plugin status line — reused on startup and when the gateway recovers. */
+  function readyStatus(): string {
+    const count = cameras ? Object.keys(cameras.list()).length : 0;
+    const suffix = hardware ? ` · ${describeTier(hardware)}` : '';
+    return `Ready — ${count} camera${count === 1 ? '' : 's'}${suffix}`;
+  }
+
   // A1 (experimental): turn one Frigate person detection into a small bounded relativeMove nudge on
   // top of MOB's authoritative geo-pointing. Only runs while MOB is active AND the refine is engaged.
   // The Frigate camera NAME is matched to the sk-video camera id (operators give the camera the same
@@ -415,7 +422,16 @@ export = function (app: ServerAPI): Plugin {
         gateway = new Go2rtcGateway({
           dataDir,
           binary: new Go2rtcBinaryManager({ dataDir, log }),
-          process: new Go2rtcProcess(log),
+          process: new Go2rtcProcess({
+            log,
+            // go2rtc keeps retrying on its own; surface a down/recovered status so a silent gateway
+            // failure (e.g. a boot-time port conflict) is visible instead of a stale "Ready".
+            onDegraded: (attempts) =>
+              app.setPluginError(
+                `Video gateway is down — go2rtc failed to start (${attempts} attempts) and is retrying. Check for a port conflict on 1984/8554/8555.`,
+              ),
+            onHealthy: () => app.setPluginStatus(readyStatus()),
+          }),
         });
         ptz = new PtzManager({
           getCamera: (id) => cameras?.get(id) ?? null,
@@ -880,10 +896,7 @@ export = function (app: ServerAPI): Plugin {
           },
         });
 
-        const count = Object.keys(cameras.list()).length;
-        app.setPluginStatus(
-          `Ready — ${count} camera${count === 1 ? '' : 's'} · ${describeTier(hardware)}`,
-        );
+        app.setPluginStatus(readyStatus());
         scheduleSync(); // start go2rtc if cameras are already configured
       } catch (err) {
         const message = redactUrl(err instanceof Error ? err.message : String(err));
