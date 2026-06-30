@@ -1,14 +1,15 @@
 /**
  * Theme is a value swap on a single `data-theme` attribute (the CSS does the rest via custom
- * properties), persisted to localStorage. Dark is the default — the design leads with Dark; Night-Red
- * preserves dark adaptation at sea (red on near-black, no glow, dimmed video). A light "Day" mode is a
- * separate light-canvas design pass (the visuals here are dark-tuned) and is deferred. Storage access
- * is defensive: a privacy-mode browser that throws on localStorage just loses persistence.
+ * properties), persisted to localStorage. Dark is the default — the design leads with Dark. Day is the
+ * sunlit-helm light mode; Night-Red preserves dark adaptation at sea (red on near-black, no glow,
+ * dimmed video). Across all themes the video always stays on the invariant near-black mat. Storage
+ * access is defensive: a privacy-mode browser that throws on localStorage just loses persistence.
  */
-export const THEMES = ['dark', 'night'] as const;
+export const THEMES = ['day', 'dark', 'night'] as const;
 export type Theme = (typeof THEMES)[number];
 
 export const THEME_LABELS: Record<Theme, string> = {
+  day: 'Day',
   dark: 'Dark',
   night: 'Night-Red',
 };

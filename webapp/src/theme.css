@@ -97,6 +97,75 @@
   color: var(--accent-bright);
 }
 
+/* Day: a sunlit-helm light theme. Chrome goes light; video stays on the invariant near-black mat. A few
+ * controls use translucent-white fills (built for a dark canvas) and need dark fills to stay legible on
+ * the light surfaces — overridden below. */
+[data-theme='day'] {
+  --surface-0: #eef1f5;
+  --surface-1: #ffffff;
+  --surface-2: #ffffff;
+  --video-mat: #07090c; /* INVARIANT */
+  --glass: rgba(255, 255, 255, 0.82);
+  --hairline: rgba(11, 18, 32, 0.12);
+  --inset-ring: rgba(11, 18, 32, 0.14);
+
+  --text-primary: #0b1220;
+  --text-secondary: #44525f;
+  --text-dim: #5d6b78;
+  --text-faint: #7e8b98;
+
+  --accent: #0b73e6;
+  --accent-bright: #0a5fc0;
+  --accent-grad: linear-gradient(160deg, #2a93ff, #0b73e6);
+  --status-live: #e5342a;
+  --status-online: #1f9d57;
+  --status-caution: #c77a00;
+  --status-caution-text: #8a5a00;
+  --status-caution-bright: #8a5a00;
+  --status-dark: #8b97a3;
+  --status-never: #aab4bf;
+
+  color-scheme: light;
+}
+[data-theme='day'] .chip--neutral {
+  background: rgba(11, 18, 32, 0.06);
+  color: var(--text-secondary);
+}
+[data-theme='day'] .chip--caution {
+  background: rgba(199, 122, 0, 0.12);
+  box-shadow: inset 0 0 0 1px rgba(199, 122, 0, 0.32);
+}
+[data-theme='day'] .chip--info {
+  background: rgba(11, 115, 230, 0.1);
+  box-shadow: inset 0 0 0 1px rgba(11, 115, 230, 0.28);
+}
+[data-theme='day'] .iconbtn {
+  background: rgba(11, 18, 32, 0.06);
+}
+/* Re-assert the colour-carrying icon-button variants so the dark base fill above doesn't flatten them. */
+[data-theme='day'] .iconbtn--stop {
+  background: rgba(229, 52, 42, 0.16);
+}
+[data-theme='day'] .iconbtn--rec {
+  background: rgba(229, 52, 42, 0.18);
+}
+[data-theme='day'] .iconbtn--on {
+  background: rgba(11, 115, 230, 0.14);
+}
+/* Chrome that floats over the always-near-black video keeps a light-on-dark treatment in Day. */
+[data-theme='day'] .tile {
+  color: #eef2f6;
+}
+[data-theme='day'] :is(.tile__top, .focus__top) .chip--neutral {
+  background: rgba(255, 255, 255, 0.16);
+  color: #eef2f6;
+}
+[data-theme='day'] :is(.tile__top, .focus__top) .chip--caution {
+  background: rgba(255, 159, 10, 0.22);
+  box-shadow: none;
+  color: #ffe0b0;
+}
+
 @keyframes recPulse {
   0%,
   100% {

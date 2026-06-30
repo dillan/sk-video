@@ -19,9 +19,9 @@ beforeEach(() => {
 
 describe('theme', () => {
   it('validates the known themes', () => {
-    expect(THEMES).toEqual(['dark', 'night']);
+    expect(THEMES).toEqual(['day', 'dark', 'night']);
+    expect(isTheme('day')).toBe(true);
     expect(isTheme('night')).toBe(true);
-    expect(isTheme('day')).toBe(false); // deferred — a light-canvas pass, not a token swap
     expect(isTheme('sepia')).toBe(false);
     expect(isTheme(undefined)).toBe(false);
     expect(THEME_LABELS.night).toBe('Night-Red');

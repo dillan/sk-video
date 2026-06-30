@@ -23,8 +23,9 @@ export function Settings({ theme, onTheme }: Props) {
       <section className="panel">
         <h2 className="panel__title">Theme</h2>
         <p className="muted">
-          Dark by default. Night-Red preserves dark adaptation at sea — red on near-black, no glow,
-          dimmed video. Video always stays on a near-black mat. (A daylight theme is coming.)
+          Dark by default. Day is a light theme for a sunlit helm; Night-Red preserves dark
+          adaptation at sea — red on near-black, no glow, dimmed video. Video always stays on a
+          near-black mat.
         </p>
         <div className="seg" role="group" aria-label="Theme">
           {THEMES.map((t) => (
