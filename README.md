@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="SK-Video-Icon.svg" alt="SK Video" width="128" height="128">
+</p>
+
 # SK Video
 
 **See your boat's cameras in your browser.**

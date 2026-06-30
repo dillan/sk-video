@@ -44,9 +44,13 @@ function NavButtons({ current, onNavigate }: NavProps) {
 export function NavRail(props: NavProps & { authChip?: ReactNode }) {
   return (
     <nav className="rail" aria-label="Primary">
-      <div className="rail__logo" aria-hidden="true">
-        SK
-      </div>
+      <img
+        className="rail__logo"
+        src={`${import.meta.env.BASE_URL}icon.svg`}
+        alt="SK Video"
+        width={40}
+        height={40}
+      />
       <div className="rail__items">
         <NavButtons {...props} />
       </div>

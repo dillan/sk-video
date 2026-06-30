@@ -255,14 +255,9 @@ body {
   width: 40px;
   height: 40px;
   border-radius: 12px;
-  background: var(--accent-grad);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 800;
-  font-size: 15px;
-  color: #021019;
-  box-shadow: 0 6px 18px rgba(46, 155, 255, 0.4);
+  display: block;
+  object-fit: contain;
+  box-shadow: 0 6px 18px rgba(20, 37, 65, 0.5);
 }
 .rail__items {
   display: flex;
