@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { cameraSubtitle, cameraTileView } from './camera';
+import { cameraSubtitle, tileStatus } from './camera';
 import type { ICamera } from '../api';
 
 const base: ICamera = { name: 'Bow', enabled: true };
@@ -20,14 +20,27 @@ describe('cameraSubtitle', () => {
   });
 });
 
-describe('cameraTileView', () => {
+describe('tileStatus', () => {
   it('reports a disabled camera as disabled and dimmed', () => {
-    const v = cameraTileView({ ...base, enabled: false });
-    expect(v).toEqual({ state: 'disabled', label: 'Disabled', dim: true });
+    expect(tileStatus({ ...base, enabled: false }, false, false)).toEqual({
+      label: 'Disabled',
+      tone: 'neutral',
+      live: false,
+      dim: true,
+    });
   });
-  it('reports an enabled camera as connecting (no fabricated live state)', () => {
-    const v = cameraTileView(base);
-    expect(v.state).toBe('connecting');
+  it('is Live (with the live dot) only when a frame is actually playing', () => {
+    const v = tileStatus(base, true, false);
+    expect(v.label).toBe('Live');
+    expect(v.tone).toBe('live');
+    expect(v.live).toBe(true);
     expect(v.dim).toBe(false);
+  });
+  it('connects without fabricating a live state, then reports No signal after the grace period', () => {
+    expect(tileStatus(base, false, false)).toMatchObject({ label: 'Connecting…', live: false });
+    expect(tileStatus(base, false, true)).toMatchObject({ label: 'No signal', tone: 'caution' });
+  });
+  it('prefers Live over a lost-signal flag (a late frame wins)', () => {
+    expect(tileStatus(base, true, true).label).toBe('Live');
   });
 });

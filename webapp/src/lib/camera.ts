@@ -24,19 +24,34 @@ export function cameraSubtitle(c: ICamera): string {
   return parts.join(' · ');
 }
 
-export type TileState = 'disabled' | 'connecting';
+export type TileTone = 'live' | 'neutral' | 'caution';
 
-export interface ITileView {
-  state: TileState;
+export interface ITileStatus {
   /** Chip label shown top-left on the tile. */
   label: string;
+  /** Chip tone — `live` gets the recording/online treatment + a pulsing dot. */
+  tone: TileTone;
+  /** True only when a real frame is flowing (drives the live dot). */
+  live: boolean;
   /** Whether the tile renders dimmed (disabled). */
   dim: boolean;
 }
 
-export function cameraTileView(c: ICamera): ITileView {
+/**
+ * The honest tile status, driven by the player's own activity rather than go2rtc's internals (go2rtc
+ * connects lazily, so its "online" flag can't tell never-seen from idle). `active` is true once a real
+ * frame is playing; `signalLost` is set after a grace period with no frame — so a dead camera reads as
+ * "No signal" instead of "Connecting…" forever (the same trap as a status that can't go down).
+ */
+export function tileStatus(c: ICamera, active: boolean, signalLost: boolean): ITileStatus {
   if (!c.enabled) {
-    return { state: 'disabled', label: 'Disabled', dim: true };
+    return { label: 'Disabled', tone: 'neutral', live: false, dim: true };
   }
-  return { state: 'connecting', label: 'Connecting…', dim: false };
+  if (active) {
+    return { label: 'Live', tone: 'live', live: true, dim: false };
+  }
+  if (signalLost) {
+    return { label: 'No signal', tone: 'caution', live: false, dim: false };
+  }
+  return { label: 'Connecting…', tone: 'neutral', live: false, dim: false };
 }

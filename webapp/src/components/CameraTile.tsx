@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { ICameraEntry, TTransport } from '../api';
-import { cameraSubtitle, cameraTileView } from '../lib/camera';
+import { cameraSubtitle, tileStatus } from '../lib/camera';
 import { VideoPlayer } from './VideoPlayer';
 import { H264_TRANSPORTS, transportLabel } from '../lib/transport';
 
@@ -11,21 +11,42 @@ interface Props {
   onOpen?: (id: string) => void;
 }
 
+/** How long a tile waits for a first frame before it honestly reports "No signal". */
+const SIGNAL_GRACE_MS = 10_000;
+
+const CHIP_TONE = {
+  live: 'chip--live',
+  caution: 'chip--caution',
+  neutral: 'chip--neutral',
+} as const;
+
 /**
  * A Live Wall tile on the near-black video mat. An enabled camera plays its low-res H.264 sub-stream
- * (substream-in-grid): the sub is Pi-friendly and browser-decodable even when the main is H.265, so the
- * WebRTC-first walk fits. The active transport is labelled honestly (WebRTC / still-refresh ~1 fps); a
- * disabled camera shows a dimmed placeholder. Tapping opens Camera Focus (full-res, full controls).
+ * (substream-in-grid). The status chip is driven by the player's own activity — "Live" once a frame is
+ * flowing, "Connecting…" while it negotiates, and "No signal" after a grace period with no frame (so a
+ * dead camera never reads "Connecting…" forever). Tapping opens Camera Focus.
  */
 export function CameraTile({ camera, hero, onOpen }: Props) {
-  const view = cameraTileView(camera);
   const subtitle = cameraSubtitle(camera);
   const [rung, setRung] = useState<TTransport>('mjpeg');
+  const [active, setActive] = useState(false);
+  const [signalLost, setSignalLost] = useState(false);
   // Prefer the captured H.264 sub-stream for the grid; fall back to main for a camera without one.
   const variant = camera.capabilities?.substreams && camera.media?.substreamPath ? 'sub' : 'main';
-  const status = camera.enabled ? transportLabel(rung) : view.label;
-  const className = `tile${hero ? ' mosaic__hero' : ''}${view.dim ? ' tile--dark' : ''}`;
-  const label = `${camera.name}${subtitle ? ` — ${subtitle}` : ''} — ${status}`;
+
+  // Arm the "No signal" grace timer while connecting; a frame (active) or a source change resets it.
+  useEffect(() => {
+    if (!camera.enabled || active) {
+      setSignalLost(false);
+      return;
+    }
+    const t = setTimeout(() => setSignalLost(true), SIGNAL_GRACE_MS);
+    return () => clearTimeout(t);
+  }, [camera.enabled, camera.id, variant, active]);
+
+  const status = tileStatus(camera, active, signalLost);
+  const className = `tile${hero ? ' mosaic__hero' : ''}${status.dim ? ' tile--dark' : ''}`;
+  const label = `${camera.name}${subtitle ? ` — ${subtitle}` : ''} — ${status.label}`;
   const body = (
     <>
       {camera.enabled ? (
@@ -34,13 +55,17 @@ export function CameraTile({ camera, hero, onOpen }: Props) {
           transports={H264_TRANSPORTS}
           variant={variant}
           onRung={setRung}
+          onActive={setActive}
         />
       ) : (
         <div className="tile__sheen" />
       )}
       <div className="tile__scrim" />
       <div className="tile__top">
-        <span className="chip chip--neutral">{status}</span>
+        <span className={`chip ${CHIP_TONE[status.tone]}`}>
+          {status.label}
+          {status.live && <span className="mono"> · {transportLabel(rung)}</span>}
+        </span>
       </div>
       <div className="tile__label">
         <div className="tile__name">{camera.name}</div>

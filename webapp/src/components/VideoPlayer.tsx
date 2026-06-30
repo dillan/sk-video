@@ -22,6 +22,8 @@ interface Props {
   variant?: TStreamVariant;
   /** Notified when the active rung changes, so the caller can label it ("WebRTC" / "still-refresh"). */
   onRung?: (t: TTransport) => void;
+  /** Notified when a real frame starts/stops playing — the honest "is this live?" signal for a tile. */
+  onActive?: (active: boolean) => void;
 }
 
 async function negotiateWhep(
@@ -51,15 +53,23 @@ async function negotiateWhep(
   return pc;
 }
 
-export function VideoPlayer({ cameraId, transports, variant = 'main', onRung }: Props) {
+export function VideoPlayer({ cameraId, transports, variant = 'main', onRung, onActive }: Props) {
   const [rung, setRung] = useState<TTransport>(() => transports[0] ?? 'mjpeg');
   const [frameTick, setFrameTick] = useState(0);
   const videoRef = useRef<HTMLVideoElement>(null);
+  // Held in a ref so firing it never re-runs the binding effects (the parent may pass a fresh closure).
+  const onActiveRef = useRef(onActive);
+  onActiveRef.current = onActive;
 
   // Restart the walk whenever the camera, the recommended order, or the stream variant changes.
   useEffect(() => {
     setRung(transports[0] ?? 'mjpeg');
   }, [cameraId, transports, variant]);
+
+  // Until the new source actually paints a frame, it is not "live" — reset on every source/rung change.
+  useEffect(() => {
+    onActiveRef.current?.(false);
+  }, [cameraId, variant, rung]);
 
   useEffect(() => {
     onRung?.(rung);
@@ -118,7 +128,11 @@ export function VideoPlayer({ cameraId, transports, variant = 'main', onRung }: 
           className="player__media"
           src={frameUrl(cameraId, frameTick, variant)}
           alt=""
-          onError={advance}
+          onLoad={() => onActiveRef.current?.(true)}
+          onError={() => {
+            onActiveRef.current?.(false);
+            advance();
+          }}
         />
       ) : (
         <video
@@ -127,7 +141,11 @@ export function VideoPlayer({ cameraId, transports, variant = 'main', onRung }: 
           autoPlay
           muted
           playsInline
-          onError={advance}
+          onPlaying={() => onActiveRef.current?.(true)}
+          onError={() => {
+            onActiveRef.current?.(false);
+            advance();
+          }}
         />
       )}
     </div>
