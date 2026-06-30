@@ -151,6 +151,8 @@ test.describe('SK Video webapp — Review (Recordings + Incidents)', () => {
     await expect(page.getByRole('heading', { name: 'Recordings' })).toBeVisible();
     await page.getByRole('button', { name: 'Incidents' }).click();
     await expect(page.getByRole('heading', { name: 'Incidents' })).toBeVisible();
+    await page.getByRole('button', { name: 'Events' }).click();
+    await expect(page.getByRole('heading', { name: 'Events' })).toBeVisible();
     await page.getByRole('button', { name: 'Imported' }).click();
     await expect(page.getByRole('heading', { name: 'Imported videos' })).toBeVisible();
   });
@@ -180,6 +182,19 @@ test.describe('SK Video webapp — Review (Recordings + Incidents)', () => {
     await row.click();
     await expect(page.getByRole('heading', { name: 'Incident' })).toBeVisible();
     await expect(page.getByText(/best-effort/)).toBeVisible();
+  });
+
+  test('Events records a triggered incident in the durable feed', async ({ page, request }) => {
+    // Minting an incident raises an `incident` notification, which the bridge taps into the event log.
+    await request.post(plugin('/incidents'), {
+      data: { cameras: [CAMERA], preMs: 0, postMs: 1000 },
+    });
+    await page.goto(`${APP}#/review/events`);
+    await expect(page.getByRole('heading', { name: 'Events' })).toBeVisible();
+    // The incident event shows as a humanised "Incident" row in the feed.
+    await expect(page.locator('.event', { hasText: 'Incident' }).first()).toBeVisible({
+      timeout: 15_000,
+    });
   });
 
   test('Snapshots shows a captured still', async ({ page, request }) => {

@@ -2,10 +2,12 @@ import { ImportedVideos } from './ImportedVideos';
 import { Recordings } from './Recordings';
 import { Incidents } from './Incidents';
 import { Snapshots } from './Snapshots';
+import { Events } from './Events';
 
 const TABS = [
   { key: 'recordings', label: 'Recordings' },
   { key: 'incidents', label: 'Incidents' },
+  { key: 'events', label: 'Events' },
   { key: 'snapshots', label: 'Snapshots' },
   { key: 'imported', label: 'Imported' },
 ] as const;
@@ -13,7 +15,7 @@ const TABS = [
 /**
  * The Review cluster shell: a sub-nav across the review surfaces (Recordings, Incidents, Imported),
  * driven by the route's optional id (`#/review/incidents`). Recordings is the default — review is
- * footage-first. Events + Snapshots arrive in later slices.
+ * footage-first. Events is the durable activity feed; Snapshots the still library.
  */
 export function Review({ tab, onTab }: { tab?: string; onTab: (t: string) => void }) {
   const active = TABS.some((t) => t.key === tab) ? (tab as string) : 'recordings';
@@ -34,6 +36,7 @@ export function Review({ tab, onTab }: { tab?: string; onTab: (t: string) => voi
       </nav>
       {active === 'recordings' && <Recordings />}
       {active === 'incidents' && <Incidents />}
+      {active === 'events' && <Events />}
       {active === 'snapshots' && <Snapshots />}
       {active === 'imported' && <ImportedVideos />}
     </div>

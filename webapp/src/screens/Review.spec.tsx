@@ -4,6 +4,7 @@ import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 vi.mock('./Recordings', () => ({ Recordings: () => <div>RECORDINGS</div> }));
 vi.mock('./Incidents', () => ({ Incidents: () => <div>INCIDENTS</div> }));
 vi.mock('./Snapshots', () => ({ Snapshots: () => <div>SNAPSHOTS</div> }));
+vi.mock('./Events', () => ({ Events: () => <div>EVENTS</div> }));
 vi.mock('./ImportedVideos', () => ({ ImportedVideos: () => <div>IMPORTED</div> }));
 
 import { Review } from './Review';
@@ -30,5 +31,10 @@ describe('Review shell', () => {
   it('renders the Snapshots tab', () => {
     render(<Review tab="snapshots" onTab={vi.fn()} />);
     expect(screen.getByText('SNAPSHOTS')).toBeTruthy();
+  });
+
+  it('renders the Events tab', () => {
+    render(<Review tab="events" onTab={vi.fn()} />);
+    expect(screen.getByText('EVENTS')).toBeTruthy();
   });
 });

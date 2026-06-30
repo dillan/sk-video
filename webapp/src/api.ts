@@ -629,3 +629,31 @@ export const fetchSnapshots = (signal?: AbortSignal): Promise<ISnapshot[]> =>
 /** Same-origin URL to the stored snapshot JPEG. */
 export const snapshotUrl = (id: string): string =>
   `${API_BASE}/snapshots/${encodeURIComponent(id)}`;
+
+// ---- Events log (durable activity feed) ----
+
+/** One row of the durable activity feed (MOB, incident, anchor drag, camera-offline, …). */
+export interface ILoggedEvent {
+  id: string;
+  /** Epoch ms the event was logged. */
+  at: number;
+  /** The notification key that produced it, e.g. `mob`, `incident`, `camera.bow.offline`. */
+  type: string;
+  /** Notification state at raise time (`emergency`/`alarm`/`alert`/`warn`/…), if any. */
+  state?: string;
+  message?: string;
+}
+
+/** Newest-first page of the event log; `before` (epoch-ms) pages strictly-older rows. */
+export const fetchEvents = (
+  opts: { limit?: number; before?: number } = {},
+  signal?: AbortSignal,
+): Promise<ILoggedEvent[]> => {
+  const qs = new URLSearchParams();
+  if (opts.limit !== undefined) qs.set('limit', String(opts.limit));
+  if (opts.before !== undefined) qs.set('before', String(opts.before));
+  const suffix = qs.toString() ? `?${qs}` : '';
+  return getJson<{ events: ILoggedEvent[] }>(`/events/log${suffix}`, 'events', signal).then(
+    (r) => r.events,
+  );
+};
