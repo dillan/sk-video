@@ -66,7 +66,8 @@ describe('App shell', () => {
     render(<App />);
     await waitFor(() => expect(screen.getByText('Bow')).toBeTruthy());
     expect(screen.getByText('Stern')).toBeTruthy();
-    expect(screen.getByText('2 cameras')).toBeTruthy();
+    // The header leads with the camera count and may append a live-state tally (e.g. "· 2 reconnecting").
+    expect(screen.getByText(/^2 cameras/)).toBeTruthy();
   });
 
   it('opens Camera Focus when a tile is tapped', async () => {

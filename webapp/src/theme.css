@@ -323,6 +323,10 @@ body {
   gap: 7px;
   white-space: nowrap;
 }
+.telemetry__tier {
+  font-size: 11px;
+  padding: 3px 8px;
+}
 .dot {
   width: 8px;
   height: 8px;

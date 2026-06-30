@@ -1,4 +1,4 @@
-import type { ICamera } from '../api';
+import type { ICamera, TTransport } from '../api';
 import { formatBearing } from './format';
 
 /**
@@ -54,4 +54,35 @@ export function tileStatus(c: ICamera, active: boolean, signalLost: boolean): IT
     return { label: 'No signal', tone: 'caution', live: false, dim: false };
   }
   return { label: 'Connecting…', tone: 'neutral', live: false, dim: false };
+}
+
+/** A tile's coarse state for the Live Wall header tally. */
+export type TileCategory = 'live' | 'stillRefresh' | 'reconnecting' | 'offline';
+
+/**
+ * Collapse a tile's player state into one tally category. A disabled camera or a dead feed (no frame
+ * past the grace period) is `offline`; a flowing MJPEG still-refresh is its own honest category; any
+ * other flowing frame is `live`; otherwise it's still `reconnecting`.
+ */
+export function tileCategory(
+  c: ICamera,
+  active: boolean,
+  signalLost: boolean,
+  rung: TTransport,
+): TileCategory {
+  if (!c.enabled || signalLost) return 'offline';
+  if (active) return rung === 'mjpeg' ? 'stillRefresh' : 'live';
+  return 'reconnecting';
+}
+
+/** Build the design's "2 live · 1 still-refresh · 1 reconnecting · 1 offline" summary, omitting zeros. */
+export function summarizeCategories(cats: TileCategory[]): string {
+  const n = { live: 0, stillRefresh: 0, reconnecting: 0, offline: 0 };
+  for (const c of cats) n[c] += 1;
+  const parts: string[] = [];
+  if (n.live) parts.push(`${n.live} live`);
+  if (n.stillRefresh) parts.push(`${n.stillRefresh} still-refresh`);
+  if (n.reconnecting) parts.push(`${n.reconnecting} reconnecting`);
+  if (n.offline) parts.push(`${n.offline} offline`);
+  return parts.join(' · ');
 }

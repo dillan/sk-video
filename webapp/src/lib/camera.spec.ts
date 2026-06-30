@@ -1,8 +1,28 @@
 import { describe, it, expect } from 'vitest';
-import { cameraSubtitle, tileStatus } from './camera';
+import { cameraSubtitle, tileStatus, tileCategory, summarizeCategories } from './camera';
 import type { ICamera } from '../api';
 
 const base: ICamera = { name: 'Bow', enabled: true };
+
+describe('tileCategory', () => {
+  it('classifies live, still-refresh, reconnecting, and offline', () => {
+    expect(tileCategory(base, true, false, 'webrtc')).toBe('live');
+    expect(tileCategory(base, true, false, 'mjpeg')).toBe('stillRefresh');
+    expect(tileCategory(base, false, false, 'mjpeg')).toBe('reconnecting');
+    expect(tileCategory(base, false, true, 'mjpeg')).toBe('offline'); // dead feed
+    expect(tileCategory({ ...base, enabled: false }, false, false, 'mjpeg')).toBe('offline');
+  });
+});
+
+describe('summarizeCategories', () => {
+  it('builds the header tally, omitting zero buckets', () => {
+    expect(summarizeCategories(['live', 'live', 'stillRefresh', 'reconnecting', 'offline'])).toBe(
+      '2 live · 1 still-refresh · 1 reconnecting · 1 offline',
+    );
+    expect(summarizeCategories(['live'])).toBe('1 live');
+    expect(summarizeCategories([])).toBe('');
+  });
+});
 
 describe('cameraSubtitle', () => {
   it('builds a subtitle from placement and capabilities', () => {

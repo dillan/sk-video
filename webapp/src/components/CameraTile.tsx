@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { ICameraEntry, TTransport } from '../api';
-import { cameraSubtitle, tileStatus } from '../lib/camera';
+import { cameraSubtitle, tileStatus, tileCategory, type TileCategory } from '../lib/camera';
 import { VideoPlayer } from './VideoPlayer';
 import { H264_TRANSPORTS, transportLabel } from '../lib/transport';
 
@@ -9,6 +9,8 @@ interface Props {
   hero?: boolean;
   /** When provided, the tile is a button that opens Camera Focus for this camera. */
   onOpen?: (id: string) => void;
+  /** Reports the tile's coarse state so the wall header can tally live/still-refresh/offline. */
+  onState?: (id: string, category: TileCategory) => void;
 }
 
 /** How long a tile waits for a first frame before it honestly reports "No signal". */
@@ -26,7 +28,7 @@ const CHIP_TONE = {
  * flowing, "Connecting…" while it negotiates, and "No signal" after a grace period with no frame (so a
  * dead camera never reads "Connecting…" forever). Tapping opens Camera Focus.
  */
-export function CameraTile({ camera, hero, onOpen }: Props) {
+export function CameraTile({ camera, hero, onOpen, onState }: Props) {
   const subtitle = cameraSubtitle(camera);
   const [rung, setRung] = useState<TTransport>('mjpeg');
   const [active, setActive] = useState(false);
@@ -43,6 +45,12 @@ export function CameraTile({ camera, hero, onOpen }: Props) {
     const t = setTimeout(() => setSignalLost(true), SIGNAL_GRACE_MS);
     return () => clearTimeout(t);
   }, [camera.enabled, camera.id, variant, active]);
+
+  // Report the coarse state up so the Live Wall header can tally it.
+  const category = tileCategory(camera, active, signalLost, rung);
+  useEffect(() => {
+    onState?.(camera.id, category);
+  }, [camera.id, category, onState]);
 
   const status = tileStatus(camera, active, signalLost);
   const className = `tile${hero ? ' mosaic__hero' : ''}${status.dim ? ' tile--dark' : ''}`;
