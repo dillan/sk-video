@@ -8,6 +8,7 @@ import {
   availableControls,
   capablePresets,
 } from './imaging-presets';
+import { categorizeOnvifError } from './onvif-errors';
 
 /**
  * Same-origin imaging endpoints. GET reports the camera's CURRENT settings + the controls/presets it
@@ -23,8 +24,13 @@ export interface IImagingRouteDeps {
   setImaging: (id: string, update: IImagingUpdate) => Promise<void>;
 }
 
-function errorBody(err: unknown, fallback: string): { error: string } {
-  return { error: redactUrl(err instanceof Error ? err.message : fallback) };
+function errorBody(
+  err: unknown,
+  fallback: string,
+): { error: string; reason: string; detail: string } {
+  // Imaging reaches the camera over ONVIF too, so map the failure to an actionable next step.
+  const { reason, hint } = categorizeOnvifError(err);
+  return { error: hint, reason, detail: redactUrl(err instanceof Error ? err.message : fallback) };
 }
 
 export function registerImagingRoutes(

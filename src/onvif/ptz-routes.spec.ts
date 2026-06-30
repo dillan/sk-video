@@ -274,7 +274,7 @@ describe('registerPtzRoutes', () => {
     const handlers = setup(() => manager);
     const res = await invoke(handlers.get('POST /cameras/:id/ptz/stop')!);
     expect(res.statusCode).toBe(502);
-    expect(res.body).toEqual({ error: 'boom' });
+    expect(res.body).toMatchObject({ detail: 'boom' });
   });
 
   it('returns 502 with the message when controller.move rejects', async () => {
@@ -283,7 +283,17 @@ describe('registerPtzRoutes', () => {
     const handlers = setup(() => makeManager(controller));
     const res = await invoke(handlers.get('POST /cameras/:id/ptz')!, fakeReq({ body: {} }));
     expect(res.statusCode).toBe(502);
-    expect(res.body).toEqual({ error: 'camera offline' });
+    expect(res.body).toMatchObject({ detail: 'camera offline' });
+  });
+
+  it('returns an actionable reason + hint for an ONVIF failure (the Reolink-on-:80 case)', async () => {
+    const controller = makeController();
+    controller.move.mockRejectedValue(new Error('Wrong ONVIF SOAP response'));
+    const handlers = setup(() => makeManager(controller));
+    const res = await invoke(handlers.get('POST /cameras/:id/ptz')!, fakeReq({ body: {} }));
+    expect(res.statusCode).toBe(502);
+    expect(res.body).toMatchObject({ reason: 'onvif' });
+    expect((res.body as { error: string }).error).toMatch(/ONVIF/); // a next step, not "try again"
   });
 
   it('redacts a credential URL in a 502 error message before returning it to the client', async () => {
@@ -294,7 +304,7 @@ describe('registerPtzRoutes', () => {
     const handlers = setup(() => makeManager(controller));
     const res = await invoke(handlers.get('POST /cameras/:id/ptz')!, fakeReq({ body: {} }));
     expect(res.statusCode).toBe(502);
-    expect(res.body).toEqual({ error: 'connect rtsp://***@cam.local:554 failed' });
+    expect(res.body).toMatchObject({ detail: 'connect rtsp://***@cam.local:554 failed' });
   });
 
   it('returns 502 with the message when controller.gotoPreset rejects', async () => {
@@ -306,7 +316,7 @@ describe('registerPtzRoutes', () => {
       fakeReq({ body: { token: '<bad>' } }),
     );
     expect(res.statusCode).toBe(502);
-    expect(res.body).toEqual({ error: 'invalid preset token' });
+    expect(res.body).toMatchObject({ detail: 'invalid preset token' });
   });
 
   it('returns 502 with the message when controller.stop rejects', async () => {
@@ -316,7 +326,7 @@ describe('registerPtzRoutes', () => {
     const res = await invoke(handlers.get('POST /cameras/:id/ptz/stop')!);
     expect(controller.stop).toHaveBeenCalledTimes(1);
     expect(res.statusCode).toBe(502);
-    expect(res.body).toEqual({ error: 'stop failed' });
+    expect(res.body).toMatchObject({ detail: 'stop failed' });
   });
 
   it('returns 502 with the message when controller.getPresets rejects', async () => {
@@ -326,7 +336,7 @@ describe('registerPtzRoutes', () => {
     const res = await invoke(handlers.get('GET /cameras/:id/ptz/presets')!);
     expect(controller.getPresets).toHaveBeenCalledTimes(1);
     expect(res.statusCode).toBe(502);
-    expect(res.body).toEqual({ error: 'presets unavailable' });
+    expect(res.body).toMatchObject({ detail: 'presets unavailable' });
   });
 
   it('reports a non-Error rejection as 502 with a fallback message', async () => {
@@ -336,6 +346,6 @@ describe('registerPtzRoutes', () => {
     const handlers = setup(() => manager);
     const res = await invoke(handlers.get('POST /cameras/:id/ptz/stop')!);
     expect(res.statusCode).toBe(502);
-    expect(res.body).toEqual({ error: 'PTZ command failed' });
+    expect(res.body).toMatchObject({ detail: 'PTZ command failed' });
   });
 });
