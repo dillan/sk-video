@@ -16,6 +16,8 @@ import { registerPushRoutes } from './web/push-routes';
 import { fanOutPush } from './web/push-sender';
 import { notificationForEvent } from './web/push-events';
 import { loadOrCreateVapidKeys, fileVapidIo } from './web/vapid';
+import { registerConfigRoutes } from './web/config-routes';
+import type { IOperationalConfig } from './web/operational-config';
 import { validateCamera, sourceEndpointChanged } from './cameras/camera-validation';
 import { assertHostAllowed, type ISsrfOptions } from './security/ssrf-guard';
 import { redactUrl } from './security/redact';
@@ -73,7 +75,6 @@ import { runFfprobe, tcpProbe } from './diagnostics/probe-runner';
 import {
   detectHardware,
   describeTier,
-  TIER_ORDER,
   type THardwareTier,
   type IHardwareInfo,
 } from './hardware/tier-detect';
@@ -210,6 +211,12 @@ export = function (app: ServerAPI): Plugin {
   let syncTimer: ReturnType<typeof setTimeout> | null = null;
   let syncInFlight: Promise<void> | null = null;
   let syncRerun = false;
+  // Operational config now lives in the web app (the SK admin schema is empty). It arrives as the
+  // plugin's persisted options; `currentConfig` is the live copy GET /config reads, and
+  // `pluginRestart` is the server-provided restart(newConfig) we call to persist + re-wire on a save.
+  let currentConfig: IOperationalConfig = {};
+  let pluginRestart: ((cfg: object) => void) | null = null;
+  let started = false;
 
   const ssrfOptions: ISsrfOptions = { allowPrivate: true };
   // Cap DNS resolution so an unresponsive resolver on a flaky boat network can't stall the plugin.
@@ -345,87 +352,17 @@ export = function (app: ServerAPI): Plugin {
     name: 'SK Video',
     description: 'IP cameras for the browser: gateway, ONVIF PTZ, discovery and uploads.',
 
+    // The Signal K admin form is intentionally EMPTY — every operational knob (Frigate, anchor watch,
+    // incident auto-trigger, visual-MOB refine, hardware-tier) is owned by the SK Video web app
+    // (Settings → Operational) and persisted via the restart() contract. This keeps the SK admin clean.
     schema: () => ({
       type: 'object',
-      properties: {
-        hardwareTier: {
-          type: 'string',
-          title: 'Hardware tier (override)',
-          description:
-            'Leave on Auto-detect unless the detected tier is wrong. Controls which heavier features (recording, hardware snapshots, on-device analytics) are offered.',
-          enum: ['auto', ...TIER_ORDER],
-          default: 'auto',
-        },
-        autoTriggerPath: {
-          type: 'string',
-          title: 'Incident auto-trigger path (optional)',
-          description:
-            'Signal K notification subtree to auto-capture an incident bundle from (e.g. "notifications.*"). Leave blank to disable — the manual "mark incident" trigger is the reliable path. Auto-triggers fire only on alert/alarm/emergency and are best-effort.',
-          default: '',
-        },
-        anchorWatchPath: {
-          type: 'string',
-          title: 'Anchor/geofence watch path',
-          description:
-            'Signal K notification path to watch for an anchor-drag or geofence alarm. On an alarm it auto-captures evidence on your anchor/security-role cameras and raises one consolidated notification. It consumes an alarm you already produce (Anchor API / another plugin) — it does not compute drag itself. Default "notifications.navigation.anchor"; blank to disable.',
-          default: 'notifications.navigation.anchor',
-        },
-        frigateMqttUrl: {
-          type: 'string',
-          title: 'Frigate MQTT broker URL (optional)',
-          description:
-            'Connect to a YOUR-OWN-Frigate MQTT broker (e.g. "mqtt://user:pass@192.168.1.10:1883") to surface its person/car/boat detections as Signal K notifications + cached clips. Frigate is never bundled and runs on your own hardware; detection is close-range COCO-class only — never hazard/MOB-at-distance. Blank to disable.',
-          default: '',
-        },
-        frigateApiUrl: {
-          type: 'string',
-          title: 'Frigate HTTP API URL (optional)',
-          description:
-            'Frigate HTTP API base (e.g. "http://192.168.1.10:5000") used to fetch the event clip when a detection ends. The host is SSRF-guarded. Blank = notifications only, no clip caching.',
-          default: '',
-        },
-        frigateLabels: {
-          type: 'string',
-          title: 'Frigate alert labels',
-          description:
-            'Comma-separated object labels that count as an intrusion. Default "person,car".',
-          default: 'person,car',
-        },
-        frigateMinScore: {
-          type: 'number',
-          title: 'Frigate minimum score',
-          description: 'Minimum detection score (0–1) to alert on.',
-          default: 0.7,
-          minimum: 0,
-          maximum: 1,
-        },
-        frigateZones: {
-          type: 'string',
-          title: 'Frigate zones (optional)',
-          description: 'Comma-separated Frigate zones an object must enter to alert; blank = any.',
-          default: '',
-        },
-        mobVisualRefine: {
-          type: 'boolean',
-          title: 'Experimental visual MOB refine (NOT safety-rated)',
-          description:
-            'When ON, during a man-overboard event a Frigate person detection adds a small, bounded visual correction on TOP of the authoritative position-based aim. It fails safe — on track loss it notifies and reverts to position-based aim. It can lock onto a wake/whitecap and cannot hold a tiny person on open water; it never replaces the geo-pointing baseline and makes no safety claim. Requires Frigate configured above, and only refines a PTZ camera whose id here matches its Frigate camera name. OFF by default.',
-          default: false,
-        },
-      },
+      properties: {},
     }),
 
-    start(options?: {
-      hardwareTier?: string;
-      autoTriggerPath?: string;
-      anchorWatchPath?: string;
-      frigateMqttUrl?: string;
-      frigateApiUrl?: string;
-      frigateLabels?: string;
-      frigateMinScore?: number;
-      frigateZones?: string;
-      mobVisualRefine?: boolean;
-    }) {
+    start(options?: IOperationalConfig, restart?: (cfg: object) => void) {
+      currentConfig = options ?? {};
+      pluginRestart = restart ?? pluginRestart;
       try {
         const dataDir = app.getDataDirPath();
         const override =
@@ -823,13 +760,20 @@ export = function (app: ServerAPI): Plugin {
         // Frigate interop: consume a USER-RUN Frigate's MQTT events (we run no inference) and surface
         // person/car/boat detections as Signal K notifications + cached, same-origin-served clips.
         // Never bundled; close-range COCO-class only. Active only when an MQTT URL is configured.
+        // Frigate connect settings are structured now (host/port/user + write-only password). Assemble
+        // a credential-free broker URL for validation/logging; the username/password ride separately
+        // into the MQTT client below so secrets never appear in a URL or a log line.
+        const fr = options?.frigate;
+        const frigateMqttUrl = fr?.mqttHost
+          ? `${fr.mqttTls ? 'mqtts' : 'mqtt'}://${fr.mqttHost}:${fr.mqttPort ?? 1883}`
+          : '';
         // Validate the guided connect settings before touching the network: a bad broker URL disables
         // Frigate (with a credential-free reason), a bad API URL just disables clip caching.
         const frigateCfg = validateFrigateConfig({
-          mqttUrl: options?.frigateMqttUrl,
-          apiUrl: options?.frigateApiUrl,
+          mqttUrl: frigateMqttUrl,
+          apiUrl: fr?.apiUrl,
         });
-        const frigateUrlEntered = (options?.frigateMqttUrl?.trim() ?? '') !== '';
+        const frigateUrlEntered = !!fr?.mqttHost;
         if (options?.mobVisualRefine === true && !frigateCfg.ok) {
           // The experimental refine has no detection source without Frigate — say so rather than
           // sit silently inert while the operator believes visual refine is armed.
@@ -854,15 +798,12 @@ export = function (app: ServerAPI): Plugin {
           const frigateApiUrl = frigateCfg.apiUrl ?? '';
           frigateClient = new FrigateClient({
             config: {
-              labels: csvList(options?.frigateLabels, ['person', 'car']),
+              labels: csvList(fr?.labels, ['person', 'car']),
               minScore: Math.min(
                 1,
-                Math.max(
-                  0,
-                  typeof options?.frigateMinScore === 'number' ? options.frigateMinScore : 0.7,
-                ),
+                Math.max(0, typeof fr?.minScore === 'number' ? fr.minScore : 0.7),
               ),
-              zones: csvList(options?.frigateZones, []),
+              zones: csvList(fr?.zones, []),
             },
             raiseNotification: (key, message, data) =>
               void skBridge.raiseNotification(key, { state: 'alert', message, data }),
@@ -902,7 +843,11 @@ export = function (app: ServerAPI): Plugin {
             visualRefineTimer.unref?.();
           }
           try {
-            frigateMqtt = connectFrigateMqtt({ url: frigateCfg.mqttUrl });
+            frigateMqtt = connectFrigateMqtt({
+              url: frigateCfg.mqttUrl,
+              username: fr?.mqttUsername || undefined,
+              password: fr?.mqttPassword || undefined,
+            });
             // Subscribes on every (re)connect, so a dropped link resumes event flow cleanly.
             wireFrigateMqtt(frigateMqtt, {
               topic: FRIGATE_EVENT_TOPIC,
@@ -954,6 +899,7 @@ export = function (app: ServerAPI): Plugin {
           },
         });
 
+        started = true;
         app.setPluginStatus(readyStatus());
         scheduleSync(); // start go2rtc if cameras are already configured
       } catch (err) {
@@ -1036,6 +982,7 @@ export = function (app: ServerAPI): Plugin {
       mob = null;
       incidents = null;
       incidentStore = null;
+      started = false;
       return stopping;
     },
 
@@ -1269,6 +1216,19 @@ export = function (app: ServerAPI): Plugin {
       registerPushRoutes(
         router,
         { getStore: () => pushStore, vapidPublicKey: () => vapidPublicKey },
+        unauthorized,
+      );
+      // Operational config (Frigate, anchor watch, auto-trigger, visual-MOB, hardware-tier) — owned by
+      // the web app. Saving persists + restarts the plugin (which re-wires every subsystem cleanly).
+      registerConfigRoutes(
+        router,
+        {
+          getConfig: () => (started ? currentConfig : null),
+          applyConfig: (next) => {
+            currentConfig = next;
+            pluginRestart?.(next);
+          },
+        },
         unauthorized,
       );
 
