@@ -2,11 +2,13 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
-// The plugin serves this build same-origin under /plugins/sk-video/app/, so every asset URL must
-// resolve under that path (not the site root). Output goes to the repo's public/ dir, which the
-// plugin's package.json ships and the app-routes handler serves.
+// RELATIVE base so one build is mount-agnostic: assets resolve against the document, which lets the
+// exact same bundle work both where the plugin serves it (/plugins/sk-video/app/) and where
+// signalk-server mounts it as a listed webapp (/sk-video/, from the signalk-webapp keyword). Hash
+// routing means the document path is always the mount root, so relative asset URLs always resolve.
+// Output goes to the repo's public/ dir, which the plugin's package.json ships and serves.
 export default defineConfig({
-  base: '/plugins/sk-video/app/',
+  base: './',
   plugins: [react()],
   build: {
     outDir: '../public',

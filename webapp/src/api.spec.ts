@@ -38,6 +38,13 @@ describe('deriveApiBase', () => {
   it('falls back to the conventional base when not served under /app', () => {
     expect(deriveApiBase('/somewhere/else')).toBe('/plugins/sk-video');
   });
+
+  it('uses the conventional base when mounted as a listed webapp at /sk-video/', () => {
+    // signalk-server serves the signalk-webapp at /<name>/; the API still lives at /plugins/sk-video
+    // same-origin, so the fallback is exactly right there.
+    expect(deriveApiBase('/sk-video/')).toBe('/plugins/sk-video');
+    expect(deriveApiBase('/sk-video/index.html')).toBe('/plugins/sk-video');
+  });
 });
 
 describe('fetchStatus', () => {

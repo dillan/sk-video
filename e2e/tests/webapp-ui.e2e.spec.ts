@@ -72,6 +72,24 @@ test.describe('SK Video webapp — shell + navigation', () => {
     expect(scope).toContain('/plugins/sk-video/app/'); // scoped to the app, not the API
   });
 
+  test('is listed in the Signal K webapps collection and boots at /sk-video/', async ({
+    page,
+    request,
+  }) => {
+    // The signalk-webapp keyword makes the server mount + list the app at /<name>/.
+    const list = await request.get(`${BASE}/skServer/webapps`).then((r) => r.json());
+    const entry = (list as Array<{ name: string; signalk?: { displayName?: string } }>).find(
+      (w) => w.name === 'sk-video',
+    );
+    expect(entry).toBeTruthy();
+    expect(entry?.signalk?.displayName).toBe('SK Video');
+
+    // Boots at the webapp mount with assets resolving relatively (not only at /plugins/sk-video/app/).
+    await page.goto('/sk-video/#/live');
+    await expect(page.getByRole('heading', { name: 'Live' })).toBeVisible();
+    await expect(page.getByText('Test Camera')).toBeVisible(); // API reachable from this mount too
+  });
+
   test('exposes a VAPID public key and accepts a push subscription', async ({ request }) => {
     // The browser needs the application-server public key before it can subscribe (ungated read).
     const keyRes = await request.get(plugin('/push/vapid-public-key'));

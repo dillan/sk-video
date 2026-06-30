@@ -38,6 +38,7 @@
   },
   "keywords": [
     "signalk-node-server-plugin",
+    "signalk-webapp",
     "signalk-category-utility",
     "ip-camera",
     "rtsp",
@@ -46,6 +47,10 @@
     "video",
     "kip"
   ],
+  "signalk": {
+    "displayName": "SK Video",
+    "appIcon": "icons/icon-192.png"
+  },
   "author": "Dillan Laughlin",
   "license": "MIT",
   "repository": {
