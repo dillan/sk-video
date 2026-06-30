@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  formatBytes,
   radToDeg,
   mpsToKnots,
   degMin,
@@ -62,5 +63,19 @@ describe('parseVesselState', () => {
   it('falls back to magnetic heading when true heading is absent', () => {
     const v = parseVesselState({ navigation: { headingMagnetic: { value: Math.PI } } });
     expect(v.headingDeg).toBeCloseTo(180);
+  });
+});
+
+describe('formatBytes', () => {
+  it('formats byte sizes with sensible units and precision', () => {
+    expect(formatBytes(512)).toBe('512 B');
+    expect(formatBytes(1536)).toBe('1.5 KB');
+    expect(formatBytes(5_000_000)).toBe('4.8 MB');
+    expect(formatBytes(20 * 1024 * 1024)).toBe('20 MB'); // ≥10 drops the decimal
+    expect(formatBytes(3 * 1024 ** 3)).toBe('3.0 GB');
+  });
+  it('handles a bad size honestly', () => {
+    expect(formatBytes(-1)).toBe('—');
+    expect(formatBytes(NaN)).toBe('—');
   });
 });

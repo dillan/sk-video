@@ -27,6 +27,20 @@ export function formatBearing(deg: number): string {
   return `${String(Math.round(norm)).padStart(3, '0')}°`;
 }
 
+/** Human-readable byte size, e.g. 1536 → "1.5 KB", 5_000_000 → "4.8 MB". */
+export function formatBytes(n: number): string {
+  if (!Number.isFinite(n) || n < 0) return '—';
+  if (n < 1024) return `${n} B`;
+  const units = ['KB', 'MB', 'GB', 'TB'];
+  let value = n / 1024;
+  let i = 0;
+  while (value >= 1024 && i < units.length - 1) {
+    value /= 1024;
+    i += 1;
+  }
+  return `${value < 10 ? value.toFixed(1) : Math.round(value)} ${units[i]}`;
+}
+
 export interface IVesselState {
   hasFix: boolean;
   lat?: number;

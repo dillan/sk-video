@@ -426,6 +426,39 @@ button.tile {
   margin-top: 12px;
   flex-wrap: wrap;
 }
+.vidlist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.vidrow {
+  padding: 16px;
+}
+.vidrow__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.vidrow__name {
+  font-weight: 600;
+}
+.vidrow__meta {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+.vidrow__player {
+  width: 100%;
+  margin-top: 12px;
+  border-radius: var(--radius-sm);
+  background: var(--video-mat);
+  max-height: 60vh;
+}
 .empty {
   flex: 1;
   display: flex;

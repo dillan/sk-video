@@ -462,3 +462,38 @@ export async function logout(signal?: AbortSignal): Promise<void> {
     signal,
   });
 }
+
+// ---- Imported videos (the shipped /videos asset store) ----
+
+/** An uploaded video, kept separate from camera recordings/incidents. */
+export interface IVideoAsset {
+  id: string;
+  name: string;
+  contentType: string;
+  size: number;
+  createdAt: number;
+}
+
+export const fetchVideos = (signal?: AbortSignal): Promise<IVideoAsset[]> =>
+  getJson<{ videos: IVideoAsset[] }>('/videos', 'videos', signal).then((r) => r.videos);
+
+/** Same-origin URL to stream a stored video (Range-served), e.g. as a <video> source. */
+export const videoUrl = (id: string): string => `${API_BASE}/videos/${encodeURIComponent(id)}`;
+
+/** Upload a video; the body is streamed to disk and validated by magic bytes server-side. */
+export const uploadVideo = async (file: File): Promise<IVideoAsset> => {
+  const res = await fetch(`${API_BASE}/videos`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'X-Filename': file.name, Accept: 'application/json' },
+    body: file,
+  });
+  if (!res.ok) {
+    throw new ApiError(`upload failed (${res.status})`, res.status);
+  }
+  return res.json() as Promise<IVideoAsset>;
+};
+
+export const deleteVideo = async (id: string): Promise<void> => {
+  await send(`/videos/${encodeURIComponent(id)}`, { method: 'DELETE' }, 'delete video');
+};

@@ -105,3 +105,32 @@ test.describe('SK Video webapp — Live Wall + Camera Focus', () => {
     }
   });
 });
+
+test.describe('SK Video webapp — Review / Imported videos', () => {
+  test('uploads, plays, and deletes an imported video', async ({ page }) => {
+    const NAME = 'webapp-ui-clip.mp4';
+    await page.goto(`${APP}#/review`);
+    await expect(page.getByRole('heading', { name: 'Review' })).toBeVisible();
+
+    // A minimal valid MP4 (ftyp + isom brand) so the server accepts it by magic bytes.
+    const mp4 = Buffer.concat([
+      Buffer.from([0, 0, 0, 0x20, ...Buffer.from('ftypisom')]),
+      Buffer.alloc(2048, 7),
+    ]);
+    await page.setInputFiles('input[type="file"]', {
+      name: NAME,
+      mimeType: 'video/mp4',
+      buffer: mp4,
+    });
+
+    const row = page.locator('.vidrow', { hasText: NAME });
+    await expect(row).toHaveCount(1); // exactly one row after a single upload
+
+    await row.getByRole('button', { name: 'Play' }).click();
+    await expect(row.locator('video.vidrow__player')).toBeVisible();
+
+    await row.getByRole('button', { name: 'Delete' }).click();
+    await row.getByRole('button', { name: 'Confirm delete' }).click();
+    await expect(row).toHaveCount(0);
+  });
+});
