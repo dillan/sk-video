@@ -11,6 +11,7 @@ import {
   type ICameraEntry,
   type ITransportHints,
   type TTransport,
+  type TStreamVariant,
   type TImagingPreset,
 } from '../api';
 import { transportLabel, ptzDelayed, isHevc, transportsForVariant } from '../lib/transport';
@@ -54,6 +55,8 @@ export function CameraFocus({ cameraId, onBack }: Props) {
   const [rung, setRung] = useState<TTransport>('mjpeg');
   const [msg, setMsg] = useState<Msg | null>(null);
   const [recording, setRec] = useState(false);
+  // Operator override of the auto sub/main choice (null = auto). Reset when the camera changes.
+  const [override, setOverride] = useState<TStreamVariant | null>(null);
   const msgTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const flash = useCallback((m: Msg) => {
@@ -64,6 +67,7 @@ export function CameraFocus({ cameraId, onBack }: Props) {
 
   useEffect(() => {
     const ctrl = new AbortController();
+    setOverride(null); // a new camera starts on its auto sub/main choice
     fetchCameras(ctrl.signal)
       .then((cams) => {
         const found = cams.find((c) => c.id === cameraId) ?? null;
@@ -125,10 +129,14 @@ export function CameraFocus({ cameraId, onBack }: Props) {
   // Gate on the actual stored substreamPath (what the server serves `?variant=sub` from) — never the
   // capability flag alone, so we can't request a sub the server has no `_sub` stream for.
   const mainIsHevc = camera?.media?.codec === 'h265' || isHevc(hints?.codecs ?? []);
-  const useSub = !!camera?.media?.substreamPath && mainIsHevc;
-  const variant = useSub ? 'sub' : 'main';
-  // Playing the H.264 sub flips the walk to WebRTC-first (the server's order is the H.265 main's).
-  const transports = hints ? transportsForVariant(useSub, hints.recommended) : [];
+  // A sub is selectable only when the server actually serves `?variant=sub` from a stored substreamPath.
+  const hasSub = !!camera?.media?.substreamPath && camera?.capabilities?.substreams === true;
+  // Auto-pick the H.264 sub for an H.265 main; the operator can override either way when a sub exists.
+  const variant: TStreamVariant = override ?? (hasSub && mainIsHevc ? 'sub' : 'main');
+  // The sub is H.264 → WebRTC-first; the main keeps the server's codec-aware order.
+  const transports = hints ? transportsForVariant(variant === 'sub', hints.recommended) : [];
+  // Forcing the full-res main on an H.265 camera may not decode in this browser — say so honestly.
+  const mainWontPlay = variant === 'main' && mainIsHevc;
 
   return (
     <div className="focus">
@@ -154,7 +162,12 @@ export function CameraFocus({ cameraId, onBack }: Props) {
             {camera?.name ?? cameraId}
             <span className="mono"> · {transportLabel(rung)}</span>
           </span>
-          {useSub && <span className="chip chip--caution">H.264 sub-stream · main is H.265</span>}
+          {variant === 'sub' && mainIsHevc && (
+            <span className="chip chip--caution">H.264 sub-stream · main is H.265</span>
+          )}
+          {mainWontPlay && (
+            <span className="chip chip--caution">Full-res H.265 · may not play here</span>
+          )}
         </div>
         {msg && (
           <div className={`focus__msg chip chip--${msg.kind === 'caution' ? 'caution' : 'info'}`}>
@@ -162,6 +175,26 @@ export function CameraFocus({ cameraId, onBack }: Props) {
           </div>
         )}
         <div className="focus__dock" role="group" aria-label="Camera controls">
+          {hasSub && (
+            <div className="dock__group" role="group" aria-label="Stream quality">
+              <button
+                type="button"
+                className={`iconbtn iconbtn--wide${variant === 'sub' ? ' iconbtn--on' : ''}`}
+                aria-pressed={variant === 'sub'}
+                onClick={() => setOverride('sub')}
+              >
+                Sub
+              </button>
+              <button
+                type="button"
+                className={`iconbtn iconbtn--wide${variant === 'main' ? ' iconbtn--on' : ''}`}
+                aria-pressed={variant === 'main'}
+                onClick={() => setOverride('main')}
+              >
+                Full res
+              </button>
+            </div>
+          )}
           {ptz && (
             <div className="dock__group">
               {delayed && (

@@ -142,4 +142,34 @@ describe('CameraFocus', () => {
     expect(playerSrc()).not.toContain('variant=sub');
     expect(screen.queryByText(/H.264 sub-stream/)).toBeNull();
   });
+
+  it('lets the operator switch between the sub and the full-res main', async () => {
+    mockApi({
+      cameras: {
+        bow: {
+          name: 'Foredeck',
+          enabled: true,
+          capabilities: { substreams: true },
+          media: { codec: 'h265', substreamPath: '/Preview_01_sub' },
+        },
+      },
+    });
+    render(<CameraFocus cameraId="bow" onBack={() => undefined} />);
+    await screen.findByText('Foredeck');
+    await waitFor(() => expect(playerSrc()).toContain('variant=sub')); // auto-picks the sub
+
+    fireEvent.click(screen.getByRole('button', { name: 'Full res' }));
+    await waitFor(() => expect(playerSrc()).not.toContain('variant=sub'));
+    expect(screen.getByText(/Full-res H.265 · may not play here/)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Sub' }));
+    await waitFor(() => expect(playerSrc()).toContain('variant=sub'));
+  });
+
+  it('shows no stream toggle when the camera has no sub-stream', async () => {
+    mockApi({ cameras: { bow: { name: 'Foredeck', enabled: true } } });
+    render(<CameraFocus cameraId="bow" onBack={() => undefined} />);
+    await screen.findByText('Foredeck');
+    expect(screen.queryByRole('button', { name: 'Full res' })).toBeNull();
+  });
 });
