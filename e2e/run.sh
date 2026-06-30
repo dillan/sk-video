@@ -15,8 +15,10 @@ if [[ "${1:-}" == "--down" ]]; then
   exit 0
 fi
 
-echo "==> Building the sk-video plugin"
-( cd "$PLUGIN_DIR" && npm run build )
+echo "==> Building the sk-video plugin + webapp"
+# Build BOTH the plugin (tsc → dist) and the webapp (Vite → public/) — the stack mounts the repo, so
+# the served UI is only current if public/ is rebuilt. Without this the webapp e2e tests run stale.
+( cd "$PLUGIN_DIR" && npm run build && npm run build:webapp )
 
 if [[ -n "$KIP_DIR" && -d "$KIP_DIR" ]]; then
   echo "==> Building KIP ($KIP_DIR)"

@@ -23,6 +23,7 @@ A reproducible Docker stack that exercises the **live** path of the SK Video plu
 | **Incident bundles** (C9) | `incidents.e2e.spec.ts` — trigger → finalize → manifest, Range assets, pin (DELETE 409), unpin + delete |
 | **Layout hints** (C7) + **360 projection** (A2) + **onboarding hints** (A3) + **slew** (C8) + **imaging** (C5) | `awareness.e2e.spec.ts` |
 | **Man overboard** (C2) + **Frigate** (C4, unconfigured) | `safety.e2e.spec.ts` — MOB activate/deactivate + emergency notification; Frigate clip endpoints 503 |
+| **SK Video webapp UI** (Live Wall / Camera Focus / Settings) | `webapp-ui.e2e.spec.ts` — Playwright drives the React console (Chromium + WebKit): a tile reaches the **Live** state once a real frame flows, Camera Focus opens with the control dock + the sub/full-res toggle, and the **Dark / Night-Red** theme switch persists. This covers the UI that previously could only be checked by hand on real hardware. |
 
 The new feature specs live alongside the original `video.e2e.spec.ts` in `tests/`, sharing `tests/helpers.ts`. They run against the same stack — no extra services — except imaging's success path, which needs the `--onvif` profile and an ONVIF-backed camera (the RTSP-only `testcam` exercises the 502 error path instead). DVR recording is gated on the hardware tier, so the harness pins `hardwareTier: "x86"` in `signalk-config/plugin-config-data/sk-video.json`.
 
