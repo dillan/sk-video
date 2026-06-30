@@ -60,6 +60,16 @@ test.describe('SK Video webapp — Settings theme', () => {
     await page.getByRole('button', { name: 'Dark' }).click();
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
   });
+
+  test('switches density and persists it', async ({ page }) => {
+    await page.goto(`${APP}#/settings`);
+    await page.getByRole('button', { name: 'Desk' }).click();
+    await expect(page.locator('html')).toHaveAttribute('data-density', 'desk');
+    await page.reload();
+    await expect(page.locator('html')).toHaveAttribute('data-density', 'desk');
+    await page.getByRole('button', { name: 'Helm' }).click();
+    await expect(page.locator('html')).toHaveAttribute('data-density', 'helm');
+  });
 });
 
 test.describe('SK Video webapp — Live Wall + Camera Focus', () => {

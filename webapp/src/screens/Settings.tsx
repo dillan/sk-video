@@ -1,8 +1,11 @@
 import { THEMES, THEME_LABELS, type Theme } from '../lib/theme';
+import { DENSITIES, DENSITY_LABELS, type Density } from '../lib/density';
 
 interface Props {
   theme: Theme;
   onTheme: (t: Theme) => void;
+  density: Density;
+  onDensity: (d: Density) => void;
 }
 
 /**
@@ -10,7 +13,7 @@ interface Props {
  * config that re-wires process subsystems on restart (cameras, recording, Frigate, anchor watch). Theme
  * is the one thing that shapes the console itself; it persists per device.
  */
-export function Settings({ theme, onTheme }: Props) {
+export function Settings({ theme, onTheme, density, onDensity }: Props) {
   return (
     <div className="settings">
       <header className="page-head">
@@ -37,6 +40,27 @@ export function Settings({ theme, onTheme }: Props) {
               onClick={() => onTheme(t)}
             >
               {THEME_LABELS[t]}
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <section className="panel">
+        <h2 className="panel__title">Density</h2>
+        <p className="muted">
+          Helm is roomy with large touch targets for a moving helm; Desk is tighter for a
+          chart-table desktop. Defaults to your device, but your choice wins.
+        </p>
+        <div className="seg" role="group" aria-label="Density">
+          {DENSITIES.map((d) => (
+            <button
+              key={d}
+              type="button"
+              className={`iconbtn iconbtn--wide${density === d ? ' iconbtn--on' : ''}`}
+              aria-pressed={density === d}
+              onClick={() => onDensity(d)}
+            >
+              {DENSITY_LABELS[d]}
             </button>
           ))}
         </div>

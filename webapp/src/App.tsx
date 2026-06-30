@@ -8,6 +8,7 @@ import {
 } from './api';
 import { useHashRoute } from './lib/router';
 import { applyTheme, loadTheme, type Theme } from './lib/theme';
+import { applyDensity, loadDensity, type Density } from './lib/density';
 import { NavRail, TabBar } from './components/Nav';
 import { LiveWall } from './screens/LiveWall';
 import { CameraFocus } from './screens/CameraFocus';
@@ -26,10 +27,14 @@ export function App() {
   const [session, setSession] = useState<ISessionInfo | null>(null);
   const [mob, setMob] = useState<IMobStatus | null>(null);
   const [theme, setTheme] = useState<Theme>(() => loadTheme());
+  const [density, setDensity] = useState<Density>(() => loadDensity());
 
   useEffect(() => {
     applyTheme(theme);
   }, [theme]);
+  useEffect(() => {
+    applyDensity(density);
+  }, [density]);
 
   useEffect(() => {
     const ctrl = new AbortController();
@@ -68,7 +73,9 @@ export function App() {
         {route.cluster === 'review' && <ImportedVideos />}
         {route.cluster === 'cameras' && <Cameras />}
         {route.cluster === 'safety' && <Safety onMobChange={setMob} />}
-        {route.cluster === 'settings' && <Settings theme={theme} onTheme={setTheme} />}
+        {route.cluster === 'settings' && (
+          <Settings theme={theme} onTheme={setTheme} density={density} onDensity={setDensity} />
+        )}
       </div>
       <TabBar current={route.cluster} onNavigate={(c) => navigate(c)} />
     </div>

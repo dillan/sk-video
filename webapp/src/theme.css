@@ -166,6 +166,34 @@
   color: #ffe0b0;
 }
 
+/* Desk density: a tighter layout + smaller targets for a chart-table desktop. Helm-glance (roomy, big
+ * touch targets for a moving helm) is the default — these overrides only apply under data-density=desk. */
+[data-density='desk'] {
+  --tap-min: 40px;
+}
+[data-density='desk'] .content {
+  padding: 16px 20px 18px;
+}
+[data-density='desk'] .panel {
+  padding: 18px;
+}
+[data-density='desk'] .mosaic {
+  gap: 10px;
+}
+[data-density='desk'] .settings,
+[data-density='desk'] .vidlist {
+  gap: 10px;
+}
+[data-density='desk'] .vidrow {
+  padding: 12px;
+}
+[data-density='desk'] h1 {
+  font-size: 22px;
+}
+[data-density='desk'] .page-head {
+  margin-bottom: 12px;
+}
+
 @keyframes recPulse {
   0%,
   100% {
