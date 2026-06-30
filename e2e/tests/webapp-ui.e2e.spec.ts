@@ -256,6 +256,9 @@ test.describe('SK Video webapp — Review (Recordings + Incidents)', () => {
 
     await page.goto(`${APP}#/review/recordings`);
     await expect(page.getByText(CAMERA, { exact: true })).toBeVisible({ timeout: 15_000 });
+    // The DVR tabs by camera; if other cameras have leftover footage, select our camera's tab.
+    const tab = page.getByRole('button', { name: CAMERA, exact: true });
+    if (await tab.count()) await tab.first().click();
     const track = page.getByRole('slider', { name: new RegExp(`Scrub ${CAMERA}`) });
     await expect(track).toBeVisible();
 
