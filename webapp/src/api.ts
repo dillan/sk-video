@@ -609,3 +609,23 @@ export const setIncidentPinned = async (id: string, pinned: boolean): Promise<vo
 export const deleteIncident = async (id: string): Promise<void> => {
   await send(`/incidents/${encodeURIComponent(id)}`, { method: 'DELETE' }, 'delete incident');
 };
+
+// ---- Snapshots (telemetry-stamped stills) ----
+
+export interface ISnapshot {
+  id: string;
+  cameraId: string;
+  createdAt: number;
+  size: number;
+  telemetry: {
+    positionAvailable: boolean;
+    position: { latitude: number; longitude: number } | null;
+  };
+}
+
+export const fetchSnapshots = (signal?: AbortSignal): Promise<ISnapshot[]> =>
+  getJson<{ snapshots: ISnapshot[] }>('/snapshots', 'snapshots', signal).then((r) => r.snapshots);
+
+/** Same-origin URL to the stored snapshot JPEG. */
+export const snapshotUrl = (id: string): string =>
+  `${API_BASE}/snapshots/${encodeURIComponent(id)}`;

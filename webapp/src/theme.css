@@ -634,6 +634,41 @@ button.tile {
   text-align: left;
   color: var(--text-primary);
 }
+.snapgrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+}
+.snap {
+  position: relative;
+  display: block;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--video-mat);
+  aspect-ratio: 16 / 9;
+}
+.snap__img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.snap__meta {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+.snap__cam {
+  color: #eef2f6;
+  font-weight: 600;
+  font-size: 13px;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
+}
 .empty {
   flex: 1;
   display: flex;

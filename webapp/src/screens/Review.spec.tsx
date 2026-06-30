@@ -3,6 +3,7 @@ import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 
 vi.mock('./Recordings', () => ({ Recordings: () => <div>RECORDINGS</div> }));
 vi.mock('./Incidents', () => ({ Incidents: () => <div>INCIDENTS</div> }));
+vi.mock('./Snapshots', () => ({ Snapshots: () => <div>SNAPSHOTS</div> }));
 vi.mock('./ImportedVideos', () => ({ ImportedVideos: () => <div>IMPORTED</div> }));
 
 import { Review } from './Review';
@@ -24,5 +25,10 @@ describe('Review shell', () => {
     expect(screen.getByRole('button', { name: 'Imported' }).getAttribute('aria-pressed')).toBe(
       'true',
     );
+  });
+
+  it('renders the Snapshots tab', () => {
+    render(<Review tab="snapshots" onTab={vi.fn()} />);
+    expect(screen.getByText('SNAPSHOTS')).toBeTruthy();
   });
 });

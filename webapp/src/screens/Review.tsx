@@ -1,10 +1,12 @@
 import { ImportedVideos } from './ImportedVideos';
 import { Recordings } from './Recordings';
 import { Incidents } from './Incidents';
+import { Snapshots } from './Snapshots';
 
 const TABS = [
   { key: 'recordings', label: 'Recordings' },
   { key: 'incidents', label: 'Incidents' },
+  { key: 'snapshots', label: 'Snapshots' },
   { key: 'imported', label: 'Imported' },
 ] as const;
 
@@ -32,6 +34,7 @@ export function Review({ tab, onTab }: { tab?: string; onTab: (t: string) => voi
       </nav>
       {active === 'recordings' && <Recordings />}
       {active === 'incidents' && <Incidents />}
+      {active === 'snapshots' && <Snapshots />}
       {active === 'imported' && <ImportedVideos />}
     </div>
   );

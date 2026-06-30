@@ -72,6 +72,7 @@ import {
 import { SignalKBridge, type ISignalKApp, type AlarmState } from './signalk/sk-bridge';
 import { SnapshotService } from './recording/snapshot-service';
 import { FileSnapshotStore } from './recording/file-snapshot-store';
+import { registerSnapshotReadRoutes } from './recording/snapshot-read-routes';
 import { RecordingManager } from './recording/recording-manager';
 import { registerRecordingRoutes } from './recording/recording-routes';
 import { scanRecordings } from './recording/file-recordings';
@@ -168,6 +169,7 @@ export = function (app: ServerAPI): Plugin {
   let hardware: IHardwareInfo | null = null;
   let bridge: SignalKBridge | null = null;
   let snapshots: SnapshotService | null = null;
+  let snapshotStore: FileSnapshotStore | null = null;
   let recordings: RecordingManager | null = null;
   let recordingsDir: string | null = null;
   let recordingSweep: ReturnType<typeof setInterval> | null = null;
@@ -446,6 +448,10 @@ export = function (app: ServerAPI): Plugin {
         // The Signal K bridge speaks plain Signal K JSON; the server's branded delta/notification
         // types are a structural superset, so we adapt at this single boundary.
         bridge = new SignalKBridge(app as unknown as ISignalKApp, PLUGIN_ID);
+        snapshotStore = new FileSnapshotStore(dataDir, 'snapshots', {
+          maxCount: SNAPSHOT_MAX_COUNT,
+          maxAgeMs: SNAPSHOT_MAX_AGE_MS,
+        });
         snapshots = new SnapshotService({
           capture: async (id: string) => {
             const upstream = await fetch(go2rtcApiUrl(gateway?.apiPort ?? 1984, 'frame', id));
@@ -455,10 +461,7 @@ export = function (app: ServerAPI): Plugin {
             return new Uint8Array(await upstream.arrayBuffer());
           },
           selfSource: bridge,
-          store: new FileSnapshotStore(dataDir, 'snapshots', {
-            maxCount: SNAPSHOT_MAX_COUNT,
-            maxAgeMs: SNAPSHOT_MAX_AGE_MS,
-          }),
+          store: snapshotStore,
         });
 
         // DVR: per-camera ffmpeg recorders remux go2rtc's loopback RTSP restream into rotating MP4
@@ -968,6 +971,7 @@ export = function (app: ServerAPI): Plugin {
       hardware = null;
       bridge = null;
       snapshots = null;
+      snapshotStore = null;
       recordings = null;
       recordingsDir = null;
       mobRecording = [];
@@ -1200,6 +1204,7 @@ export = function (app: ServerAPI): Plugin {
 
       // Uploaded video library: store + Range-served playback.
       registerUploadRoutes(router, () => videos, unauthorized);
+      registerSnapshotReadRoutes(router, () => snapshotStore);
 
       // Cached Frigate clips: read-only list + Range-served playback (same-origin).
       registerFrigateClipRoutes(router, { getStore: () => frigateClips });

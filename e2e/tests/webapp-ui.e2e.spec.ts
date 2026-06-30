@@ -181,4 +181,11 @@ test.describe('SK Video webapp — Review (Recordings + Incidents)', () => {
     await expect(page.getByRole('heading', { name: 'Incident' })).toBeVisible();
     await expect(page.getByText(/best-effort/)).toBeVisible();
   });
+
+  test('Snapshots shows a captured still', async ({ page, request }) => {
+    await request.post(plugin(`/cameras/${CAMERA}/snapshot`), { data: {} });
+    await page.goto(`${APP}#/review/snapshots`);
+    await expect(page.getByRole('heading', { name: 'Snapshots' })).toBeVisible();
+    await expect(page.locator('.snap').first()).toBeVisible({ timeout: 15_000 });
+  });
 });
