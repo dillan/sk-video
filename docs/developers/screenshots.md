@@ -18,10 +18,20 @@ That script (`e2e/screenshots/capture-all.sh`):
 
 1. brings up the demo stack (Signal K + the plugin + a simulated MediaMTX camera) on `:3010`,
 2. seeds **deterministic** demo data with [`seed-demo.sh`](../../e2e/seed-demo.sh) — four named cameras (Foredeck, Cockpit, Engine Room, Masthead), a sample uploaded clip, and a burst of live telemetry,
-3. runs the Playwright capture specs into `e2e/screenshots/out/`,
-4. with `--copy`, copies the published set into `docs/images/`.
+3. runs the Playwright capture specs into `e2e/screenshots/out/` (as PNG — Playwright's only raster format),
+4. with `--copy`, **encodes each published shot to WebP** (`cwebp -q 80`) into `docs/images/`.
 
 Stop the stack afterwards with `./run.sh --down` from `e2e/`.
+
+### Why WebP
+
+The docs ship **WebP**, not PNG. UI screenshots are mostly flat colour and text, so lossy WebP at quality 80 keeps the text pixel-crisp while cutting size by roughly **60–80%** (the doc image set dropped from ~1.6 MB to ~0.4 MB). GitHub renders WebP inline, so the references in the guides just point at `…/foo.webp`.
+
+The encoder is **`cwebp`** (from libwebp). The capture script requires it for the `--copy` step and tells you to `brew install webp` (macOS) or `apt-get install webp` (Debian/Ubuntu) if it's missing. To re-encode the existing images by hand:
+
+```sh
+cwebp -q 80 input.png -o ../docs/images/input.webp
+```
 
 ---
 
@@ -29,10 +39,10 @@ Stop the stack afterwards with `./run.sh --down` from `e2e/`.
 
 | Kind | Needs | Specs |
 | --- | --- | --- |
-| **Admin** (the plugin config page) | only the core stack | `admin.spec.ts` |
+| **App & admin** (the SK Video console + the plugin config page) | only the core stack | `webapp.spec.ts`, `admin.spec.ts` |
 | **Widget** (the live video UI) | KIP built + mounted | `capture.spec.ts`, `recapture-docs.spec.ts`, `ux-states.spec.ts` |
 
-The admin shots are the reliable ones — they only need Signal K + the plugin running, so `./capture-all.sh --admin` always works. The widget shots drive the **KIP Video widget** (a separate repo), so they need KIP built and mounted via the compose file's `${KIP_PATH:-../../kip}` mount.
+The app and admin shots are the reliable ones — they only need Signal K + the plugin running, so `./capture-all.sh --admin` always works (it runs both `webapp.spec.ts` and `admin.spec.ts`). `webapp.spec.ts` drives SK Video's own console (Live Wall, Camera Focus, Recordings DVR, Settings) and the now-empty plugin-config form; it resets to the four named demo cameras itself, so it doesn't depend on `seed-demo.sh`. The widget shots drive the **KIP Video widget** (a separate repo), so they need KIP built and mounted via the compose file's `${KIP_PATH:-../../kip}` mount.
 
 ---
 

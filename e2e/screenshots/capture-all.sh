@@ -42,21 +42,33 @@ SIGNALK_URL="$BASE" ./seed-demo.sh
 
 echo "==> Capturing screenshots into screenshots/out/"
 if [ "$MODE" = "admin" ]; then
-  SIGNALK_URL="$BASE" npx playwright test --config=screenshots.config.ts screenshots/admin.spec.ts
+  # The KIP-independent shots: the (now empty) admin form + the SK Video web app console.
+  SIGNALK_URL="$BASE" npx playwright test --config=screenshots.config.ts \
+    screenshots/admin.spec.ts screenshots/webapp.spec.ts
 else
   SIGNALK_URL="$BASE" npx playwright test --config=screenshots.config.ts
 fi
 
 if [ "$COPY" = "yes" ]; then
-  echo "==> Copying doc images into ../docs/images/"
+  echo "==> Optimizing + copying doc images into ../docs/images/"
   DOCS="$(cd .. && pwd)/docs/images"
   mkdir -p "$DOCS"
+  # Playwright only emits PNG; the docs ship WebP (lossy q80) instead — same crisp UI text, but
+  # ~60–80% smaller, and GitHub renders it. cwebp (libwebp) is the encoder; install it with
+  # `brew install webp` / `apt-get install webp` if this step says it's missing.
+  if ! command -v cwebp >/dev/null 2>&1; then
+    echo "  ! cwebp not found — install 'webp' to produce the optimized doc images. Skipping copy." >&2
+    exit 1
+  fi
   # The published doc set. Add a name here when a doc references a new screenshot.
-  for name in admin-plugin-config widget-playing camera-setup ptz snapshot scan quality \
+  for name in admin-plugin-config \
+              app-live-wall app-camera-focus app-recordings app-settings \
+              widget-playing camera-setup ptz snapshot scan quality \
               source-tabs uploaded config-camera-manual config-url config-appearance \
               state-empty state-error; do
     if [ -f "screenshots/out/${name}.png" ]; then
-      cp "screenshots/out/${name}.png" "${DOCS}/${name}.png" && echo "  ${name}.png"
+      cwebp -quiet -q 80 "screenshots/out/${name}.png" -o "${DOCS}/${name}.webp" \
+        && echo "  ${name}.webp ($(du -h "${DOCS}/${name}.webp" | cut -f1))"
     fi
   done
 fi
