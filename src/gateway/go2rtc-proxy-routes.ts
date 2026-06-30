@@ -2,6 +2,7 @@ import type { IRouter, Request, Response } from 'express';
 import { go2rtcApiUrl, go2rtcVariantUrl, go2rtcHlsUrl } from './go2rtc-proxy';
 import { fetchStreamHealth } from './stream-health';
 import { transportHints } from './transport-hints';
+import type { AuthGate } from '../security/request-auth';
 
 export interface IProxyContext {
   /** Current go2rtc API port. */
@@ -12,6 +13,12 @@ export interface IProxyContext {
   hasSubstream?: (id: string) => boolean;
   /** Whether a camera has a two-way audio backchannel (an ONVIF audio output / speaker). */
   hasBackchannel?: (id: string) => boolean;
+  /**
+   * Auth gate (returns true when it already sent 401). Applied to /talk only — pushing audio out of a
+   * speaker is a state-changing action. The live-view rungs (whep/hls/frame) stay ungated, matching
+   * the existing ungated GET hls/frame paths; gating only whep would be security theatre.
+   */
+  gate?: AuthGate;
   fetchImpl?: typeof fetch;
 }
 
@@ -90,6 +97,7 @@ export function registerProxyRoutes(router: IRouter, ctx: IProxyContext): void {
   // go2rtc routes it to the camera's NATIVE backchannel — this is not WHIP (which is ingest-only),
   // and it is camera/codec-dependent (PCMU/AAC), best-effort hailing/intercom, not telephony-grade.
   router.post('/cameras/:id/talk', async (req: Request, res: Response) => {
+    if (ctx.gate?.(req, res)) return;
     const id = String(req.params.id);
     if (!ctx.hasCamera(id)) {
       res.status(404).json({ error: 'unknown camera' });

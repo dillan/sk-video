@@ -62,6 +62,18 @@ function setup(over: Partial<IIntrospectRouteContext> = {}) {
 }
 
 describe('registerIntrospectRoute', () => {
+  it('rejects an unauthenticated request with 401 before introspecting', async () => {
+    const { ctx, call } = setup({
+      gate: (_req, res) => {
+        (res as unknown as { status(c: number): { json(p: unknown): void } }).status(401).json({});
+        return true;
+      },
+    });
+    const res = await call({ host: '192.168.1.50' });
+    expect(res.statusCode).toBe(401);
+    expect(ctx.introspect).not.toHaveBeenCalled();
+  });
+
   it('introspects a host and returns the pre-filled fields', async () => {
     const { ctx, call } = setup();
     const res = await call({ host: '192.168.1.50', port: 8000, username: 'admin', password: 'p' });

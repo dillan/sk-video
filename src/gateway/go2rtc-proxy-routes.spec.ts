@@ -99,7 +99,14 @@ function setup(over: Partial<IProxyContext> = {}) {
   const hasBackchannel = vi.fn(over.hasBackchannel ?? (() => true));
   const fetchImpl = (over.fetchImpl ?? vi.fn()) as ReturnType<typeof vi.fn>;
   const { router, handlers } = fakeRouter();
-  registerProxyRoutes(router, { apiPort, hasCamera, hasSubstream, hasBackchannel, fetchImpl });
+  registerProxyRoutes(router, {
+    apiPort,
+    hasCamera,
+    hasSubstream,
+    hasBackchannel,
+    fetchImpl,
+    gate: over.gate,
+  });
   return { handlers, apiPort, hasCamera, hasSubstream, hasBackchannel, fetchImpl };
 }
 
@@ -223,6 +230,42 @@ describe('registerProxyRoutes', () => {
       );
       expect(res.statusCode).toBe(502);
       expect(res.body).toEqual({ error: 'gateway unavailable' });
+    });
+
+    it('rejects an unauthenticated talk with 401 and never fetches (pushing audio is a write)', async () => {
+      const fetchImpl = vi.fn();
+      const { handlers } = setup({
+        fetchImpl,
+        hasBackchannel: () => true,
+        gate: (_req, res) => {
+          (res as unknown as { status(c: number): { json(p: unknown): void } })
+            .status(401)
+            .json({ error: 'authentication required' });
+          return true;
+        },
+      });
+      const res = makeRes();
+      await handlers.get('POST /cameras/:id/talk')!(
+        fakeReq({ params: { id: 'foredeck' } as never, body: 'v=0' }),
+        res,
+      );
+      expect(res.statusCode).toBe(401);
+      expect(fetchImpl).not.toHaveBeenCalled();
+    });
+
+    it('does NOT gate live view: whep proceeds even with a gate present (view peer of GET hls/frame)', async () => {
+      const fetchImpl = vi
+        .fn()
+        .mockResolvedValue(upstreamRes({ status: 201, text: 'v=0\r\nanswer' }));
+      const gate = vi.fn(() => true); // would block if ever consulted
+      const { handlers } = setup({ fetchImpl, gate });
+      const res = makeRes();
+      await handlers.get('POST /cameras/:id/whep')!(
+        fakeReq({ params: { id: 'foredeck' } as never, body: 'v=0\r\noffer' }),
+        res,
+      );
+      expect(gate).not.toHaveBeenCalled(); // whep never consults the gate
+      expect(res.statusCode).toBe(201);
     });
 
     it('404s a camera with no backchannel, and never fetches', async () => {

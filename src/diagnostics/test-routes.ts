@@ -3,6 +3,7 @@ import { validateCamera } from '../cameras/camera-validation';
 import { guessRtspPaths } from '../discovery/rtsp-paths';
 import { buildGo2rtcSource, type ICameraCredentials } from '../gateway/go2rtc-source';
 import type { IRateLimitResult } from '../security/rate-limit';
+import type { AuthGate } from '../security/request-auth';
 import {
   buildFfprobeArgs,
   evaluateFfprobe,
@@ -21,6 +22,8 @@ export interface ITestContext {
   timeoutMs?: number;
   /** Optional brute-force guard; when it reports not-ok the probe is refused with 429. */
   rateLimit?: (req: Request) => IRateLimitResult;
+  /** Auth gate (returns true when it already sent 401). Testing a camera is a management action. */
+  gate?: AuthGate;
 }
 
 const DEFAULT_TIMEOUT_MS = 8000;
@@ -34,6 +37,7 @@ const DEFAULT_ONVIF_PORT = 80;
  */
 export function registerTestRoutes(router: IRouter, ctx: ITestContext): void {
   router.post('/cameras/test', async (req: Request, res: Response) => {
+    if (ctx.gate?.(req, res)) return;
     const limited = ctx.rateLimit?.(req);
     if (limited && !limited.ok) {
       res.setHeader('Retry-After', String(Math.ceil(limited.retryAfterMs / 1000)));

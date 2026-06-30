@@ -53,6 +53,20 @@ function setup(overrides: Partial<ITestContext> = {}) {
 const RTSP = { source: { scheme: 'rtsp', host: 'cam.local', port: 554, path: '/stream1' } };
 
 describe('registerTestRoutes', () => {
+  it('rejects an unauthenticated request with 401 and never probes', async () => {
+    const runFfprobe = vi.fn();
+    const { call } = setup({
+      runFfprobe,
+      gate: (_req, res) => {
+        (res as unknown as { status(c: number): { json(p: unknown): void } }).status(401).json({});
+        return true;
+      },
+    });
+    const res = await call(RTSP);
+    expect(res.statusCode).toBe(401);
+    expect(runFfprobe).not.toHaveBeenCalled();
+  });
+
   it('returns 503 before the plugin has started', async () => {
     const { call } = setup({ ready: () => false });
     const res = await call(RTSP);

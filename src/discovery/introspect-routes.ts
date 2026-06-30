@@ -1,6 +1,7 @@
 import type { IRouter, Request, Response } from 'express';
 import type { IIntrospectInput, IIntrospectResult } from '../onvif/onvif-introspect';
 import type { IRateLimitResult } from '../security/rate-limit';
+import type { AuthGate } from '../security/request-auth';
 
 /**
  * Registers `POST /cameras/discover/introspect` — given a discovered host (and optional write-only
@@ -16,10 +17,13 @@ export interface IIntrospectRouteContext {
   assertHostAllowed: (host: string) => Promise<void>;
   introspect: (input: IIntrospectInput) => Promise<IIntrospectResult>;
   rateLimit?: (req: Request) => IRateLimitResult;
+  /** Auth gate (returns true when it already sent 401). Introspection is a management action. */
+  gate?: AuthGate;
 }
 
 export function registerIntrospectRoute(router: IRouter, ctx: IIntrospectRouteContext): void {
   router.post('/cameras/discover/introspect', async (req: Request, res: Response) => {
+    if (ctx.gate?.(req, res)) return;
     const limited = ctx.rateLimit?.(req);
     if (limited && !limited.ok) {
       res.setHeader('Retry-After', String(Math.ceil(limited.retryAfterMs / 1000)));

@@ -1125,6 +1125,7 @@ export = function (app: ServerAPI): Plugin {
         hasCamera: (id: string) => cameras?.get(id) !== null && cameras?.get(id) !== undefined,
         hasSubstream: (id: string) => !!cameras?.get(id)?.media?.substreamPath,
         hasBackchannel: (id: string) => cameras?.get(id)?.capabilities?.audioBackchannel === true,
+        gate: unauthorized,
       });
 
       // Read-only role/placement layout hints for the widget to auto-arrange feeds by area.
@@ -1212,6 +1213,7 @@ export = function (app: ServerAPI): Plugin {
             assertHostAllowed: (host) => assertHostAllowed(host, ssrfOptions, lookup),
           }),
         rateLimit,
+        gate: unauthorized,
       });
 
       // Uploaded video library: store + Range-served playback.
@@ -1272,6 +1274,7 @@ export = function (app: ServerAPI): Plugin {
         runFfprobe,
         tcpProbe,
         rateLimit,
+        gate: unauthorized,
       });
     },
   };
