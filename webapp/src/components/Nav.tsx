@@ -48,8 +48,8 @@ export function NavRail(props: NavProps & { authChip?: ReactNode }) {
         className="rail__logo"
         src={`${import.meta.env.BASE_URL}icon.svg`}
         alt="SK Video"
-        width={40}
-        height={40}
+        width={72}
+        height={72}
       />
       <div className="rail__items">
         <NavButtons {...props} />
