@@ -97,9 +97,12 @@ describe('App shell', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: 'Add a camera' })).toBeTruthy());
   });
 
-  it('shows a sign-in-required banner on a secured server when not authenticated', async () => {
+  it('shows the in-app sign-in form on a secured server when not authenticated', async () => {
     mockApi({ session: { securityEnabled: true, authenticated: false, pluginVersion: '1' } });
     render(<App />);
-    await waitFor(() => expect(screen.getByText(/Sign-in required/)).toBeTruthy());
+    await waitFor(() =>
+      expect(screen.getByRole('form', { name: /Sign in to Signal K/ })).toBeTruthy(),
+    );
+    expect(screen.getByPlaceholderText('Username')).toBeTruthy();
   });
 });

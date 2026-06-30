@@ -10,6 +10,7 @@ import { useHashRoute } from './lib/router';
 import { applyTheme, loadTheme, type Theme } from './lib/theme';
 import { applyDensity, loadDensity, type Density } from './lib/density';
 import { NavRail, TabBar } from './components/Nav';
+import { SignIn } from './components/SignIn';
 import { LiveWall } from './screens/LiveWall';
 import { CameraFocus } from './screens/CameraFocus';
 import { Safety } from './screens/Safety';
@@ -59,11 +60,7 @@ export function App() {
     <div className="shell">
       <NavRail current={route.cluster} onNavigate={(c) => navigate(c)} authChip={authChip} />
       <div className="content">
-        {signInRequired && (
-          <div className="reauth" role="status">
-            <span>Sign-in required — controls stay read-only until you sign in to Signal K.</span>
-          </div>
-        )}
+        {signInRequired && <SignIn onSignedIn={setSession} />}
         {route.cluster === 'live' &&
           (route.id ? (
             <CameraFocus cameraId={route.id} onBack={() => navigate('live')} />
