@@ -64,6 +64,31 @@ describe('CameraFocus', () => {
     await waitFor(() => expect(screen.getByText('Camera not found.')).toBeTruthy());
   });
 
+  it('offers zoom in/out buttons for a PTZ camera and sends a zoom velocity', async () => {
+    mockApi({ cameras: { bow: { name: 'Foredeck', enabled: true, capabilities: { ptz: true } } } });
+    render(<CameraFocus cameraId="bow" onBack={() => undefined} />);
+    await screen.findByText('Foredeck');
+    fireEvent.click(screen.getByRole('button', { name: 'Zoom in' }));
+    await waitFor(() => {
+      const fetchMock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>;
+      const call = fetchMock.mock.calls.find(
+        ([u, i]) => String(u).includes('/ptz') && (i as RequestInit | undefined)?.method === 'POST',
+      );
+      expect(call).toBeTruthy();
+      expect(JSON.parse((call![1] as RequestInit).body as string)).toMatchObject({ zoom: 0.5 });
+    });
+  });
+
+  it('hides the drag-gesture surface on a still-refresh feed (continuous PTZ is unsafe at ~1 fps)', async () => {
+    // The mock transport resolves to MJPEG (still-refresh), so the joystick is gated off while the
+    // discrete dock — including its delay warning — stays available.
+    mockApi({ cameras: { bow: { name: 'Foredeck', enabled: true, capabilities: { ptz: true } } } });
+    render(<CameraFocus cameraId="bow" onBack={() => undefined} />);
+    await screen.findByText('Foredeck');
+    expect(screen.queryByTestId('ptz-gestures')).toBeNull();
+    expect(screen.getByText(/still-refresh — PTZ delayed/)).toBeTruthy();
+  });
+
   it('surfaces the server’s actionable hint (not "try again") when a PTZ nudge fails', async () => {
     // The server diagnoses why the camera wouldn't move (e.g. ONVIF on the wrong port) and the
     // operator should see that next step, not a generic retry prompt.

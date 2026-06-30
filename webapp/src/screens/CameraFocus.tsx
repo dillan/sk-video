@@ -16,6 +16,7 @@ import {
 } from '../api';
 import { transportLabel, ptzDelayed, isHevc, transportsForVariant } from '../lib/transport';
 import { VideoPlayer } from '../components/VideoPlayer';
+import { usePtzGestures } from '../components/usePtzGestures';
 
 interface Props {
   cameraId: string;
@@ -109,11 +110,27 @@ export function CameraFocus({ cameraId, onBack }: Props) {
       .catch((err: unknown) => flash(actionMessage(err, what)));
   };
 
-  const nudge = (move: { pan?: number; tilt?: number }) =>
+  const nudge = (move: { pan?: number; tilt?: number; zoom?: number }) =>
     run('move the camera', async () => {
       await ptzNudge(cameraId, move);
       setTimeout(() => void ptzStop(cameraId).catch(() => undefined), 350);
     });
+
+  const ptz = camera?.capabilities?.ptz === true;
+  const delayed = ptzDelayed(rung);
+  // Continuous PTZ is unsafe on a 1 fps still-refresh feed (you can't see where you're aiming until
+  // 1–2 s later), so the drag/pinch joystick is offered only when the feed is live, matching the
+  // discrete-nudge fallback the dock already shows. Velocity goes straight to ONVIF continuousMove;
+  // releasing sends Stop (and the server arms a runaway auto-stop as a backstop).
+  const gestures = usePtzGestures({
+    enabled: ptz && !delayed,
+    onMove: (v) => {
+      void ptzNudge(cameraId, v).catch((err: unknown) =>
+        flash(actionMessage(err, 'move the camera')),
+      );
+    },
+    onStop: () => void ptzStop(cameraId).catch(() => undefined),
+  });
 
   const snapshot = run('save a snapshot', async () => {
     const r = await captureSnapshot(cameraId);
@@ -141,8 +158,6 @@ export function CameraFocus({ cameraId, onBack }: Props) {
     );
   }
 
-  const ptz = camera?.capabilities?.ptz === true;
-  const delayed = ptzDelayed(rung);
   // The browser can't decode an H.265 main stream live, so when the camera has an H.264 substream we
   // play that instead. We treat the main as H.265 if onboarding recorded it OR go2rtc negotiated HEVC.
   // Gate on the actual stored substreamPath (what the server serves `?variant=sub` from) — never the
@@ -168,6 +183,33 @@ export function CameraFocus({ cameraId, onBack }: Props) {
             onRung={setRung}
             onActive={setActive}
           />
+        )}
+        {ptz && !delayed && (
+          <div
+            ref={gestures.setRef}
+            className={`focus__gestures${gestures.active ? ' focus__gestures--active' : ''}`}
+            data-testid="ptz-gestures"
+            // A pointer-only convenience layer; the dock's pan/tilt/zoom buttons are the keyboard- and
+            // screen-reader-accessible equivalent, so this surface is hidden from assistive tech.
+            aria-hidden="true"
+          >
+            {gestures.active && gestures.vector ? (
+              <div className="joystick" aria-hidden="true">
+                <span
+                  className="joystick__knob"
+                  style={{
+                    transform: `translate(${gestures.vector.pan * 26}px, ${
+                      -gestures.vector.tilt * 26
+                    }px)`,
+                  }}
+                />
+              </div>
+            ) : (
+              <span className="focus__gesturehint" aria-hidden="true">
+                Drag to move · pinch or scroll to zoom
+              </span>
+            )}
+          </div>
         )}
         <div className="focus__top">
           <button
@@ -260,6 +302,22 @@ export function CameraFocus({ cameraId, onBack }: Props) {
                 aria-label="Pan right"
               >
                 ▶
+              </button>
+              <button
+                type="button"
+                className="iconbtn"
+                onClick={nudge({ zoom: 0.5 })}
+                aria-label="Zoom in"
+              >
+                ＋
+              </button>
+              <button
+                type="button"
+                className="iconbtn"
+                onClick={nudge({ zoom: -0.5 })}
+                aria-label="Zoom out"
+              >
+                －
               </button>
               <button
                 type="button"

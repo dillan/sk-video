@@ -900,6 +900,66 @@ button.tile {
   left: 16px;
   bottom: 92px;
 }
+/* Transparent layer over the frame that turns drag/pinch/scroll into PTZ velocity. It sits above the
+   video but below the chrome (which follows it in the DOM), so the dock + top-bar buttons still win
+   their own pointer events. touch-action:none stops the browser scrolling/zooming the page mid-drag. */
+.focus__gestures {
+  position: absolute;
+  inset: 0;
+  touch-action: none;
+  cursor: grab;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.focus__gestures--active {
+  cursor: grabbing;
+}
+.focus__gesturehint {
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 13px;
+  color: rgba(238, 242, 246, 0.86);
+  background: rgba(7, 9, 12, 0.42);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  opacity: 0.66;
+  pointer-events: none;
+  transition: opacity var(--motion-base, 180ms) ease-out;
+}
+.focus__gestures:hover .focus__gesturehint {
+  opacity: 0.9;
+}
+/* A centred virtual joystick: the ring is the neutral point, the knob rides the commanded vector. */
+.joystick {
+  position: relative;
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(238, 242, 246, 0.5);
+  background: rgba(7, 9, 12, 0.32);
+  pointer-events: none;
+}
+.joystick__knob {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 26px;
+  height: 26px;
+  margin: -13px 0 0 -13px;
+  border-radius: 50%;
+  background: var(--accent, #2e9bff);
+  box-shadow: 0 0 14px rgba(46, 155, 255, 0.6);
+}
+/* Night-Red flattens glow and keeps the knob on the red ramp (no blue). */
+[data-theme='night'] .joystick__knob {
+  background: var(--accent, #ff8159);
+  box-shadow: none;
+}
+[data-theme='night'] .focus__gesturehint {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
 .focus__dock {
   position: absolute;
   left: 50%;
