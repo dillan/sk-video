@@ -79,3 +79,50 @@ self.addEventListener('fetch', (event) => {
   }
   // Everything else falls through to the network untouched.
 });
+
+// A safety/security push arrived — render it. The payload is the JSON the plugin sent.
+self.addEventListener('push', (event) => {
+  let data = {};
+  if (event.data) {
+    try {
+      data = event.data.json();
+    } catch {
+      /* malformed payload — fall back to the generic title below */
+    }
+  }
+  const title = data.title || 'SK Video';
+  event.waitUntil(
+    self.registration.showNotification(title, {
+      body: data.body || '',
+      tag: data.tag, // same-tag pushes collapse on the device
+      renotify: Boolean(data.tag),
+      icon: './icons/icon-192.png',
+      badge: './icons/icon-192.png',
+      data: { url: typeof data.url === 'string' ? data.url : '#/' },
+    }),
+  );
+});
+
+// Tapping the notification focuses an existing app window (deep-linking to the relevant screen) or
+// opens one.
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const hash = (event.notification.data && event.notification.data.url) || '#/';
+  event.waitUntil(
+    (async () => {
+      const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+      for (const client of clients) {
+        if (client.url.includes('/plugins/sk-video/app/')) {
+          await client.focus();
+          try {
+            await client.navigate(client.url.split('#')[0] + hash);
+          } catch {
+            /* navigation is best-effort; focusing is what matters */
+          }
+          return;
+        }
+      }
+      await self.clients.openWindow('./' + hash);
+    })(),
+  );
+});

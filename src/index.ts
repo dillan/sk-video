@@ -10,6 +10,12 @@ import { registerAppRoutes } from './web/app-routes';
 import { registerSessionRoute } from './web/session-routes';
 import { EventLog, FileEventLogPersistence } from './web/event-log';
 import { registerEventLogRoutes } from './web/event-log-routes';
+import webpush from 'web-push';
+import { PushStore, FilePushStorePersistence } from './web/push-store';
+import { registerPushRoutes } from './web/push-routes';
+import { fanOutPush } from './web/push-sender';
+import { notificationForEvent } from './web/push-events';
+import { loadOrCreateVapidKeys, fileVapidIo } from './web/vapid';
 import { validateCamera, sourceEndpointChanged } from './cameras/camera-validation';
 import { assertHostAllowed, type ISsrfOptions } from './security/ssrf-guard';
 import { redactUrl } from './security/redact';
@@ -112,6 +118,9 @@ const RECORDING_SWEEP_MS = 5 * 60 * 1000; // prune every 5 minutes
 // Snapshot retention: bound growth so MOB/anchor/incident captures can't fill the disk over months.
 const SNAPSHOT_MAX_COUNT = 2000;
 const SNAPSHOT_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+// VAPID contact subject sent to the push service (informational; no real address is required and we
+// keep no PII here). Must be a mailto: or https: URI per RFC 8292.
+const PUSH_SUBJECT = 'mailto:sk-video@localhost';
 // Incident bundles: pre/post-roll clip + telemetry track + snapshots around an event.
 const INCIDENT_DEFAULT_PRE_MS = 15_000;
 const INCIDENT_DEFAULT_POST_MS = 15_000;
@@ -173,6 +182,8 @@ export = function (app: ServerAPI): Plugin {
   let snapshots: SnapshotService | null = null;
   let snapshotStore: FileSnapshotStore | null = null;
   let eventLog: EventLog | null = null;
+  let pushStore: PushStore | null = null;
+  let vapidPublicKey: string | null = null;
   let recordings: RecordingManager | null = null;
   let recordingsDir: string | null = null;
   let recordingSweep: ReturnType<typeof setInterval> | null = null;
@@ -453,11 +464,44 @@ export = function (app: ServerAPI): Plugin {
         // reconstruct what happened after the transient notifications have cleared.
         eventLog = new EventLog({ persistence: new FileEventLogPersistence(dataDir) });
 
+        // Web Push: a stable VAPID keypair (persisted) lets opted-in devices receive safety alerts
+        // even when the app is closed. The Pi only ever makes OUTBOUND requests to the browser's push
+        // service — it never needs to be reachable from the internet. Delivery still needs the boat to
+        // have connectivity, so this is best-effort, surfaced honestly in the UI.
+        pushStore = new PushStore({ persistence: new FilePushStorePersistence(dataDir) });
+        try {
+          const vapid = loadOrCreateVapidKeys(fileVapidIo(dataDir), () =>
+            webpush.generateVAPIDKeys(),
+          );
+          webpush.setVapidDetails(PUSH_SUBJECT, vapid.publicKey, vapid.privateKey);
+          vapidPublicKey = vapid.publicKey;
+        } catch (err) {
+          log(
+            `web-push setup failed; alerts disabled: ${err instanceof Error ? err.message : err}`,
+          );
+          vapidPublicKey = null;
+        }
+
+        // Fan a safety event out to every subscribed device, pruning dead subscriptions. Best-effort:
+        // never let a push failure affect the safety path that raised the notification.
+        const sendSafetyPush = (type: string, state?: string, message?: string): void => {
+          const note = notificationForEvent(type, state, message);
+          if (!note || !pushStore || !vapidPublicKey) return;
+          void fanOutPush(pushStore.list(), note, {
+            send: (sub, payload) =>
+              webpush.sendNotification(sub, payload) as Promise<{ statusCode: number }>,
+            onGone: (endpoint) => pushStore?.remove(endpoint),
+            log,
+          }).catch(() => undefined);
+        };
+
         // The Signal K bridge speaks plain Signal K JSON; the server's branded delta/notification
         // types are a structural superset, so we adapt at this single boundary.
         bridge = new SignalKBridge(app as unknown as ISignalKApp, PLUGIN_ID, {
-          onNotify: (key, opts) =>
-            eventLog?.append({ type: key, state: opts.state, message: opts.message }),
+          onNotify: (key, opts) => {
+            eventLog?.append({ type: key, state: opts.state, message: opts.message });
+            sendSafetyPush(key, opts.state, opts.message);
+          },
         });
         snapshotStore = new FileSnapshotStore(dataDir, 'snapshots', {
           maxCount: SNAPSHOT_MAX_COUNT,
@@ -984,6 +1028,8 @@ export = function (app: ServerAPI): Plugin {
       snapshots = null;
       snapshotStore = null;
       eventLog = null;
+      pushStore = null;
+      vapidPublicKey = null;
       recordings = null;
       recordingsDir = null;
       mobRecording = [];
@@ -1220,6 +1266,11 @@ export = function (app: ServerAPI): Plugin {
       registerUploadRoutes(router, () => videos, unauthorized);
       registerSnapshotReadRoutes(router, () => snapshotStore);
       registerEventLogRoutes(router, () => eventLog);
+      registerPushRoutes(
+        router,
+        { getStore: () => pushStore, vapidPublicKey: () => vapidPublicKey },
+        unauthorized,
+      );
 
       // Cached Frigate clips: read-only list + Range-served playback (same-origin).
       registerFrigateClipRoutes(router, { getStore: () => frigateClips });

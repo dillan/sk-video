@@ -1,5 +1,6 @@
 import { THEMES, THEME_LABELS, type Theme } from '../lib/theme';
 import { DENSITIES, DENSITY_LABELS, type Density } from '../lib/density';
+import { SafetyAlerts } from './SafetyAlerts';
 
 interface Props {
   theme: Theme;
@@ -65,6 +66,8 @@ export function Settings({ theme, onTheme, density, onDensity }: Props) {
           ))}
         </div>
       </section>
+
+      <SafetyAlerts />
 
       <section className="panel">
         <h2 className="panel__title">Operational settings</h2>

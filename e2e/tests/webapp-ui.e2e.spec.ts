@@ -71,6 +71,27 @@ test.describe('SK Video webapp — shell + navigation', () => {
     });
     expect(scope).toContain('/plugins/sk-video/app/'); // scoped to the app, not the API
   });
+
+  test('exposes a VAPID public key and accepts a push subscription', async ({ request }) => {
+    // The browser needs the application-server public key before it can subscribe (ungated read).
+    const keyRes = await request.get(plugin('/push/vapid-public-key'));
+    expect(keyRes.ok()).toBeTruthy();
+    const { key } = await keyRes.json();
+    expect(typeof key).toBe('string');
+    expect(key.length).toBeGreaterThan(20);
+
+    // A well-formed subscription is accepted (the open test server doesn't gate); a malformed one 400s.
+    const ok = await request.post(plugin('/push/subscribe'), {
+      data: {
+        subscription: { endpoint: 'https://fcm.example/x', keys: { p256dh: 'k', auth: 'a' } },
+      },
+    });
+    expect(ok.status()).toBe(201);
+    const bad = await request.post(plugin('/push/subscribe'), {
+      data: { subscription: { endpoint: 'http://insecure' } },
+    });
+    expect(bad.status()).toBe(400);
+  });
 });
 
 test.describe('SK Video webapp — Settings theme', () => {

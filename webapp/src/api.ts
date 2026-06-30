@@ -673,3 +673,25 @@ export const fetchEvents = (
     (r) => r.events,
   );
 };
+
+// ---- Web Push (safety alerts) ----
+
+/** The VAPID public key the browser needs to subscribe; null until push is configured server-side. */
+export const fetchVapidPublicKey = (signal?: AbortSignal): Promise<string> =>
+  getJson<{ key: string }>('/push/vapid-public-key', 'vapid', signal).then((r) => r.key);
+
+/** Register a device's push subscription so it receives safety alerts. */
+export const subscribePush = (subscription: unknown): Promise<Response> =>
+  send(
+    '/push/subscribe',
+    { method: 'POST', body: JSON.stringify({ subscription }) },
+    'push subscribe',
+  );
+
+/** Drop a device's push subscription by endpoint. */
+export const unsubscribePush = (endpoint: string): Promise<Response> =>
+  send(
+    '/push/unsubscribe',
+    { method: 'POST', body: JSON.stringify({ endpoint }) },
+    'push unsubscribe',
+  );

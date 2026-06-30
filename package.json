@@ -69,6 +69,7 @@
     "@types/express": "^5.0.6",
     "@types/multicast-dns": "^7.2.4",
     "@types/node": "^24.13.2",
+    "@types/web-push": "^3.6.4",
     "@vitest/coverage-v8": "^4.1.9",
     "eslint": "^10.6.0",
     "globals": "^17.7.0",
@@ -84,6 +85,7 @@
     "adm-zip": "^0.5.17",
     "mqtt": "^5.15.1",
     "multicast-dns": "^7.2.5",
-    "onvif": "^0.8.1"
+    "onvif": "^0.8.1",
+    "web-push": "^3.6.7"
   }
 }
