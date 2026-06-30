@@ -1,6 +1,9 @@
 import type { IRouter, Request, Response } from 'express';
 import { validateCamera } from '../cameras/camera-validation';
+import { guessRtspPaths } from '../discovery/rtsp-paths';
 import { buildGo2rtcSource, type ICameraCredentials } from '../gateway/go2rtc-source';
+import type { IRateLimitResult } from '../security/rate-limit';
+import type { AuthGate } from '../security/request-auth';
 import {
   buildFfprobeArgs,
   evaluateFfprobe,
@@ -17,6 +20,10 @@ export interface ITestContext {
   runFfprobe: TFfprobeRunner;
   tcpProbe: TTcpProbe;
   timeoutMs?: number;
+  /** Optional brute-force guard; when it reports not-ok the probe is refused with 429. */
+  rateLimit?: (req: Request) => IRateLimitResult;
+  /** Auth gate (returns true when it already sent 401). Testing a camera is a management action. */
+  gate?: AuthGate;
 }
 
 const DEFAULT_TIMEOUT_MS = 8000;
@@ -30,12 +37,31 @@ const DEFAULT_ONVIF_PORT = 80;
  */
 export function registerTestRoutes(router: IRouter, ctx: ITestContext): void {
   router.post('/cameras/test', async (req: Request, res: Response) => {
+    if (ctx.gate?.(req, res)) return;
+    const limited = ctx.rateLimit?.(req);
+    if (limited && !limited.ok) {
+      res.setHeader('Retry-After', String(Math.ceil(limited.retryAfterMs / 1000)));
+      res.status(429).json({ ok: false, message: 'Too many attempts. Please wait and try again.' });
+      return;
+    }
     if (!ctx.ready()) {
       res.status(503).json({ ok: false, message: 'plugin not started' });
       return;
     }
 
-    const body = (req.body ?? {}) as { source?: unknown; username?: unknown; password?: unknown };
+    const body = (req.body ?? {}) as {
+      source?: unknown;
+      username?: unknown;
+      password?: unknown;
+      hint?: unknown;
+    };
+    // A non-ONVIF camera often needs a vendor-specific stream path. When the caller passes a
+    // make/model hint, suggest candidate RTSP paths alongside the probe result so the operator can test
+    // one (re-running this endpoint with that path) BEFORE saving — a wrong guess never persists.
+    const hint = typeof body.hint === 'string' ? body.hint : '';
+    const suggestedPaths = hint ? guessRtspPaths(hint) : null;
+    const withSuggestions = <T extends object>(result: T): T =>
+      suggestedPaths ? { ...result, suggestedPaths } : result;
     const validation = validateCamera({ name: 'probe', enabled: true, source: body.source });
     if (!validation.valid || !validation.value) {
       res
@@ -60,7 +86,7 @@ export function registerTestRoutes(router: IRouter, ctx: ITestContext): void {
           camera.source.port ?? DEFAULT_ONVIF_PORT,
           timeout,
         );
-        res.json(evaluateTcp(reachable));
+        res.json(withSuggestions(evaluateTcp(reachable)));
         return;
       }
       const creds: ICameraCredentials = {
@@ -69,7 +95,7 @@ export function registerTestRoutes(router: IRouter, ctx: ITestContext): void {
       };
       const url = buildGo2rtcSource(camera, creds);
       const outcome = await ctx.runFfprobe(buildFfprobeArgs(url, timeout), timeout);
-      res.json(evaluateFfprobe(outcome));
+      res.json(withSuggestions(evaluateFfprobe(outcome)));
     } catch {
       // ffprobe missing or the runner threw — surface a clear, non-fatal result.
       res.json({

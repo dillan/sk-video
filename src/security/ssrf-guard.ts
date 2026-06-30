@@ -23,6 +23,18 @@ DENY.addSubnet('fe80::', 10, 'ipv6'); // link-local
 DENY.addAddress('0.0.0.0', 'ipv4'); // unspecified
 DENY.addAddress('::', 'ipv6'); // unspecified
 
+// IPv4-embedding IPv6 forms can smuggle a denied IPv4 (e.g. ::ffff:127.0.0.1 or 64:ff9b::7f00:1 ==
+// loopback) past the ipv4 rules above, which only match the ipv4 family. These transition mechanisms
+// are not used by a normal camera LAN, so deny the ranges outright. Kept in a SEPARATE list checked
+// only for IPv6 inputs: an IPv4-mapped subnet in the main DENY would make Node's BlockList match every
+// ipv4 address too (its IPv4-mapped handling), denying the whole internet.
+const EMBEDDED_IPV6 = new BlockList();
+EMBEDDED_IPV6.addSubnet('::ffff:0:0', 96, 'ipv6'); // IPv4-mapped
+EMBEDDED_IPV6.addSubnet('64:ff9b::', 96, 'ipv6'); // NAT64 well-known prefix
+EMBEDDED_IPV6.addSubnet('64:ff9b:1::', 48, 'ipv6'); // NAT64 local-use prefix
+EMBEDDED_IPV6.addSubnet('2002::', 16, 'ipv6'); // 6to4
+EMBEDDED_IPV6.addSubnet('2001::', 32, 'ipv6'); // Teredo
+
 const PRIVATE = new BlockList();
 PRIVATE.addSubnet('10.0.0.0', 8, 'ipv4');
 PRIVATE.addSubnet('172.16.0.0', 12, 'ipv4');
@@ -35,6 +47,9 @@ export function isIpAllowed(ip: string, options: ISsrfOptions): boolean {
     return false; // not a valid IP literal
   }
   const kind = family === 4 ? 'ipv4' : 'ipv6';
+  if (family === 6 && EMBEDDED_IPV6.check(ip, 'ipv6')) {
+    return false; // IPv4-mapped / NAT64 / 6to4 / Teredo — denied outright (checked only for ipv6)
+  }
   if (DENY.check(ip, kind)) {
     return false;
   }

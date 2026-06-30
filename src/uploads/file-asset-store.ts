@@ -1,12 +1,25 @@
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  createWriteStream,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import {
   AssetStore,
   type IAssetIndexPersistence,
   type IBlobStore,
+  type IStagedBlob,
   type IVideoAsset,
 } from './asset-store';
+import { writeJsonAtomic } from '../util/atomic-write';
 import type { IQuotaLimits } from './quota';
+
+/** Enough leading bytes for the magic-byte sniff (matroska reads up to 64). */
+const HEAD_BYTES = 64;
 
 /** File-backed asset index (id → metadata) as owner-only JSON in the plugin data directory. */
 export class FileAssetIndexPersistence implements IAssetIndexPersistence {
@@ -29,13 +42,16 @@ export class FileAssetIndexPersistence implements IAssetIndexPersistence {
 
   save(index: Record<string, IVideoAsset>): void {
     mkdirSync(join(this.file, '..'), { recursive: true });
-    writeFileSync(this.file, JSON.stringify(index, null, 2), { mode: 0o600 });
+    // Atomic: a power loss / full disk mid-write must not corrupt the index that maps every stored
+    // blob to its metadata (a corrupt index orphans all videos).
+    writeJsonAtomic(this.file, index);
   }
 }
 
 /** Stores blobs as owner-only files named by their opaque id under a `videos/` directory. */
 export class FileBlobStore implements IBlobStore {
   private readonly dir: string;
+  private stageSeq = 0;
 
   constructor(dataDir: string, subdir = 'videos') {
     this.dir = join(dataDir, subdir);
@@ -56,6 +72,76 @@ export class FileBlobStore implements IBlobStore {
 
   pathFor(id: string): string {
     return join(this.dir, id);
+  }
+
+  stageFromStream(stream: NodeJS.ReadableStream, maxBytes: number): Promise<IStagedBlob> {
+    mkdirSync(this.dir, { recursive: true });
+    const ref = join(this.dir, `.staging-${process.pid}-${++this.stageSeq}`);
+    return new Promise<IStagedBlob>((resolve) => {
+      const out = createWriteStream(ref, { mode: 0o600 });
+      const headChunks: Buffer[] = [];
+      let size = 0;
+      let headLen = 0;
+      let settled = false;
+      const head = (): Uint8Array => new Uint8Array(Buffer.concat(headChunks));
+      const done = (outcome: IStagedBlob['outcome']): void => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        resolve({ ref, size, head: head(), outcome });
+      };
+      const fail = (outcome: 'too-large' | 'error'): void => {
+        if (settled) {
+          return; // already resolved (e.g. a late write-stream 'error' after a too-large abort)
+        }
+        settled = true;
+        out.destroy();
+        // The write stream's open is ASYNC; wait for it to fully close before unlinking, or rmSync can
+        // race the not-yet-open file and the temp file reappears on disk afterwards.
+        out.once('close', () => {
+          rmSync(ref, { force: true });
+          resolve({ ref, size, head: head(), outcome });
+        });
+      };
+      out.on('error', () => fail('error')); // a disk write failure must reject, not crash the process
+      stream.on('data', (chunk: Buffer) => {
+        if (settled) {
+          return;
+        }
+        size += chunk.length;
+        if (size > maxBytes) {
+          (stream as Partial<{ destroy(): void }>).destroy?.();
+          fail('too-large');
+          return;
+        }
+        if (headLen < HEAD_BYTES) {
+          const take = chunk.subarray(0, HEAD_BYTES - headLen);
+          headChunks.push(Buffer.from(take));
+          headLen += take.length;
+        }
+        // Respect backpressure so a slow disk can't grow the write buffer unbounded in memory.
+        if (!out.write(chunk)) {
+          stream.pause?.();
+          out.once('drain', () => stream.resume?.());
+        }
+      });
+      stream.on('end', () => {
+        if (!settled) {
+          out.end(() => done('ok'));
+        }
+      });
+      stream.on('error', () => fail('error'));
+    });
+  }
+
+  commitStaged(staged: IStagedBlob, id: string): void {
+    mkdirSync(this.dir, { recursive: true });
+    renameSync(staged.ref, this.pathFor(id));
+  }
+
+  discardStaged(staged: IStagedBlob): void {
+    rmSync(staged.ref, { force: true });
   }
 }
 

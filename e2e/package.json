@@ -10,6 +10,7 @@
     "stack:up": "./run.sh",
     "stack:onvif": "./run.sh --onvif",
     "stack:down": "./run.sh --down",
+    "refresh": "(cd .. && npm run build && npm run build:webapp) && docker compose restart signalk",
     "seed": "./seed-camera.sh",
     "seed:demo": "./seed-demo.sh",
     "screenshots": "playwright test --config=screenshots.config.ts"

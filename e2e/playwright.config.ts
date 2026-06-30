@@ -9,6 +9,9 @@ export default defineConfig({
   timeout: 60_000,
   expect: { timeout: 15_000 },
   fullyParallel: false,
+  // One shared backend stack (signalk + go2rtc + mediamtx) — run specs serially so stateful flows
+  // (MOB, recording, and the A1 spec's transient plugin-config change) never race across files.
+  workers: 1,
   reporter: [['list']],
   use: {
     baseURL: process.env.SIGNALK_URL || 'http://localhost:3000',

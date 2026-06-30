@@ -18,6 +18,16 @@ export interface IAssetIndexPersistence {
   save(index: Record<string, IVideoAsset>): void;
 }
 
+/** A blob streamed to temporary storage, awaiting validation before it is committed under an id. */
+export interface IStagedBlob {
+  /** Opaque handle to the staged bytes (a temp path on disk, or a key in tests). */
+  ref: string;
+  size: number;
+  /** The first bytes, so the magic-byte sniff runs without reading the whole blob into memory. */
+  head: Uint8Array;
+  outcome: 'ok' | 'too-large' | 'error';
+}
+
 /** Storage for the opaque blobs, keyed by asset id. */
 export interface IBlobStore {
   write(id: string, bytes: Uint8Array): void;
@@ -25,6 +35,12 @@ export interface IBlobStore {
   has(id: string): boolean;
   /** Absolute path to the blob, for Range streaming in the route. */
   pathFor(id: string): string;
+  /** Stream a blob to temp storage, capped at maxBytes, capturing its size + head for validation. */
+  stageFromStream(stream: NodeJS.ReadableStream, maxBytes: number): Promise<IStagedBlob>;
+  /** Atomically commit a previously staged blob under an id. */
+  commitStaged(staged: IStagedBlob, id: string): void;
+  /** Discard a staged blob that will not be committed (rejected / quota / error). */
+  discardStaged(staged: IStagedBlob): void;
 }
 
 /** Thrown when an upload isn't an allowed video container. */
@@ -40,6 +56,14 @@ export class AssetQuotaError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'AssetQuotaError';
+  }
+}
+
+/** Thrown when the upload stream itself failed (aborted / errored mid-body). */
+export class AssetUploadError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'AssetUploadError';
   }
 }
 
@@ -145,6 +169,49 @@ export class AssetStore {
     this.assets = { ...this.assets, [id]: asset };
     this.index.save(this.assets);
     return asset;
+  }
+
+  /**
+   * Streams an upload straight to disk (never buffering the whole body in memory), then validates by
+   * magic bytes + quota and commits it atomically. Throws AssetUploadError / AssetRejectedError /
+   * AssetQuotaError; the staged temp blob is always discarded on any failure.
+   */
+  async addFromStream(stream: NodeJS.ReadableStream, originalName?: string): Promise<IVideoAsset> {
+    const staged = await this.blobs.stageFromStream(stream, this.limits.maxFileBytes);
+    if (staged.outcome !== 'ok') {
+      this.blobs.discardStaged(staged);
+      throw staged.outcome === 'too-large'
+        ? new AssetQuotaError('file exceeds the maximum allowed size')
+        : new AssetUploadError('upload failed');
+    }
+    try {
+      const sniff = sniffVideoType(staged.head);
+      if (!sniff) {
+        throw new AssetRejectedError('unsupported or unrecognized video format');
+      }
+      const quota = checkQuota(this.usage(), staged.size, this.limits);
+      if (!quota.ok) {
+        throw new AssetQuotaError(quota.reason);
+      }
+      const id = this.idGen();
+      if (!isValidAssetId(id)) {
+        throw new Error('generated an invalid asset id');
+      }
+      this.blobs.commitStaged(staged, id);
+      const asset: IVideoAsset = {
+        id,
+        name: sanitizeFilename(originalName) || id,
+        contentType: sniff.contentType,
+        size: staged.size,
+        createdAt: this.now(),
+      };
+      this.assets = { ...this.assets, [id]: asset };
+      this.index.save(this.assets);
+      return asset;
+    } catch (err) {
+      this.blobs.discardStaged(staged);
+      throw err;
+    }
   }
 
   delete(id: string): boolean {

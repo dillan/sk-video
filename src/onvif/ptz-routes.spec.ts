@@ -1,7 +1,16 @@
 import { describe, it, expect, vi } from 'vitest';
 import type { IRouter, Request, Response } from 'express';
 import { registerPtzRoutes } from './ptz-routes';
+import type { AuthGate } from '../security/request-auth';
 import { CameraNotFoundError, type PtzManager } from './ptz-manager';
+
+/** A gate that allows everything (the open-server / authenticated case). */
+const ALLOW: AuthGate = () => false;
+/** A gate that denies: it mimics the real unauthorized() — sends 401 and reports "rejected". */
+const DENY: AuthGate = (_req, res) => {
+  res.status(401).json({ error: 'authentication required' });
+  return true;
+};
 
 /** A router that captures handlers keyed by "METHOD path" so each route can be invoked directly. */
 function fakeRouter() {
@@ -51,6 +60,7 @@ function makeController() {
     stop: vi.fn(),
     getPresets: vi.fn().mockResolvedValue([{ token: 'p1', name: 'Dock' }]),
     gotoPreset: vi.fn(),
+    getStatus: vi.fn().mockResolvedValue({ pan: 0.5, tilt: -0.2, zoom: 0 }),
   };
 }
 
@@ -63,9 +73,9 @@ function makeManager(controller: ReturnType<typeof makeController>) {
 }
 
 /** Registers the routes against a live manager (or null) and returns the handler map. */
-function setup(getPtz: () => PtzManager | null) {
+function setup(getPtz: () => PtzManager | null, gate: AuthGate = ALLOW) {
   const { router, handlers } = fakeRouter();
-  registerPtzRoutes(router, getPtz);
+  registerPtzRoutes(router, getPtz, gate);
   return handlers;
 }
 
@@ -83,13 +93,47 @@ const ROUTE_KEYS = [
   'POST /cameras/:id/ptz',
   'POST /cameras/:id/ptz/stop',
   'GET /cameras/:id/ptz/presets',
+  'GET /cameras/:id/ptz/position',
   'POST /cameras/:id/ptz/preset',
 ] as const;
 
 describe('registerPtzRoutes', () => {
-  it('registers exactly the four expected routes', () => {
+  it('registers exactly the expected routes', () => {
     const handlers = setup(() => makeManager(makeController()));
     expect([...handlers.keys()].sort()).toEqual([...ROUTE_KEYS].sort());
+  });
+
+  it('GET ptz/position returns the normalized status and is not gated', async () => {
+    const controller = makeController();
+    const res = await invoke(
+      setup(() => makeManager(controller), DENY).get('GET /cameras/:id/ptz/position')!,
+    );
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toEqual({ pan: 0.5, tilt: -0.2, zoom: 0 });
+  });
+
+  it('rejects an unauthenticated caller with 401 on every mutating route, before touching the camera', async () => {
+    for (const key of [
+      'POST /cameras/:id/ptz',
+      'POST /cameras/:id/ptz/stop',
+      'POST /cameras/:id/ptz/preset',
+    ] as const) {
+      const controller = makeController();
+      const manager = makeManager(controller);
+      const res = await invoke(setup(() => manager, DENY).get(key)!);
+      expect(res.statusCode, key).toBe(401);
+      // Gate runs first: the camera is never contacted and no move is issued.
+      expect(manager.controllerFor, key).not.toHaveBeenCalled();
+    }
+  });
+
+  it('does NOT gate the read-only GET presets route (it is not a mutating action)', async () => {
+    const controller = makeController();
+    const res = await invoke(
+      setup(() => makeManager(controller), DENY).get('GET /cameras/:id/ptz/presets')!,
+    );
+    expect(res.statusCode).toBe(200);
+    expect(controller.getPresets).toHaveBeenCalledTimes(1);
   });
 
   it('returns 503 "plugin not started" from every route when the manager is null', async () => {

@@ -26,6 +26,36 @@ export function go2rtcApiUrl(
   return `${scheme}://127.0.0.1:${apiPort}${path}?src=${cameraId}`;
 }
 
+/**
+ * Like go2rtcApiUrl, but targets a camera's stream VARIANT. The base id is validated (SSRF-safe);
+ * the `_sub` suffix for the substream is a server constant appended after validation, and can never
+ * collide with a real camera id (ids forbid underscores).
+ */
+export function go2rtcVariantUrl(
+  apiPort: number,
+  transport: TGatewayTransport,
+  cameraId: string,
+  variant: 'main' | 'sub',
+): string {
+  if (!isValidCameraId(cameraId)) {
+    throw new Error(`invalid camera id: ${cameraId}`);
+  }
+  const { scheme, path } = ENDPOINTS[transport];
+  const src = variant === 'sub' ? `${cameraId}_sub` : cameraId;
+  return `${scheme}://127.0.0.1:${apiPort}${path}?src=${src}`;
+}
+
+/**
+ * Builds the loopback go2rtc /api/streams introspection URL for a camera, validating the id so a
+ * client-supplied src can never be injected.
+ */
+export function go2rtcStreamsUrl(apiPort: number, cameraId: string): string {
+  if (!isValidCameraId(cameraId)) {
+    throw new Error(`invalid camera id: ${cameraId}`);
+  }
+  return `http://127.0.0.1:${apiPort}/api/streams?src=${cameraId}`;
+}
+
 /** HLS sub-resource names the master/media playlists reference (media playlist, segments, init). */
 const HLS_RESOURCE = /^[A-Za-z0-9._-]+$/;
 

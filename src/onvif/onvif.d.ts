@@ -7,6 +7,10 @@ declare module 'onvif' {
     password?: string;
     port?: number;
     timeout?: number;
+    /** Use https for the ONVIF SOAP transport. */
+    useSecure?: boolean;
+    /** TLS options (e.g. `{ rejectUnauthorized: false }` to accept a self-signed certificate). */
+    secureOpts?: { rejectUnauthorized?: boolean };
   }
 
   export class Cam {

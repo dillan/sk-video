@@ -1,71 +1,8 @@
-import { test, type Page } from '@playwright/test';
-import { mkdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { test } from '@playwright/test';
+import { bootstrapKip, DIALOG, setDashboard, shot, SNAPSHOT } from './kip-harness';
 
-const KIP = '/@mxtommy/kip/index.html';
-const OUT = join(__dirname, 'out');
-mkdirSync(OUT, { recursive: true });
-const DIALOG = 'mat-dialog-container';
-
-const SNAPSHOT = { embedTelemetry: true, embedLocation: true, defaultDestination: 'download' };
-
-function dashboardsJson(displayName: string, video: Record<string, unknown>) {
-  return JSON.stringify([
-    {
-      id: 'demo',
-      name: 'Underway',
-      icon: 'dashboard-dashboard',
-      collapseSplitShell: true,
-      configuration: [
-        {
-          w: 24,
-          h: 24,
-          x: 0,
-          y: 0,
-          id: 'vid',
-          selector: 'widget-host2',
-          input: {
-            widgetProperties: { type: 'widget-video', uuid: 'vid', config: { displayName, video } },
-          },
-        },
-      ],
-    },
-  ]);
-}
-
-/** Load Demo writes a full valid config (appConfig/theme/connection) so KIP won't first-run-reset. */
-async function bootstrapKip(page: Page) {
-  await page.goto(KIP);
-  try {
-    await page.getByRole('button', { name: 'Load Demo' }).click({ timeout: 8000 });
-    await page.waitForTimeout(2500);
-  } catch {
-    console.log('  (Load Demo not shown — already configured)');
-  }
-}
-
-/** Force a dashboard on every subsequent navigation (beats KIP's unload-save clobber). */
-async function setDashboard(page: Page, displayName: string, video: Record<string, unknown>) {
-  await page.addInitScript(
-    (dash) => localStorage.setItem('dashboardsConfig', dash),
-    dashboardsJson(displayName, video),
-  );
-  await page.goto(KIP);
-  await page.evaluate(() => (location.hash = '#/dashboard/0'));
-  await page.waitForTimeout(500);
-}
-
-async function shot(page: Page, name: string, target?: string) {
-  const path = join(OUT, `${name}.png`);
-  try {
-    const loc = target ? page.locator(target).first() : null;
-    if (loc) await loc.waitFor({ timeout: 5000 });
-    await (loc ? loc.screenshot({ path }) : page.screenshot({ path }));
-    console.log(`  captured ${name}.png`);
-  } catch (e) {
-    console.log(`  FAILED ${name}.png: ${(e as Error).message.split('\n')[0]}`);
-  }
-}
+// Helpers (bootstrapKip / setDashboard / shot) and the Tutorial-clobber fix they
+// encode live in ./kip-harness.ts — see that file for why all three defenses matter.
 
 test('capture documentation screenshots', async ({ page }) => {
   await page.route('**/plugins/sk-video/cameras/discover', (route) =>
@@ -170,8 +107,9 @@ test('capture documentation screenshots', async ({ page }) => {
 
   if (dialogOpen) {
     await page.waitForTimeout(800);
-    await shot(page, 'camera-setup', DIALOG);
-    await shot(page, 'source-tabs', DIALOG);
+    // Note: source-tabs / camera-setup / uploaded (the dialog shots that show the Quality & Latency
+    // presets) are owned by recapture-docs.spec.ts, which frames them deterministically. Capturing
+    // them here too would just fight over the same filenames with worse framing.
 
     try {
       await page.locator('mat-button-toggle:has-text("Camera")').click();
@@ -180,14 +118,6 @@ test('capture documentation screenshots', async ({ page }) => {
       await shot(page, 'scan', DIALOG);
     } catch (e) {
       console.log('  scan: ' + (e as Error).message.split('\n')[0]);
-    }
-
-    try {
-      await page.locator('mat-button-toggle:has-text("Uploaded")').click();
-      await page.waitForTimeout(900);
-      await shot(page, 'uploaded', DIALOG);
-    } catch (e) {
-      console.log('  uploaded: ' + (e as Error).message.split('\n')[0]);
     }
 
     try {

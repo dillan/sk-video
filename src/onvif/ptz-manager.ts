@@ -1,6 +1,10 @@
 import type { ICamera } from '../cameras/camera-validation';
 import type { ICameraCredentials } from '../gateway/go2rtc-source';
-import { OnvifPtzController, type OnvifConnect } from './onvif-controller';
+import {
+  OnvifPtzController,
+  type OnvifConnect,
+  type IDetectedCapabilities,
+} from './onvif-controller';
 import { createOnvifConnect, type IOnvifTarget } from './onvif-connect';
 
 export class CameraNotFoundError extends Error {}
@@ -20,10 +24,25 @@ export interface IPtzManagerDeps {
  */
 export class PtzManager {
   private readonly controllers = new Map<string, OnvifPtzController>();
+  private readonly capabilities = new Map<string, IDetectedCapabilities>();
   private readonly connectFactory: (target: IOnvifTarget) => OnvifConnect;
 
   constructor(private readonly deps: IPtzManagerDeps) {
     this.connectFactory = deps.connectFactory ?? createOnvifConnect;
+  }
+
+  /**
+   * Detected capabilities for a camera, probed once on first use and cached until the camera changes.
+   */
+  async capabilitiesFor(id: string): Promise<IDetectedCapabilities> {
+    const cached = this.capabilities.get(id);
+    if (cached) {
+      return cached;
+    }
+    const controller = await this.controllerFor(id);
+    const caps = await controller.probeCapabilities();
+    this.capabilities.set(id, caps);
+    return caps;
   }
 
   async controllerFor(id: string): Promise<OnvifPtzController> {
@@ -44,6 +63,7 @@ export class PtzManager {
       port,
       username: creds?.username,
       password: creds?.password,
+      allowSelfSigned: camera.allowSelfSigned,
     });
     const controller = new OnvifPtzController(connect);
     this.controllers.set(id, controller);
@@ -53,6 +73,7 @@ export class PtzManager {
   invalidate(id: string): void {
     this.controllers.get(id)?.dispose();
     this.controllers.delete(id);
+    this.capabilities.delete(id);
   }
 
   disposeAll(): void {
@@ -60,5 +81,6 @@ export class PtzManager {
       controller.dispose();
     }
     this.controllers.clear();
+    this.capabilities.clear();
   }
 }

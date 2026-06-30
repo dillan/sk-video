@@ -3,54 +3,18 @@ import type { IRouter, Request, Response } from 'express';
 import {
   AssetQuotaError,
   AssetRejectedError,
+  AssetUploadError,
   isValidAssetId,
   type AssetStore,
 } from './asset-store';
+import type { AuthGate } from '../security/request-auth';
 import { parseRange } from './range';
-
-/** Absolute ceiling on a streamed upload body, independent of the per-file quota. */
-const MAX_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024; // 2 GiB
 
 type StreamFactory = (path: string, opts?: { start: number; end: number }) => ReadStream;
 
 export interface IUploadRouteOptions {
   /** Injectable for tests; defaults to fs.createReadStream. */
   streamFactory?: StreamFactory;
-}
-
-type BodyResult = { ok: true; bytes: Buffer } | { ok: false; tooLarge: boolean };
-
-/** Streams the request body into a Buffer, aborting if it exceeds the cap. */
-function readBodyBuffer(req: Request, maxBytes: number): Promise<BodyResult> {
-  if (Buffer.isBuffer(req.body) && req.body.length > 0) {
-    return Promise.resolve(
-      req.body.length > maxBytes
-        ? { ok: false, tooLarge: true }
-        : { ok: true, bytes: req.body as Buffer },
-    );
-  }
-  return new Promise((resolve) => {
-    const chunks: Buffer[] = [];
-    let total = 0;
-    let done = false;
-    const finish = (result: BodyResult): void => {
-      if (!done) {
-        done = true;
-        resolve(result);
-      }
-    };
-    req.on('data', (chunk: Buffer) => {
-      total += chunk.length;
-      if (total > maxBytes) {
-        finish({ ok: false, tooLarge: true });
-        req.destroy();
-        return;
-      }
-      chunks.push(chunk);
-    });
-    req.on('end', () => finish({ ok: true, bytes: Buffer.concat(chunks) }));
-    req.on('error', () => finish({ ok: false, tooLarge: false }));
-  });
 }
 
 /**
@@ -64,6 +28,7 @@ function readBodyBuffer(req: Request, maxBytes: number): Promise<BodyResult> {
 export function registerUploadRoutes(
   router: IRouter,
   getStore: () => AssetStore | null,
+  gate: AuthGate,
   options: IUploadRouteOptions = {},
 ): void {
   const openStream = options.streamFactory ?? (createReadStream as StreamFactory);
@@ -78,32 +43,31 @@ export function registerUploadRoutes(
   };
 
   router.post('/videos', (req: Request, res: Response) => {
+    if (gate(req, res)) return;
     const store = requireStore(res);
     if (!store) {
       return;
     }
     const name =
       typeof req.headers['x-filename'] === 'string' ? req.headers['x-filename'] : undefined;
-    void readBodyBuffer(req, MAX_UPLOAD_BYTES).then((body) => {
-      if (!body.ok) {
-        res
-          .status(body.tooLarge ? 413 : 400)
-          .json({ error: body.tooLarge ? 'file too large' : 'upload failed' });
-        return;
-      }
-      try {
-        const asset = store.add(new Uint8Array(body.bytes), name);
+    // Stream the body straight to disk — never buffer a multi-hundred-MiB upload in memory (which
+    // would OOM the Signal K server on a Pi). The store caps, sniffs, quota-checks and commits.
+    void store
+      .addFromStream(req, name)
+      .then((asset) => {
         res.status(201).json(asset);
-      } catch (err) {
+      })
+      .catch((err: unknown) => {
         if (err instanceof AssetRejectedError) {
           res.status(415).json({ error: err.message });
         } else if (err instanceof AssetQuotaError) {
           res.status(413).json({ error: err.message });
+        } else if (err instanceof AssetUploadError) {
+          res.status(400).json({ error: err.message });
         } else {
           res.status(500).json({ error: 'failed to store video' });
         }
-      }
-    });
+      });
   });
 
   router.get('/videos', (_req: Request, res: Response) => {
@@ -165,6 +129,7 @@ export function registerUploadRoutes(
   });
 
   router.delete('/videos/:id', (req: Request, res: Response) => {
+    if (gate(req, res)) return;
     const store = requireStore(res);
     if (!store) {
       return;

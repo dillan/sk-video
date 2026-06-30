@@ -30,6 +30,24 @@ export function go2rtcAssetName(platform: NodeJS.Platform, arch: string): string
   return ASSETS[platform]?.[arch] ?? null;
 }
 
+/**
+ * Pinned SHA-256 digests for the GO2RTC_VERSION release assets, keyed by asset name. When a digest is
+ * present the download is verified against it (defence against a corrupted or tampered release); when
+ * absent, verification is skipped and the binary manager logs that. Populate from the official checksums
+ * of the pinned release — leaving an asset out is fail-open (HTTPS + the pinned URL stay the only
+ * guarantee), so a wrong digest would be worse than none.
+ */
+const GO2RTC_SHA256: Record<string, string> = {
+  // Add per-asset digests for the pinned version here, e.g.
+  //   go2rtc_linux_arm64: '<hex>',
+};
+
+/** The pinned SHA-256 for this platform/arch's release asset, or undefined if none is pinned. */
+export function go2rtcExpectedSha256(platform: NodeJS.Platform, arch: string): string | undefined {
+  const asset = go2rtcAssetName(platform, arch);
+  return asset ? GO2RTC_SHA256[asset] : undefined;
+}
+
 /** Whether a release asset is a zip archive (macOS/Windows) that must be extracted. */
 export function isZipAsset(assetName: string): boolean {
   return assetName.endsWith('.zip');

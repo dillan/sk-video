@@ -1,10 +1,13 @@
 # Build output and coverage
 dist/
 coverage/
+public/
+webapp/coverage/
 
 # Dependency lockfiles (machine-generated)
 package-lock.json
 e2e/package-lock.json
+webapp/package-lock.json
 
 # Vendored / installed deps and test artifacts
 e2e/node_modules/

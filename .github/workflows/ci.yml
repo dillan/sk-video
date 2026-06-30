@@ -25,6 +25,12 @@ jobs:
       - run: npm run lint
       - run: npm run build
       - run: npm run test:coverage
+      # Web app — a self-contained project (own lockfile). Install, lint, type-check + test, and build
+      # it (output goes to public/, which the plugin ships and serves).
+      - run: npm --prefix webapp ci
+      - run: npm --prefix webapp run lint
+      - run: npm --prefix webapp run test
+      - run: npm run build:webapp
 
   # Check that every commit on a pull request follows Conventional Commits, so releasing stays
   # automatic even for contributors whose local git hooks didn't run.

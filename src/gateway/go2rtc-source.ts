@@ -9,9 +9,16 @@ export interface ICameraCredentials {
  * Builds the go2rtc source URL for a camera from its validated, structured fields, injecting
  * server-side credentials (URL-encoded). Because the scheme is restricted by camera validation to a
  * safe allow-list, this can never produce a dangerous go2rtc source such as `exec:` or `ffmpeg:`.
+ * `pathOverride` swaps in an alternate (already-validated) path — used for the low-res substream — so
+ * the credentials are injected the same way for every variant.
  */
-export function buildGo2rtcSource(camera: ICamera, creds?: ICameraCredentials): string {
-  const { scheme, host, port, path } = camera.source;
+export function buildGo2rtcSource(
+  camera: ICamera,
+  creds?: ICameraCredentials,
+  pathOverride?: string,
+): string {
+  const { scheme, host, port } = camera.source;
+  const path = pathOverride ?? camera.source.path;
 
   let userinfo = '';
   if (creds?.username) {
