@@ -48,6 +48,19 @@ describe('Recordings — DVR scrubber', () => {
     expect(screen.getByRole('slider', { name: /Scrub bow/ })).toBeTruthy();
   });
 
+  it('shows camera tabs for multiple cameras and switches the visible track', async () => {
+    const stern = { ...cam, camera: 'stern' };
+    mockApi([cam, stern]);
+    render(<Recordings />);
+    await waitFor(() => screen.getByRole('button', { name: 'bow' }));
+    // Defaults to the first camera; only its track is shown.
+    expect(screen.getByRole('slider', { name: /Scrub bow/ })).toBeTruthy();
+    expect(screen.queryByRole('slider', { name: /Scrub stern/ })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'stern' }));
+    await waitFor(() => expect(screen.getByRole('slider', { name: /Scrub stern/ })).toBeTruthy());
+    expect(screen.queryByRole('slider', { name: /Scrub bow/ })).toBeNull();
+  });
+
   it('scrubs with the keyboard, reveals a seeked player, and marks a retrospective incident', async () => {
     let posted: unknown = null;
     mockApi([cam], (b) => (posted = b));

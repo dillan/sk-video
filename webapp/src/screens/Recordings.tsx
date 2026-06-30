@@ -124,6 +124,7 @@ export function Recordings() {
   const [err, setErr] = useState<string | null>(null);
   const [marking, setMarking] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ kind: 'info' | 'caution'; text: string } | null>(null);
+  const [selected, setSelected] = useState<string | null>(null);
 
   useEffect(() => {
     const ctrl = new AbortController();
@@ -134,6 +135,10 @@ export function Recordings() {
       });
     return () => ctrl.abort();
   }, []);
+
+  // One camera at a time (the design's tabbed DVR); default to the first with footage.
+  const active = selected ?? cameras?.[0]?.camera ?? null;
+  const shown = cameras?.filter((c) => c.camera === active) ?? [];
 
   const onMark = async (camera: string, t: number) => {
     setMarking(camera);
@@ -163,6 +168,22 @@ export function Recordings() {
         fabricated cause.
       </p>
 
+      {cameras && cameras.length > 1 && (
+        <nav className="seg" aria-label="Recorded cameras">
+          {cameras.map((c) => (
+            <button
+              key={c.camera}
+              type="button"
+              className={`iconbtn iconbtn--wide${c.camera === active ? ' iconbtn--on' : ''}`}
+              aria-pressed={c.camera === active}
+              onClick={() => setSelected(c.camera)}
+            >
+              {c.camera}
+            </button>
+          ))}
+        </nav>
+      )}
+
       {msg && <div className={`chip chip--${msg.kind}`}>{msg.text}</div>}
       {err && <div className="chip chip--caution">Can’t load recordings ({err})</div>}
       {cameras && cameras.length === 0 && !err && (
@@ -174,7 +195,7 @@ export function Recordings() {
         </div>
       )}
 
-      {cameras?.map((cam) => (
+      {shown.map((cam) => (
         <CameraDvr key={cam.camera} cam={cam} onMark={onMark} marking={marking === cam.camera} />
       ))}
     </div>
