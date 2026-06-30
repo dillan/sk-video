@@ -597,6 +597,10 @@ export const fetchIncident = (id: string, signal?: AbortSignal): Promise<IIncide
 export const incidentAssetUrl = (id: string, assetId: string): string =>
   `${API_BASE}/incidents/${encodeURIComponent(id)}/assets/${encodeURIComponent(assetId)}`;
 
+/** Same-origin URL to download the whole bundle as a shareable .zip (manifest + README + assets). */
+export const incidentExportUrl = (id: string): string =>
+  `${API_BASE}/incidents/${encodeURIComponent(id)}/export.zip`;
+
 export const setIncidentPinned = async (id: string, pinned: boolean): Promise<void> => {
   await send(
     `/incidents/${encodeURIComponent(id)}`,

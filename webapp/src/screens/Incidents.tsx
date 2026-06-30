@@ -3,6 +3,7 @@ import {
   fetchIncidents,
   fetchIncident,
   incidentAssetUrl,
+  incidentExportUrl,
   setIncidentPinned,
   deleteIncident,
   ApiError,
@@ -169,6 +170,14 @@ export function Incidents() {
             </div>
           </div>
           <div className="page-head__spacer" />
+          <a
+            className="iconbtn iconbtn--wide"
+            href={incidentExportUrl(detail.id)}
+            download={`incident-${detail.id}.zip`}
+            title="Download a shareable .zip — share what was captured (best-effort, not a certified VDR)"
+          >
+            Export .zip
+          </a>
           <button
             type="button"
             className={`iconbtn iconbtn--wide${detail.pinned ? ' iconbtn--on' : ''}`}

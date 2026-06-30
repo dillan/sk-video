@@ -32,6 +32,7 @@ class FakeRes extends Writable {
   statusCode = 200;
   headers: Record<string, string> = {};
   body: unknown;
+  chunks: Buffer[] = [];
   status(code: number): this {
     this.statusCode = code;
     return this;
@@ -44,10 +45,15 @@ class FakeRes extends Writable {
     this.end();
     return this;
   }
+  /** The bytes written via res.end(buffer) (e.g. the export zip). */
+  get written(): Buffer {
+    return Buffer.concat(this.chunks);
+  }
   get headersSent(): boolean {
     return false;
   }
-  override _write(_c: Buffer, _e: string, cb: () => void): void {
+  override _write(c: Buffer, _e: string, cb: () => void): void {
+    this.chunks.push(Buffer.from(c));
     cb();
   }
 }
@@ -120,6 +126,7 @@ function setup(
         const full = Buffer.from('CLIPDATA');
         return Readable.from(opts ? full.subarray(opts.start, opts.end + 1) : full) as never;
       },
+      readFile: () => Buffer.from('CLIPDATA'),
     },
     gate,
   );
@@ -282,5 +289,39 @@ describe('registerIncidentRoutes', () => {
     const res = new FakeRes();
     handlers.get('GET /incidents')!(fakeReq(), res as unknown as Response);
     expect(res.statusCode).toBe(503);
+  });
+
+  it('exports a bundle as an attachment .zip containing the manifest and assets', async () => {
+    const { handlers } = setup({ inc1: bundle('inc1') });
+    const res = new FakeRes();
+    handlers.get('GET /incidents/:id/export.zip')!(
+      fakeReq({ params: { id: 'inc1' } }),
+      res as unknown as Response,
+    );
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['Content-Type']).toBe('application/zip');
+    expect(res.headers['Content-Disposition']).toContain('attachment');
+    expect(res.headers['Content-Disposition']).toContain('incident-inc1.zip');
+    const AdmZip = (await import('adm-zip')).default;
+    const names = new AdmZip(res.written).getEntries().map((e) => e.entryName);
+    expect(names).toContain('manifest.json');
+    expect(names).toContain('README.txt');
+    expect(names).toContain('clips/bow.mp4');
+  });
+
+  it('rejects an invalid id and 404s an unknown export', () => {
+    const { handlers } = setup({ inc1: bundle('inc1') });
+    const bad = new FakeRes();
+    handlers.get('GET /incidents/:id/export.zip')!(
+      fakeReq({ params: { id: 'bad/../id' } }),
+      bad as unknown as Response,
+    );
+    expect(bad.statusCode).toBe(400);
+    const missing = new FakeRes();
+    handlers.get('GET /incidents/:id/export.zip')!(
+      fakeReq({ params: { id: 'nope' } }),
+      missing as unknown as Response,
+    );
+    expect(missing.statusCode).toBe(404);
   });
 });

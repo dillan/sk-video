@@ -1,4 +1,4 @@
-import { createReadStream, type ReadStream } from 'node:fs';
+import { createReadStream, readFileSync, type ReadStream } from 'node:fs';
 import type { IRouter, Request, Response } from 'express';
 import { parseRange } from '../uploads/range';
 import type { AuthGate } from '../security/request-auth';
@@ -8,6 +8,7 @@ import {
   validateTriggerRequest,
   validateIncidentPatch,
 } from './incident-validation';
+import { buildIncidentZip } from './incident-export';
 import type { IncidentController } from './incident-controller';
 import type { IIncidentStore } from './incident-store';
 
@@ -25,6 +26,8 @@ export interface IIncidentRouteDeps {
   getController: () => IncidentController | null;
   getStore: () => IIncidentStore | null;
   streamFactory?: StreamFactory;
+  /** Whole-file reader for the export zip (assets are read fully into memory); injectable for tests. */
+  readFile?: (path: string) => Buffer;
 }
 
 export function registerIncidentRoutes(
@@ -33,6 +36,7 @@ export function registerIncidentRoutes(
   gate: AuthGate,
 ): void {
   const openStream = deps.streamFactory ?? (createReadStream as StreamFactory);
+  const readFile = deps.readFile ?? readFileSync;
 
   const requireController = (res: Response): IncidentController | null => {
     const c = deps.getController();
@@ -164,6 +168,42 @@ export function registerIncidentRoutes(
       res.destroy();
     });
     stream.pipe(res);
+  });
+
+  // Shareable .zip of the whole bundle: manifest + honesty README + every asset, foldered by kind.
+  // "Share what was captured" — a read, like the other GETs, so it isn't gated. Missing blobs are
+  // skipped best-effort (the README says which), never aborting the export.
+  router.get('/incidents/:id/export.zip', (req: Request, res: Response) => {
+    const store = requireStore(res);
+    if (!store) {
+      return;
+    }
+    const id = String(req.params.id);
+    if (!isValidIncidentId(id)) {
+      res.status(400).json({ error: 'invalid id' });
+      return;
+    }
+    const bundle = store.get(id);
+    if (!bundle) {
+      res.status(404).json({ error: 'not found' });
+      return;
+    }
+    const { buffer } = buildIncidentZip(bundle, (assetId) => {
+      try {
+        return readFile(store.assetPath(id, assetId));
+      } catch {
+        return null; // a missing/unreadable blob is skipped and noted in the README
+      }
+    });
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="incident-${sanitizeFilename(id)}.zip"`,
+    );
+    res.setHeader('Cache-Control', 'private, max-age=0');
+    res.setHeader('Content-Length', String(buffer.length));
+    res.status(200).end(buffer);
   });
 
   // Operator patch: label / notes / pinned only.

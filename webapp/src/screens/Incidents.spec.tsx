@@ -97,6 +97,16 @@ describe('Incidents', () => {
     await waitFor(() => expect(calls.some((c) => c.method === 'PATCH')).toBe(true));
   });
 
+  it('offers an Export .zip download link pointing at the export endpoint', async () => {
+    mockApi();
+    render(<Incidents />);
+    await waitFor(() => screen.getByText('PARTIAL'));
+    fireEvent.click(screen.getByRole('button', { name: /bow, stern/ }));
+    const link = await waitFor(() => screen.getByRole('link', { name: /Export \.zip/ }));
+    expect(link.getAttribute('href')).toContain('/incidents/');
+    expect(link.getAttribute('href')).toContain('/export.zip');
+  });
+
   it('refuses to delete a pinned bundle (409) with honest copy', async () => {
     mockApi({ deleteStatus: 409 });
     render(<Incidents />);

@@ -184,6 +184,27 @@ test.describe('SK Video webapp — Review (Recordings + Incidents)', () => {
     await expect(page.getByText(/best-effort/)).toBeVisible();
   });
 
+  test('Incident export.zip downloads a real archive', async ({ request }) => {
+    const res = await request.post(plugin('/incidents'), {
+      data: { cameras: [CAMERA], preMs: 0, postMs: 1500 },
+    });
+    const { id } = await res.json();
+    await pollJson(
+      request,
+      plugin(`/incidents/${id}`),
+      (b: { status: string }) => b.status !== 'capturing',
+      30_000,
+    );
+    const zip = await request.get(plugin(`/incidents/${id}/export.zip`));
+    expect(zip.ok()).toBeTruthy();
+    expect(zip.headers()['content-type']).toBe('application/zip');
+    expect(zip.headers()['content-disposition']).toContain('attachment');
+    const body = await zip.body();
+    expect(body.subarray(0, 2).toString('latin1')).toBe('PK'); // zip magic bytes
+    // the archive carries the honesty README
+    expect(body.toString('latin1')).toContain('README.txt');
+  });
+
   test('Events records a triggered incident in the durable feed', async ({ page, request }) => {
     // Minting an incident raises an `incident` notification, which the bridge taps into the event log.
     await request.post(plugin('/incidents'), {
