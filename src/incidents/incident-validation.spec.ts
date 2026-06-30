@@ -43,6 +43,17 @@ describe('validateTriggerRequest', () => {
     expect(validateTriggerRequest({ cameras: ['../x'] }).valid).toBe(false);
   });
 
+  it('accepts a retrospective triggerAt and passes it through', () => {
+    const r = validateTriggerRequest({ triggerAt: 1_700_000_000_000 });
+    expect(r.valid).toBe(true);
+    expect(r.value).toMatchObject({ triggerAt: 1_700_000_000_000 });
+  });
+
+  it('rejects a non-numeric or negative triggerAt', () => {
+    expect(validateTriggerRequest({ triggerAt: 'yesterday' }).valid).toBe(false);
+    expect(validateTriggerRequest({ triggerAt: -5 }).valid).toBe(false);
+  });
+
   it('strips control chars from the note and trims it', () => {
     const note = 'fire' + String.fromCharCode(7) + 'aft ';
     const r = validateTriggerRequest({ note });

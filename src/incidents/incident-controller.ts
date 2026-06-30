@@ -78,6 +78,12 @@ export interface IMarkInput {
   state?: string;
   /** Suppress this capture's own incident notification — the caller owns a consolidated one (C3). */
   silent?: boolean;
+  /**
+   * Epoch-ms anchor for a retrospective mark (a past scrubbed DVR moment). Capped at "now"; when it's
+   * in the past the clip window is cut from already-recorded segments, no live snapshot is taken, and
+   * the bundle finalizes as soon as the window has closed.
+   */
+  triggerAt?: number;
 }
 
 interface IRawSnapshot {
@@ -124,7 +130,11 @@ export class IncidentController {
 
   /** Trigger an incident capture. Returns synchronously; the bundle finalizes in the background. */
   mark(input: IMarkInput): { id: string; status: 'capturing' } {
-    const t0 = this.now();
+    const markAt = this.now();
+    // Retrospective mark: anchor at a past moment (capped at now). The clip is then cut from the
+    // rolling buffer around that moment instead of from "now".
+    const t0 = input.triggerAt != null ? Math.min(input.triggerAt, markAt) : markAt;
+    const retrospective = input.triggerAt != null && t0 < markAt;
     const id = this.idGen();
     const cameras = input.cameras ?? this.deps.relevantCameras();
     const preMs = input.preMs ?? this.deps.defaultPreMs;
@@ -157,8 +167,12 @@ export class IncidentController {
       this.deps.ensureRecording?.(cameraId);
     }
 
-    // Capture snapshot BYTES now (at T0); staging happens in finalize under the known id.
-    const snapshots = cameras.map((cameraId) => this.captureSnapshotRaw(cameraId));
+    // Capture snapshot BYTES now (at T0); staging happens in finalize under the known id. A
+    // retrospective mark skips this: a current frame is not the past incident moment, so attaching it
+    // would be misleading — the DVR clip cut from the buffer is the honest evidence.
+    const snapshots = retrospective
+      ? []
+      : cameras.map((cameraId) => this.captureSnapshotRaw(cameraId));
 
     const assembly: IAssembly = {
       id,
@@ -175,18 +189,20 @@ export class IncidentController {
       silent: input.silent === true,
     };
 
-    if (this.deps.sampleIntervalMs > 0 && postMs > 0) {
+    // Forward telemetry sampling only makes sense for a live mark — a retrospective window is in the
+    // past, so there's no live post-roll state to sample.
+    if (this.deps.sampleIntervalMs > 0 && postMs > 0 && !retrospective) {
       assembly.sampleTimer = this.setIntervalImpl(() => {
         sampler.push(this.now(), this.deps.getSelfState());
       }, this.deps.sampleIntervalMs);
     }
 
-    assembly.finalizeTimer = this.setTimeoutImpl(
-      () => {
-        void this.finalize(id);
-      },
-      Math.max(0, postMs) + this.deps.finalizeGraceMs,
-    );
+    // Finalize once the window has actually closed. For a live mark that's postMs from now; for a
+    // retrospective mark whose window already ended it's just the grace delay (≈immediate).
+    const untilWindowEnds = Math.max(0, Math.min(postMs, t0 + postMs - markAt));
+    assembly.finalizeTimer = this.setTimeoutImpl(() => {
+      void this.finalize(id);
+    }, untilWindowEnds + this.deps.finalizeGraceMs);
 
     this.active.set(id, assembly);
     return { id, status: 'capturing' };

@@ -105,6 +105,12 @@ export interface ITriggerRequest {
   preMs?: number;
   postMs?: number;
   note?: string;
+  /**
+   * Epoch-ms anchor for a RETROSPECTIVE mark (cut the clip from the rolling buffer around a past
+   * moment, e.g. a scrubbed DVR point). Omitted means "now" — a live mark. The controller caps it at
+   * the current time and honestly clamps coverage to whatever segments still exist.
+   */
+  triggerAt?: number;
 }
 
 export interface IIncidentPatch {
@@ -167,7 +173,7 @@ function sanitizeNote(value: unknown): string | undefined {
   return sanitizeText(value, MAX_NOTE_LEN);
 }
 
-const TRIGGER_KEYS = new Set(['cameras', 'preMs', 'postMs', 'note']);
+const TRIGGER_KEYS = new Set(['cameras', 'preMs', 'postMs', 'note', 'triggerAt']);
 const PATCH_KEYS = new Set(['label', 'notes', 'pinned']);
 
 /**
@@ -212,6 +218,15 @@ export function validateTriggerRequest(input: unknown): IValidation<ITriggerRequ
   const postMs = clampRoll(o.postMs, 'postMs', MAX_POST_MS);
   const note = sanitizeNote(o.note);
 
+  let triggerAt: number | undefined;
+  if (o.triggerAt !== undefined) {
+    if (typeof o.triggerAt !== 'number' || !Number.isFinite(o.triggerAt) || o.triggerAt < 0) {
+      errors.push('triggerAt must be a non-negative epoch-ms number');
+    } else {
+      triggerAt = o.triggerAt;
+    }
+  }
+
   if (errors.length) {
     return { valid: false, errors };
   }
@@ -223,6 +238,7 @@ export function validateTriggerRequest(input: unknown): IValidation<ITriggerRequ
       ...(preMs !== undefined ? { preMs } : {}),
       ...(postMs !== undefined ? { postMs } : {}),
       ...(note ? { note } : {}),
+      ...(triggerAt !== undefined ? { triggerAt } : {}),
     },
   };
 }

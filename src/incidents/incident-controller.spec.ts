@@ -130,6 +130,35 @@ describe('IncidentController.mark', () => {
   });
 });
 
+describe('IncidentController.mark — retrospective (triggerAt)', () => {
+  it('anchors the assembly at a past triggerAt instead of now', () => {
+    const h = setup();
+    const past = T0 - 60_000;
+    const { id } = h.controller.mark({ source: 'manual', triggerAt: past });
+    expect(h.controller.activeAssemblies()).toEqual([{ id, createdAt: past }]);
+  });
+
+  it('caps a future triggerAt at now (no future-anchored window)', () => {
+    const h = setup();
+    const { id } = h.controller.mark({ source: 'manual', triggerAt: T0 + 999_999 });
+    expect(h.controller.activeAssemblies()).toEqual([{ id, createdAt: T0 }]);
+  });
+
+  it('skips the live snapshot and forward sampling for a past mark, but still cuts the clip', async () => {
+    const h = setup({ relevantCameras: () => ['bow'] });
+    // Anchor inside the window the test segments (started 14:29:30) actually cover.
+    const past = T0 - 15_000;
+    const { id } = h.controller.mark({ source: 'manual', triggerAt: past, postMs: 0 });
+    expect(h.hasInterval()).toBe(false); // no forward telemetry sampling
+    h.fireFinalize();
+    await flush(() => h.published.has(id));
+    const bundle = h.published.get(id)!;
+    expect(bundle.trigger.firedAt).toBe(past);
+    expect(bundle.assets.filter((a) => a.kind === 'snapshot')).toHaveLength(0); // no "now" frame
+    expect(bundle.assets.filter((a) => a.kind === 'clip')).toHaveLength(1); // clip still cut
+  });
+});
+
 describe('IncidentController.finalize', () => {
   it('publishes a complete bundle with a clip + snapshot per camera and a telemetry track, then clears the notification', async () => {
     const h = setup();
