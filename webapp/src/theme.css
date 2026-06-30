@@ -1126,6 +1126,30 @@ button.tile {
   outline-offset: 1px;
 }
 
+/* ---- Operational settings form ---- */
+.cfg__group {
+  font-size: 14px;
+  font-weight: 700;
+  margin: 18px 0 6px;
+}
+.cfg__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+.cfg__check {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+.cfg__check input {
+  min-height: 0;
+  width: 18px;
+  height: 18px;
+  flex: none;
+}
+
 /* ---- Camera Health diagnostics + calibration ---- */
 .diag {
   display: flex;

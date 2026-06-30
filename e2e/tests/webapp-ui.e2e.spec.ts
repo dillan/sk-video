@@ -126,6 +126,30 @@ test.describe('SK Video webapp — Settings theme', () => {
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
   });
 
+  test('Operational settings save Frigate config and round-trip through the restart', async ({
+    page,
+    request,
+  }) => {
+    await page.goto(`${APP}#/settings`);
+    const host = page.getByRole('textbox', { name: 'MQTT host' });
+    await expect(host).toBeVisible({ timeout: 15_000 });
+    await host.fill('10.0.0.42');
+    await page.getByRole('textbox', { name: 'Alert labels' }).fill('person');
+    await page.getByRole('button', { name: 'Save & apply' }).click();
+    await expect(page.getByText(/restarting/)).toBeVisible();
+
+    // The plugin restarts; poll the API until the new config is persisted + served back.
+    await pollJson(
+      request,
+      plugin('/operational-config'),
+      (c: { frigate?: { mqttHost?: string } }) => c.frigate?.mqttHost === '10.0.0.42',
+      30_000,
+    );
+    const cfg = await request.get(plugin('/operational-config')).then((r) => r.json());
+    expect(cfg.frigate.mqttHost).toBe('10.0.0.42');
+    expect(cfg.frigate.labels).toBe('person');
+  });
+
   test('switches density and persists it', async ({ page }) => {
     await page.goto(`${APP}#/settings`);
     await page.getByRole('button', { name: 'Desk' }).click();

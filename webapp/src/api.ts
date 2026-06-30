@@ -695,3 +695,36 @@ export const unsubscribePush = (endpoint: string): Promise<Response> =>
     { method: 'POST', body: JSON.stringify({ endpoint }) },
     'push unsubscribe',
   );
+
+// ---- Operational config (owned by the web app; SK admin schema is empty) ----
+
+export interface IFrigatePublicConfig {
+  mqttHost?: string;
+  mqttPort?: number;
+  mqttTls?: boolean;
+  mqttUsername?: string;
+  apiUrl?: string;
+  labels?: string;
+  minScore?: number;
+  zones?: string;
+  /** Whether a broker password is stored (the value itself is never sent to the client). */
+  mqttPasswordSet: boolean;
+}
+export interface IOperationalConfigPublic {
+  hardwareTier?: string;
+  autoTriggerPath?: string;
+  anchorWatchPath?: string;
+  mobVisualRefine?: boolean;
+  frigate: IFrigatePublicConfig;
+}
+
+/** Read the current operational config (Frigate password redacted to a presence flag). */
+export const fetchOperationalConfig = (signal?: AbortSignal): Promise<IOperationalConfigPublic> =>
+  getJson<IOperationalConfigPublic>('/operational-config', 'config', signal);
+
+/**
+ * Save the operational config. Omit frigate.mqttPassword to keep the stored one, send a new value to
+ * change it, or "" to clear it. The server persists + briefly restarts the plugin to apply.
+ */
+export const saveOperationalConfig = (cfg: unknown): Promise<Response> =>
+  send('/operational-config', { method: 'PUT', body: JSON.stringify(cfg) }, 'save config');

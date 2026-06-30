@@ -1,6 +1,7 @@
 import { THEMES, THEME_LABELS, type Theme } from '../lib/theme';
 import { DENSITIES, DENSITY_LABELS, type Density } from '../lib/density';
 import { SafetyAlerts } from './SafetyAlerts';
+import { OperationalSettings } from './OperationalSettings';
 
 interface Props {
   theme: Theme;
@@ -69,15 +70,7 @@ export function Settings({ theme, onTheme, density, onDensity }: Props) {
 
       <SafetyAlerts />
 
-      <section className="panel">
-        <h2 className="panel__title">Operational settings</h2>
-        <p className="muted">
-          Camera connections, recording, snapshots, Frigate, and anchor watch live in the Signal K
-          admin — they re-wire on restart, so they’re owned there, not here. Manage them under{' '}
-          <b>Server → Plugin Config → SK Video</b>. Retention is fixed (rolling buffer ~10&nbsp;GiB
-          / 48&nbsp;h, ~1000 snapshots) — this is an operator console, not a 24/7 NVR.
-        </p>
-      </section>
+      <OperationalSettings />
     </div>
   );
 }

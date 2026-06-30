@@ -33,9 +33,11 @@ describe('Settings', () => {
     expect(onDensity).toHaveBeenCalledWith('desk');
   });
 
-  it('honestly signposts operational settings to the Signal K admin', () => {
+  it('renders the operational settings panel (now owned by the web app, not the SK admin)', () => {
     render(<Settings {...props} theme="night" />);
-    expect(screen.getByText(/Server → Plugin Config → SK Video/)).toBeTruthy();
-    expect(screen.getByText(/not a 24\/7 NVR/)).toBeTruthy();
+    // The panel heading is always present (it manages its own async config load internally).
+    expect(screen.getByRole('heading', { name: 'Operational settings' })).toBeTruthy();
+    // The Safety alerts panel is here too.
+    expect(screen.getByRole('heading', { name: 'Safety alerts' })).toBeTruthy();
   });
 });
