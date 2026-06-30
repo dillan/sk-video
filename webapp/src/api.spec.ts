@@ -7,6 +7,8 @@ import {
   fetchMobStatus,
   login,
   logout,
+  ptzNudge,
+  ApiError,
 } from './api';
 
 describe('describeAuth', () => {
@@ -125,5 +127,43 @@ describe('login / logout (delegated to Signal K auth)', () => {
     const [url, opts] = fetchMock.mock.calls[0];
     expect(url).toBe('/signalk/v1/auth/logout');
     expect(opts).toMatchObject({ method: 'PUT', credentials: 'include' });
+  });
+});
+
+describe('ApiError carries the server’s actionable failure detail', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('captures the hint + reason from a 502 ONVIF error body', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 502,
+        headers: { get: () => 'application/json' },
+        json: async () => ({ error: 'Enable ONVIF on the camera.', reason: 'onvif' }),
+      }),
+    );
+    const err = await ptzNudge('cam1', { pan: 0.1 }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ApiError);
+    expect(err).toMatchObject({
+      status: 502,
+      hint: 'Enable ONVIF on the camera.',
+      reason: 'onvif',
+    });
+  });
+
+  it('degrades gracefully when the error body is not JSON', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 503,
+        headers: { get: () => 'text/plain' },
+      }),
+    );
+    const err = (await ptzNudge('cam1', { pan: 0.1 }).catch((e: unknown) => e)) as ApiError;
+    expect(err).toBeInstanceOf(ApiError);
+    expect(err.hint).toBeUndefined();
+    expect(err.reason).toBeUndefined();
   });
 });

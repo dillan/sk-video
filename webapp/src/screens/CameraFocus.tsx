@@ -36,6 +36,9 @@ function actionMessage(err: unknown, what: string): Msg {
       return { kind: 'caution', text: 'Recording channels full — stop one to record.' };
     }
     if (err.status === 409) return { kind: 'caution', text: 'This camera doesn’t support that.' };
+    // The server diagnosed *why* a camera/ONVIF action failed (502) and sent an actionable next
+    // step — show it instead of a useless "try again." (See src/onvif/onvif-errors.ts.)
+    if (err.hint) return { kind: 'caution', text: err.hint };
   }
   return { kind: 'caution', text: `Couldn’t ${what} — try again.` };
 }

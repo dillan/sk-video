@@ -64,6 +64,37 @@ describe('CameraFocus', () => {
     await waitFor(() => expect(screen.getByText('Camera not found.')).toBeTruthy());
   });
 
+  it('surfaces the server’s actionable hint (not "try again") when a PTZ nudge fails', async () => {
+    // The server diagnoses why the camera wouldn't move (e.g. ONVIF on the wrong port) and the
+    // operator should see that next step, not a generic retry prompt.
+    const hint = 'Reached the camera but not its ONVIF service. Enable ONVIF on the camera.';
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string, init?: RequestInit) => {
+        const u = String(url);
+        if (u.includes('/ptz') && init?.method === 'POST') {
+          return Promise.resolve({
+            ok: false,
+            status: 502,
+            headers: { get: () => 'application/json' },
+            json: async () => ({ error: hint, reason: 'onvif' }),
+          });
+        }
+        if (u.includes('/transport'))
+          return ok({ recommended: ['mjpeg'], codecs: [], online: false });
+        if (u.includes('/resources/cameras'))
+          return ok({ bow: { name: 'Foredeck', enabled: true, capabilities: { ptz: true } } });
+        return ok({});
+      }),
+    );
+    render(<CameraFocus cameraId="bow" onBack={() => undefined} />);
+    await screen.findByText('Foredeck');
+    const up = await screen.findByRole('button', { name: 'Tilt up' });
+    fireEvent.click(up);
+    await waitFor(() => expect(screen.getByText(hint)).toBeTruthy());
+    expect(screen.queryByText(/try again/)).toBeNull();
+  });
+
   const playerSrc = () => document.querySelector('img.player__media')?.getAttribute('src') ?? '';
 
   it('plays the H.264 sub-stream when the main codec is H.265 and a substream exists', async () => {

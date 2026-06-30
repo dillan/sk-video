@@ -191,12 +191,32 @@ export const whepUrl = (id: string, variant: TStreamVariant = 'main'): string =>
 
 // ---- Mutating camera controls (auth-gated server-side; a 401 means sign-in required) ----
 
+/** The server categorises ONVIF/camera failures (see src/onvif/onvif-errors.ts). */
+export type TApiFailureReason = 'unreachable' | 'auth' | 'onvif' | 'unknown';
+
 export class ApiError extends Error {
   constructor(
     message: string,
     readonly status: number,
+    /** The server's operator-facing next step (body.error), when it sent one. */
+    readonly hint?: string,
+    /** The server's failure category (body.reason), when it sent one. */
+    readonly reason?: TApiFailureReason,
   ) {
     super(message);
+  }
+}
+
+/** Pull the structured `{ error, reason }` an errored route may carry, without throwing on non-JSON. */
+async function readErrorBody(
+  res: Response,
+): Promise<{ error?: string; reason?: TApiFailureReason }> {
+  try {
+    const ct = res.headers.get('content-type') ?? '';
+    if (!ct.includes('application/json')) return {};
+    return (await res.json()) as { error?: string; reason?: TApiFailureReason };
+  } catch {
+    return {};
   }
 }
 
@@ -210,7 +230,8 @@ async function send(path: string, init: RequestInit, what: string): Promise<Resp
     ...init,
   });
   if (!res.ok) {
-    throw new ApiError(`${what} failed (${res.status})`, res.status);
+    const body = await readErrorBody(res);
+    throw new ApiError(`${what} failed (${res.status})`, res.status, body.error, body.reason);
   }
   return res;
 }
