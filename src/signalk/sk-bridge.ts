@@ -104,6 +104,13 @@ export interface ISelfState {
 export interface ISignalKBridgeOptions {
   /** Injectable clock (ms) for deterministic reading-age computation in tests. */
   now?: () => number;
+  /**
+   * Tap fired the first time a notification is raised under a given key (not on the periodic
+   * re-raises that update an already-active notification). The durable event log subscribes here so
+   * every safety/system event (MOB, incident, anchor drag, camera-offline) lands in one feed —
+   * notifications are current-state and vanish on clear, so the log is the only retrospective record.
+   */
+  onNotify?: (key: string, options: INotificationOptions) => void;
 }
 
 /** The vessel self paths the bridge reads for a telemetry snapshot. */
@@ -121,6 +128,7 @@ export class SignalKBridge {
   /** Notification ids keyed by our stable notification key, so a raise can later update/clear. */
   private readonly notificationIds = new Map<string, string>();
   private readonly now: () => number;
+  private readonly onNotify?: (key: string, options: INotificationOptions) => void;
 
   constructor(
     private readonly app: ISignalKApp,
@@ -128,6 +136,7 @@ export class SignalKBridge {
     options: ISignalKBridgeOptions = {},
   ) {
     this.now = options.now ?? (() => Date.now());
+    this.onNotify = options.onNotify;
   }
 
   /** True when the server exposes delta emission. */
@@ -166,6 +175,15 @@ export class SignalKBridge {
 
   /** Raise (or, if already raised under `key`, update) a notification. */
   raiseNotification(key: string, options: INotificationOptions): boolean {
+    // A first raise is a new event for the durable log; a re-raise under the same active key is just an
+    // update (e.g. MOB re-aiming every few seconds) and must not flood the log.
+    const isNew = !this.notificationIds.has(key);
+    const tap = () => {
+      if (isNew) {
+        this.notificationIds.set(key, this.notificationIds.get(key) ?? '');
+        this.onNotify?.(key, options);
+      }
+    };
     const n = this.app.notifications;
     if (n?.raise) {
       // Guard the API: a server whose notifications implementation throws must not take down a safety
@@ -189,13 +207,16 @@ export class SignalKBridge {
             }),
           );
         }
+        tap();
         return true;
       } catch (err) {
         this.log(`notifications.raise(${key}) failed: ${errMessage(err)}; falling back to a delta`);
+        tap();
         return this.emit(this.notificationDelta(key, options));
       }
     }
     // No notifications API on this server: fall back to a notifications.* delta.
+    tap();
     return this.emit(this.notificationDelta(key, options));
   }
 

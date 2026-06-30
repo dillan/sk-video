@@ -177,6 +177,28 @@ describe('SignalKBridge — notifications', () => {
     expect(ok).toBe(true); // a throwing safety-channel notification must not crash the caller
     expect(h.deltas[0].msg.updates[0].values[0].path).toBe('notifications.sk-video.mob');
   });
+
+  it('taps onNotify once when a notification is first raised, but not on a repeat update', () => {
+    const tapped: { key: string; state?: string; message?: string }[] = [];
+    const h = makeApp();
+    const bridge = new SignalKBridge(h.app, 'sk-video', {
+      onNotify: (key, options) =>
+        tapped.push({ key, state: options.state, message: options.message }),
+    });
+    bridge.raiseNotification('mob', { state: 'emergency', message: 'Person overboard' });
+    // A periodic re-aim re-raises the same key; the event log must record the event once, not per tick.
+    bridge.raiseNotification('mob', { state: 'emergency', message: 'Person overboard (re-aim)' });
+    expect(tapped).toEqual([{ key: 'mob', state: 'emergency', message: 'Person overboard' }]);
+  });
+
+  it('taps onNotify even when the notifications API is absent (delta fallback path)', () => {
+    const tapped: string[] = [];
+    const h = makeApp({ notifications: undefined });
+    const bridge = new SignalKBridge(h.app, 'sk-video', { onNotify: (key) => tapped.push(key) });
+    bridge.raiseNotification('anchor.drag', { state: 'alarm', message: 'Dragging' });
+    bridge.raiseNotification('anchor.drag', { state: 'alarm', message: 'Still dragging' });
+    expect(tapped).toEqual(['anchor.drag']); // first raise only, even on the no-API path
+  });
 });
 
 describe('SignalKBridge — actions', () => {

@@ -8,6 +8,8 @@ import { createCameraResourceMethods } from './cameras/resource-provider';
 import { registerLayoutRoute } from './cameras/layout-routes';
 import { registerAppRoutes } from './web/app-routes';
 import { registerSessionRoute } from './web/session-routes';
+import { EventLog, FileEventLogPersistence } from './web/event-log';
+import { registerEventLogRoutes } from './web/event-log-routes';
 import { validateCamera, sourceEndpointChanged } from './cameras/camera-validation';
 import { assertHostAllowed, type ISsrfOptions } from './security/ssrf-guard';
 import { redactUrl } from './security/redact';
@@ -170,6 +172,7 @@ export = function (app: ServerAPI): Plugin {
   let bridge: SignalKBridge | null = null;
   let snapshots: SnapshotService | null = null;
   let snapshotStore: FileSnapshotStore | null = null;
+  let eventLog: EventLog | null = null;
   let recordings: RecordingManager | null = null;
   let recordingsDir: string | null = null;
   let recordingSweep: ReturnType<typeof setInterval> | null = null;
@@ -445,9 +448,17 @@ export = function (app: ServerAPI): Plugin {
         });
         videos = createFileAssetStore(dataDir);
 
+        // The durable activity feed: every notification raised through the bridge (MOB, incident,
+        // anchor drag, camera-offline) is tapped into an append-only log so the console can
+        // reconstruct what happened after the transient notifications have cleared.
+        eventLog = new EventLog({ persistence: new FileEventLogPersistence(dataDir) });
+
         // The Signal K bridge speaks plain Signal K JSON; the server's branded delta/notification
         // types are a structural superset, so we adapt at this single boundary.
-        bridge = new SignalKBridge(app as unknown as ISignalKApp, PLUGIN_ID);
+        bridge = new SignalKBridge(app as unknown as ISignalKApp, PLUGIN_ID, {
+          onNotify: (key, opts) =>
+            eventLog?.append({ type: key, state: opts.state, message: opts.message }),
+        });
         snapshotStore = new FileSnapshotStore(dataDir, 'snapshots', {
           maxCount: SNAPSHOT_MAX_COUNT,
           maxAgeMs: SNAPSHOT_MAX_AGE_MS,
@@ -972,6 +983,7 @@ export = function (app: ServerAPI): Plugin {
       bridge = null;
       snapshots = null;
       snapshotStore = null;
+      eventLog = null;
       recordings = null;
       recordingsDir = null;
       mobRecording = [];
@@ -1205,6 +1217,7 @@ export = function (app: ServerAPI): Plugin {
       // Uploaded video library: store + Range-served playback.
       registerUploadRoutes(router, () => videos, unauthorized);
       registerSnapshotReadRoutes(router, () => snapshotStore);
+      registerEventLogRoutes(router, () => eventLog);
 
       // Cached Frigate clips: read-only list + Range-served playback (same-origin).
       registerFrigateClipRoutes(router, { getStore: () => frigateClips });
