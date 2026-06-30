@@ -854,6 +854,12 @@ button.tile {
   align-items: center;
   gap: 11px;
 }
+/* The frame is the hero, so the clock floats over it light-on-dark in every theme. */
+.focus__clock {
+  font-size: 14px;
+  color: rgba(238, 242, 246, 0.82);
+  letter-spacing: 0.05em;
+}
 .focus__msg {
   position: absolute;
   left: 16px;

@@ -48,11 +48,26 @@ const PRESETS: { id: TImagingPreset; label: string }[] = [
   { id: 'glare', label: 'Glare' },
 ];
 
+/** A live HH:MM:SS clock for the focus top bar (matches the design's stamped-time treatment). */
+function FocusClock() {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  return (
+    <span className="focus__clock mono" aria-hidden="true">
+      {now.toLocaleTimeString([], { hour12: false })}
+    </span>
+  );
+}
+
 export function CameraFocus({ cameraId, onBack }: Props) {
   const [camera, setCamera] = useState<ICameraEntry | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [hints, setHints] = useState<ITransportHints | null>(null);
   const [rung, setRung] = useState<TTransport>('mjpeg');
+  const [active, setActive] = useState(false);
   const [msg, setMsg] = useState<Msg | null>(null);
   const [recording, setRec] = useState(false);
   // Operator override of the auto sub/main choice (null = auto). Reset when the camera changes.
@@ -68,6 +83,7 @@ export function CameraFocus({ cameraId, onBack }: Props) {
   useEffect(() => {
     const ctrl = new AbortController();
     setOverride(null); // a new camera starts on its auto sub/main choice
+    setActive(false);
     fetchCameras(ctrl.signal)
       .then((cams) => {
         const found = cams.find((c) => c.id === cameraId) ?? null;
@@ -147,6 +163,7 @@ export function CameraFocus({ cameraId, onBack }: Props) {
             transports={transports}
             variant={variant}
             onRung={setRung}
+            onActive={setActive}
           />
         )}
         <div className="focus__top">
@@ -158,9 +175,16 @@ export function CameraFocus({ cameraId, onBack }: Props) {
           >
             ‹ All cameras
           </button>
+          <span className={`chip ${active ? 'chip--live' : 'chip--neutral'}`}>
+            {active && <span className="dot dot--rec" />}
+            {active ? 'LIVE' : 'Connecting…'}
+          </span>
           <span className="chip chip--neutral">
             {camera?.name ?? cameraId}
-            <span className="mono"> · {transportLabel(rung)}</span>
+            <span className="mono">
+              {' '}
+              · {transportLabel(rung)} · {variant}
+            </span>
           </span>
           {variant === 'sub' && mainIsHevc && (
             <span className="chip chip--caution">H.264 sub-stream · main is H.265</span>
@@ -168,6 +192,8 @@ export function CameraFocus({ cameraId, onBack }: Props) {
           {mainWontPlay && (
             <span className="chip chip--caution">Full-res H.265 · may not play here</span>
           )}
+          <div className="page-head__spacer" />
+          <FocusClock />
         </div>
         {msg && (
           <div className={`focus__msg chip chip--${msg.kind === 'caution' ? 'caution' : 'info'}`}>
