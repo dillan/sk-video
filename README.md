@@ -8,10 +8,10 @@
 
 [![CI](https://github.com/dillan/sk-video/actions/workflows/ci.yml/badge.svg)](https://github.com/dillan/sk-video/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) [![code style: prettier](https://img.shields.io/badge/code_style-prettier-ff69b4.svg)](https://prettier.io)
 
-SK Video is a free add-on (a "plugin") for the [Signal K](https://signalk.org/) server that lets you watch your onboard IP cameras and saved video clips in [KIP](https://github.com/mxtommy/Kip) and other Signal K apps — no separate camera app, no cloud account.
+SK Video is a free add-on (a "plugin") for the [Signal K](https://signalk.org/) server that turns your onboard IP cameras into a marine video console — live viewing, recording, incident review, and safety tools — with no cloud account. It ships its **own app** (open it from the Signal K Webapps menu or install it to your home screen) and also feeds the [KIP](https://github.com/mxtommy/Kip) Video widget.
 
 <p align="center">
-  <img src="docs/images/widget-playing.png" alt="A boat camera playing in KIP" width="80%">
+  <img src="docs/images/widget-playing.webp" alt="A boat camera playing in KIP" width="80%">
 </p>
 
 > ### 📖 Full documentation → **[docs/](docs/README.md)**
@@ -36,7 +36,7 @@ Your **camera logins stay on the boat's server** — they're never copied to you
 
 - A [Signal K server](https://github.com/SignalK/signalk-server) running on your boat (for example on a Raspberry Pi or a [Cerbo GX](https://www.victronenergy.com/)).
 - One or more IP cameras on the same network (most marine and home IP cameras work).
-- [KIP](https://github.com/mxtommy/Kip) (or another Signal K app) to view the video.
+- A web browser to open the SK Video app. (KIP is optional — its Video widget is an alternative viewer.)
 
 ## Install
 
@@ -47,7 +47,7 @@ Your **camera logins stay on the boat's server** — they're never copied to you
 3. Open **Server → Plugin Config**, find **SK Video**, switch it **On**, and **Submit**.
 
 <p align="center">
-  <img src="docs/images/plugin-config.png" alt="Enabling SK Video in the Signal K admin" width="80%">
+  <img src="docs/images/admin-plugin-config.webp" alt="Enabling SK Video in the Signal K admin — the form only switches it on or off" width="80%">
 </p>
 
 **From source (until it's in the Appstore):**
@@ -63,18 +63,17 @@ Then enable **SK Video** in **Server → Plugin Config** as above.
 
 ## How to use it
 
-You don't configure cameras in the plugin itself — you do it from the **Video widget** in KIP, which talks to this plugin for you:
+Open the **SK Video app** from the Signal K **Webapps** menu (or go to `http://<your-server>:3000/sk-video/`). On a phone or tablet, use **Add to Home Screen** to install it.
 
-1. Add a **Video** widget to a KIP dashboard.
-2. In its settings, set **Source** to **Camera**.
-3. **Scan** for cameras, pick one from the list, or **add one by hand** (name, address, and a login if the camera needs one).
-4. Choose **Standard (HLS)** for everyday viewing or **Low latency (WebRTC)** for docking, and save.
+1. Go to **Cameras** and **Scan** for cameras, pick one, or **add one by hand** (name, address, and a login if the camera needs one).
+2. Open it from the **Live Wall** to watch. The player picks the best delivery automatically (low-latency WebRTC, HLS, or a still-refresh fallback).
+3. Explore **Review** (recordings, incidents, events, snapshots), the **Safety** console, and **Settings** (themes, alerts, and the operational config that used to live in the Signal K admin).
 
 <p align="center">
-  <img src="docs/images/camera-setup.png" alt="Setting up a camera from KIP's Video widget" width="80%">
+  <img src="docs/images/app-live-wall.webp" alt="The SK Video app's Live Wall" width="80%">
 </p>
 
-Step-by-step guides for common setups (foredeck camera, docking view, saving a snapshot with your GPS position, uploading a clip, and more) are in KIP's built-in help: **Help → Video Recipes**.
+Prefer KIP? Add a **Video** widget to a KIP dashboard and set its **Source** to **Camera** — it shares the same cameras. Step-by-step KIP recipes are in KIP's built-in help: **Help → Video Recipes**. Full guides for the app are in [`docs/`](docs/README.md).
 
 ## Good to know
 
@@ -108,8 +107,10 @@ SK Video is a TypeScript Signal K plugin. It manages [go2rtc](https://github.com
 | `POST`/`GET` | `/cameras/:id/ptz[/stop\|/presets\|/preset]` | ONVIF PTZ |
 | `GET` | `/cameras/discover` | scan the LAN for cameras (rate-limited) |
 | `POST`/`GET`/`DELETE` | `/videos[/:id]` | upload / list / play (HTTP Range) / delete |
+| `GET` | `/app/*` | the bundled SK Video web app (also mounted at `/sk-video/` in the Webapps menu) |
+| `GET`/`PUT` | `/operational-config` | the web-app-owned operational settings (Frigate, anchor, …) |
 
-Camera definitions live at `/signalk/v2/api/resources/cameras`. All browser traffic is same-origin through the plugin proxy — the browser never reaches go2rtc or a camera directly.
+This is a slice; recordings, incidents (+ `export.zip`), snapshots, the event log, MOB status, the session whoami, and web-push all have endpoints too — see the full [HTTP API reference](docs/reference/http-api.md). Camera definitions live at `/signalk/v2/api/resources/cameras`. All browser traffic is same-origin through the plugin proxy — the browser never reaches go2rtc or a camera directly.
 
 ### Security
 

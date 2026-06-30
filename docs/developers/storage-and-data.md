@@ -22,6 +22,9 @@ flowchart TD
       IncStore[incidents/&lt;id&gt;/manifest + assets]
       Clips[frigate-clips/]
       go2rtc[go2rtc binary + go2rtc.yaml<br/>0600, loopback config]
+      Events[events.json<br/>0600, capped ~5000]
+      Push[push-subscriptions.json + vapid.json<br/>0600]
+      Web[public/ — web-app build<br/>sw.js · manifest · hashed assets · read-only]
     end
     Cameras -. "id links to" .-> Creds
     Cameras -. "id links to" .-> Recordings
@@ -33,9 +36,13 @@ flowchart TD
 | Credentials | `credentials.json`, owner-only, write-only | n/a |
 | Uploaded videos | `videos/` + index | byte + count quota |
 | DVR recordings | rolling `*.mp4` segments | ~10 GB / 48 h, oldest-first |
-| Snapshots | `*.jpg` + JSON sidecar | count + age (default 2000 / 30 days) |
+| Snapshots | `*.jpg` + JSON sidecar (dedicated `FileSnapshotStore`) | count + age (`SNAPSHOT_MAX_COUNT` 2000 / 30 days), oldest-first |
 | Incident bundles | `incidents/<id>/` (manifest + assets) | byte + count + age; **pinned bundles never pruned** |
 | Frigate clips | `frigate-clips/` cache | byte + count quota |
+| Event log | `events.json`, owner-only (0600) | capped ~5000 events, pruned oldest-first |
+| Push subscriptions | `push-subscriptions.json`, owner-only (0600) | deduped by endpoint; dead ones pruned on send |
+| VAPID keypair | `vapid.json`, owner-only (0600) | n/a — stable for the install's life |
+| Web-app bundle | `public/` (sw.js, manifest, hashed `assets/`) | n/a (build artifact, served read-only) |
 
 ---
 
@@ -95,6 +102,14 @@ sequenceDiagram
 ## Incident bundles: assembled atomically, honest about completeness
 
 An incident is staged under a temp dir and made visible by a **single** rename, so a crash mid-assembly leaves only an orphan staging dir (swept at startup) — the listed/served set never contains a half-written bundle. The manifest records `evidence: 'best-effort'` and downgrades to _partial_ with the failures listed if a clip couldn't be captured. Nothing is ever silently claimed complete.
+
+### Retrospective marking from the rolling buffer
+
+A "mark incident" doesn't have to be live. A trigger request can carry a `triggerAt` epoch-ms anchor (`src/incidents/incident-validation.ts`), so an operator can cut a clip **retrospectively** from DVR segments that are still on disk — e.g. a moment they scrubbed back to. The controller caps `triggerAt` at the current time and honestly clamps the clip's coverage to whatever segments survived pruning, so the bundle never claims footage the rolling buffer has already aged out.
+
+### Exporting a bundle (`export.zip`)
+
+`GET /incidents/<id>/export.zip` (`src/incidents/incident-routes.ts` → `incident-export.ts`) zips the manifest, an honesty README, and every asset blob — foldered by kind. Assets are read **fully into memory** and zipped **best-effort**: a missing/unreadable blob is skipped, never fatal, and the skipped ids are surfaced in the README so the export is honest about what it contains. (Unlike the streamed upload/serve paths, this one buffers — incident bundles are bounded, so the whole zip is built in RAM.)
 
 ---
 

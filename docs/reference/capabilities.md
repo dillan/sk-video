@@ -39,6 +39,26 @@ SK Video tries hard not to over-promise. This page is the honest ledger: what ea
 - **Is:** a packaged clip + telemetry track + snapshots around an event, honest about completeness (marked _partial_ with the failures recorded if a piece couldn't be captured).
 - **Isn't:** guaranteed-precise or free — pre-roll means always buffering a little. The manual "mark incident" trigger is the reliable path; auto-triggers from alarms are best-effort.
 
+## DVR scrubber & retrospective incidents
+
+- **Is:** a scrub of the rolling recording buffer, and a "mark incident from a past moment" that cuts a bundle from whatever DVR segments still exist around that instant (`triggerAt`). Coverage is clamped honestly — the manifest records what was asked for vs. what the segments actually held.
+- **Isn't:** a way to recover footage that was never recorded or has already been pruned. The retrospective cut reaches back only as far as the buffer does, and the clip can jump across a recorder-restart gap (disclosed as non-contiguous).
+
+## Incident export.zip
+
+- **Is:** a shareable zip — manifest, an honesty README, and every captured asset — so you can hand off "what was captured." The per-file sha256 lets a recipient confirm the bytes weren't altered, and partial coverage is disclosed in the README.
+- **Isn't:** chain-of-custody. The sha256 is a file-integrity check, not a custody guarantee, and a partial bundle stays partial — the zip shares what was captured, nothing more.
+
+## Event log / activity feed
+
+- **Is:** a durable, best-effort record of safety/system events (MOB armed, incident captured, anchor drag, camera offline), so "reconstruct what happened last night" is possible after the live notifications have cleared.
+- **Isn't:** a certified VDR. It carries only type/state/message (no secrets), is best-effort, and prunes the oldest rows past a cap (~5000) — old enough history eventually rolls off.
+
+## Web-push safety alerts
+
+- **Is:** best-effort, outbound-only push of alerting events to subscribed devices, so a phone can wake even with the app closed. The Pi only ever makes outbound requests — it never needs to be internet-reachable — and payloads are end-to-end encrypted.
+- **Isn't:** guaranteed delivery. It needs the boat to have connectivity to send, a non-alerting/clear state doesn't push, and on iOS it only works from the installed PWA.
+
 ## AIS slew-to-cue
 
 - **Is:** a single deterministic aim of a calibrated PTZ camera at the nearest collision-risk (smallest CPA) AIS target.
@@ -58,6 +78,11 @@ SK Video tries hard not to over-promise. This page is the honest ledger: what ea
 
 - **Is:** the camera's **native** push-to-talk backchannel (where it has a speaker), routed same-origin.
 - **Isn't:** telephony-grade, and not WHIP ingest. Camera- and codec-dependent; quality varies.
+
+## Installable PWA & offline bounds
+
+- **Is:** an installable app whose shell (HTML/JS/CSS/icon) works offline once you've visited it, and already-viewed evidence stays reachable. Navigations are network-first, falling back to the cached shell only when offline.
+- **Isn't:** an offline mirror of the boat. Live video and every fresh list always require connectivity — stale safety/operational data must never be served from cache — so the offline part is bounded to the shell plus evidence you'd already loaded.
 
 ---
 

@@ -14,7 +14,7 @@ The job: browsers can play WebRTC, HLS, and MJPEG, but not the RTSP/RTMP streams
 | **Config builder** | `src/gateway/go2rtc-config.ts` | Turns cameras + credentials into go2rtc's `streams` config (loopback ports only). |
 | **Binary manager** | `src/gateway/go2rtc-binary-manager.ts` | Downloads the pinned go2rtc binary once (atomic install, optional SHA pin). |
 | **Process supervisor** | `src/gateway/go2rtc-process.ts` | Spawns/restarts/stops go2rtc; serialized so a restart can't orphan a port-holding process. |
-| **Proxy routes** | `src/gateway/go2rtc-proxy-routes.ts` | The same-origin WHEP/HLS/frame/talk/health/transport endpoints. |
+| **Proxy routes** | `src/gateway/go2rtc-proxy-routes.ts` | The same-origin WHEP/HLS/frame/talk/health/transport endpoints. `…/talk` is **auth-gated** (pushing audio out of a speaker is state-changing); the live-view rungs (`whep`/`hls`/`frame`) stay ungated by design. |
 | **Stream health** | `src/gateway/stream-health.ts` | Reads go2rtc's `/api/streams` into a redacted DTO. |
 | **Watchdog** | `src/gateway/stream-watchdog.ts` | Debounced "safety-critical camera went dark" alarm. |
 

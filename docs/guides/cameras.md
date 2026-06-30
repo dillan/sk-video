@@ -1,15 +1,15 @@
 # Adding & organizing cameras
 
-Cameras are added from KIP's **Video widget** settings, and the plugin saves them on the boat so every device shares them. This guide covers the three ways to add a camera, how logins are handled, and how telling the boat _where_ a camera is mounted unlocks the smart features.
+Cameras are managed in the **SK Video app** under **Cameras** (and, if you prefer, from KIP's Video widget). Either way the plugin saves them on the boat so every device shares them. This guide covers the ways to add a camera, how logins are handled, and how telling the boat _where_ a camera is mounted unlocks the smart features. The app is also where you run the **calibration wizard** and check a camera's **health**.
 
 ---
 
 ## Three ways to add a camera
 
-In the Video widget settings, set **Source** to **Camera**. You'll see three source tabs:
+In the SK Video app, go to **Cameras → Add a camera** (in KIP, set the Video widget **Source** to **Camera**). You'll see three source tabs:
 
 <p align="center">
-  <img src="../images/source-tabs.png" alt="The Camera / URL / Uploaded source tabs in the widget settings" width="85%">
+  <img src="../images/source-tabs.webp" alt="The Camera / URL / Uploaded source tabs in the widget settings" width="85%">
 </p>
 
 ### 1. Scan (recommended)
@@ -17,7 +17,7 @@ In the Video widget settings, set **Source** to **Camera**. You'll see three sou
 Click **Scan**. SK Video broadcasts on the local network and lists any cameras that answer (most modern IP cameras speak **ONVIF** and will show up). Pick one, and the address and stream details are filled in for you — often with **no typing at all**.
 
 <p align="center">
-  <img src="../images/scan.png" alt="The network scan listing discovered cameras" width="85%">
+  <img src="../images/scan.webp" alt="The network scan listing discovered cameras" width="85%">
 </p>
 
 > Some boat networks block the discovery broadcast (it can't cross certain switches, VLANs, or a Docker bridge). If **Scan** comes up empty but you know the camera's address, add it by hand instead.
@@ -32,7 +32,7 @@ Click **Add a camera** and fill in:
 - **Path** — the stream path from the camera's manual, e.g. `/stream1` or `/h264Preview_01_main`.
 
 <p align="center">
-  <img src="../images/config-camera-manual.png" alt="The Add-a-camera form filled in by hand" width="85%">
+  <img src="../images/config-camera-manual.webp" alt="The Add-a-camera form filled in by hand" width="85%">
 </p>
 
 If you only have a full stream URL from the camera maker, the **URL** tab accepts an `http(s)://`, `rtsp://`, or `rtmp://` link directly.

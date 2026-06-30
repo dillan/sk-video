@@ -9,11 +9,11 @@ The plugin reaches out to cameras on the LAN, runs a child process, downloads a 
 ## The invariants
 
 1. **Same-origin only.** The browser never reaches go2rtc (`:1984`) or a camera IP. A client-supplied `src=` is never honored. Everything is proxied by an internal camera **id**.
-2. **Credentials are server-side, write-only.** They're never in the `cameras` resource, never echoed (not even by introspection/auto-fill), and **redacted from every log** (`src/security/redact.ts`). Repointing a camera's endpoint drops its stored credentials.
+2. **Credentials are server-side, write-only.** They're never in the `cameras` resource, never echoed (not even by introspection/auto-fill), and **redacted from every log** (`src/security/redact.ts`). Repointing a camera's endpoint drops its stored credentials. The same write-only rule covers the Frigate **`mqttPassword`** in operational-config: accepted on PUT, **never returned on GET** (redacted to a `mqttPasswordSet` presence flag), and merged keep-vs-clear on write — a non-empty value replaces it, an empty string clears it, an omitted field keeps it (`src/web/operational-config.ts`).
 3. **Sources come from validated structured fields** against a scheme **allow-list** (`rtsp`/`rtsps`/`rtmp`/`http`/`https`/`onvif`). `exec:`/`ffmpeg:`/`pipe:` and anything else are blocked — go2rtc's dangerous source schemes can never be reached.
 4. **SSRF egress guard on every outbound host.** Hostnames are resolved and **every** resolved IP must pass; loopback, link-local + the cloud-metadata address, and IPv4-embedding IPv6 forms are always denied. Any URL ONVIF hands back is re-validated.
-5. **`validateCamera` is a security control.** The field set is **closed**; unknown keys and credential-looking fields are rejected. Every new model field gets its own validator and is optional (no migration).
-6. **Mutating routes require auth on a secured server.** PUT/action handlers inherit the server's auth, and every state-changing plugin HTTP route (PTZ, imaging, calibration, recording, snapshot, MOB, slew, incidents, video upload/delete, credentials) gates itself the same way via `src/security/request-auth.ts` — the check runs **first** (before any `503`/`404`), so it can't be used to probe, and it **fails closed** if the security strategy misbehaves. There's no unauthenticated MOB, snapshot, or record trigger. (Streaming negotiation — `…/whep`, `…/talk` — and the rate-limited `…/discover`, `…/test`, `…/discover/introspect` probes are not yet gated.)
+5. **`validateCamera` is a security control.** The field set is **closed**; unknown keys and credential-looking fields are rejected. Every new model field gets its own validator and is optional (no migration). **`validateOperationalConfig` is the same discipline for the web app's config surface** (`src/web/operational-config.ts`): untrusted operator input is run through a **closed key-set** validator (unknown top-level or `frigate` keys are rejected) _before_ it's persisted and applied via the server's `restart()` (`applyConfig` → `pluginRestart` in `src/index.ts`), so a save can never smuggle an unexpected field into the re-wired plugin.
+6. **Mutating routes require auth on a secured server.** PUT/action handlers inherit the server's auth, and every state-changing plugin HTTP route (PTZ, imaging, calibration, recording, snapshot, MOB, slew, incidents, video upload/delete, credentials, two-way `…/talk`, the rate-limited `…/test` and `…/discover/introspect` probes, push subscribe/unsubscribe, and operational-config GET/PUT) gates itself the same way via `src/security/request-auth.ts` — the check runs **first** (before any `503`/`404`), so it can't be used to probe, and it **fails closed** if the security strategy misbehaves. There's no unauthenticated MOB, snapshot, or record trigger. The only ungated browser-facing routes are the live-view streaming rungs (`…/whep`, and the GET `…/hls`/`…/frame` paths) and the `…/discover` scan — ungated **by design**, matching the existing ungated GET media paths, since gating only WHEP while frame/HLS stay open would be security theatre.
 7. **go2rtc is bound to loopback**, and the binary download is HTTPS from a pinned URL, installed atomically.
 8. **Brute-forceable routes are rate-limited** (credentials, connection test, introspect, discovery scan) — but never the safety trigger (rate-limiting a MOB button could lock out an operator mid-incident).
 
@@ -66,6 +66,25 @@ The id is validated against the known cameras on every request, so there's nothi
 
 ---
 
+## Web-push without exposing the boat
+
+Safety alerts reach a phone even when the app is closed, and they do it **without the Pi ever being internet-reachable**. Web push is **outbound only**: the plugin POSTs each notification to the browser vendor's push service; nothing has to connect _in_ to the boat.
+
+```mermaid
+flowchart LR
+    Pi[Plugin on the Pi] -- "outbound HTTPS,<br/>signed JWT" --> PS[Browser push service]
+    PS --> Dev[Subscribed device]
+    Dev -. "subscribe / unsubscribe<br/>(auth-gated)" .-> Pi
+```
+
+What keeps it honest:
+
+- A **VAPID keypair** (`src/web/vapid.ts`) is generated on first run and **persisted** — a subscription is bound to the public key it subscribed with, so the key is stable for the life of the install (rotating it would silently orphan every subscription). The private key signs the JWT that authenticates each push (`PUSH_SUBJECT` + `sendSafetyPush` in `src/index.ts`); the public key is the only thing handed to browsers.
+- **Subscribe / unsubscribe are auth-gated** (`src/web/push-routes.ts`) — they change who receives safety alerts. Only `GET /push/vapid-public-key` is open, because a browser needs it before it can subscribe and it's a public key by definition.
+- The push fan-out is **best-effort and isolated**: a push failure (or unconfigured push) never affects the safety path that raised the notification, and dead subscriptions are pruned as they're discovered.
+
+---
+
 ## Other mechanisms at a glance
 
 | Concern | Mechanism | File |
@@ -75,6 +94,8 @@ The id is validated against the known cameras on every request, so there's nothi
 | Unauthenticated mutation / enumeration | auth gate on every state-changing route (feature-detects the SK security strategy; runs before any 503/404; fails closed) | `src/security/request-auth.ts` |
 | A stalled dependency hanging a handler | per-call timeouts / `AbortSignal` | `src/security/with-timeout.ts`, loopback fetches |
 | Path traversal on stored files | opaque ids only; `..` rejected; names validated | upload/recording/incident stores |
+| Path traversal on the `/app` static server | `resolveAssetPath` rejects `..`, NUL bytes, undecodable input, and percent-encoded traversal before any file read | `src/web/app-routes.ts` |
+| Push without internet-reachability | outbound-only web-push; a persisted VAPID keypair signs each push | `src/web/vapid.ts`, `src/index.ts` |
 | Malicious uploads | magic-byte sniff (not the filename/Content-Type) | `src/uploads/video-sniff.ts` |
 | Self-signed marine gear | **per-camera, explicit** `allowSelfSigned` (never a global verify-off) | `src/onvif/onvif-connect.ts` |
 | Memory-exhaustion uploads | streamed to disk with an incremental cap + backpressure | `src/uploads/file-asset-store.ts` |

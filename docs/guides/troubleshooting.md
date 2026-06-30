@@ -18,7 +18,7 @@ Work down this list:
 
 1. **Check the address and path.** A wrong stream path is the most common cause. Open the camera's own app or manual and confirm the exact path (e.g. `/stream1`, `/h264Preview_01_main`).
 2. **Check the login.** If the camera needs a username/password and it's wrong, you'll get no picture. Re-enter it (logins are write-only, so you won't see the old value — just set it again).
-3. **Try the other delivery mode.** Switch between **Standard (HLS)** and **Low latency (WebRTC)** in the widget's Quality & Latency settings. Some devices and networks strongly prefer one.
+3. **Try the other delivery mode.** SK Video walks the transports automatically (WebRTC → HLS → still-refresh); in KIP's Video widget you can also force one under Quality & Latency. Some devices and networks strongly prefer one.
 4. **Try the H.264 sub-stream.** If it's an H.265 camera, its picture may not play on your device — point the camera at its H.264 sub-stream instead.
 
 ---
@@ -38,7 +38,7 @@ Some camera types need **ffmpeg** available to the server to produce a snapshot.
 
 ## Recording isn't available
 
-Recording is **tier-gated**. A low-power **Cerbo-class** device offers no recording channels by design. Check your tier under the plugin's status, and see [Hardware & performance](hardware-and-performance.md). If you're sure your hardware is capable but it's mis-detected, set the **Hardware tier** override in the plugin config.
+Recording is **tier-gated**. A low-power **Cerbo-class** device offers no recording channels by design. Check your tier under the plugin's status, and see [Hardware & performance](hardware-and-performance.md). If you're sure your hardware is capable but it's mis-detected, set the **Hardware tier** override in the SK Video app under **Settings → Operational → Advanced**.
 
 ---
 
@@ -56,7 +56,11 @@ If you marked a camera **safety-critical** and it alarms on and off, the camera'
 
 **Can I see the same cameras on every phone and tablet?** Yes — cameras are saved on the boat as shared Signal K resources. Set up once, available everywhere.
 
-**Does it work without KIP?** The viewing UI is KIP's Video widget, so that's the easy path. Under the hood the plugin is a standard Signal K plugin with an [HTTP API](../reference/http-api.md), so other Signal K apps can use it too.
+**Does it work without KIP?** Yes. SK Video ships its **own** app — open it from the Signal K **Webapps** menu (or `…:3000/sk-video/`), and install it to your home screen if you like. KIP's Video widget is an optional alternative; both share the same cameras. Under the hood it's a standard Signal K plugin with an [HTTP API](../reference/http-api.md), so other apps can use it too.
+
+**How do I open the SK Video app?** From the Signal K admin **Webapps** menu, click **SK Video** — or go straight to `http://<your-server>:3000/sk-video/`. On a phone or tablet, use **Add to Home Screen** to install it.
+
+**The app says alerts are blocked — what now?** Web-push safety alerts need notification permission and, on iPhone, the app installed to your Home Screen first. Allow notifications for the site in your browser settings, then re-open **Settings → Safety alerts**. Delivery is best-effort and needs the boat to have internet.
 
 **Is the man-overboard feature a replacement for proper MOB procedure?** No. It points cameras at a _known position_ to help the lookout; it does not detect or track the person. See [Safety features](safety.md) for an honest account.
 

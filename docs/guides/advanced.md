@@ -13,7 +13,7 @@ If you have a calibrated pan/tilt camera with absolute positioning, you can tell
 - It needs a **calibrated** absolute-PTZ camera; an uncalibrated or fixed camera can't be aimed.
 - It assumes the AIS data is current — a stale contact may be a vessel that's no longer there.
 
-**Calibrating a camera (one time).** Geo-pointing — both slew-to-cue and man-overboard — needs to know how the camera's pan/tilt numbers map to real-world bearings. You teach it that once with the **calibration wizard** in the widget: aim the camera at two known directions for each axis and save. SK Video works out the mapping and stores it on the camera, so you never type any numbers. Re-run it any time if the camera is remounted.
+**Calibrating a camera (one time).** Geo-pointing — both slew-to-cue and man-overboard — needs to know how the camera's pan/tilt numbers map to real-world bearings. You teach it that once with the **calibration wizard** in the SK Video app (open a camera in Camera Focus): aim the camera at two known directions for each axis and save. SK Video works out the mapping and stores it on the camera, so you never type any numbers. Re-run it any time if the camera is remounted.
 
 Great for "what's that ship crossing our bow?" without leaving the helm.
 
@@ -27,7 +27,7 @@ Honest limits:
 
 - It uses the camera's **native** two-way audio, and it's **camera- and codec-dependent** — not every camera supports it, and audio quality varies.
 - It's **best-effort hailing/intercom**, not telephony-grade.
-- The widget only offers it when the camera reports a speaker.
+- It's offered only when the camera reports a speaker — in the SK Video app's Camera Focus, or in the KIP widget.
 
 ---
 
@@ -46,7 +46,7 @@ A masthead 360° camera can replace several fixed cameras — one device, a full
 
 If you run **[Frigate](https://frigate.video/)** (a popular open-source camera AI) on your own hardware, SK Video can consume its detections and surface **person / car / boat** alerts as Signal K notifications — with a short clip of the event cached on the boat for review.
 
-To connect it, set the **Frigate MQTT broker URL** (and optionally the **Frigate HTTP API URL** for clips) in the plugin config. You can filter by **labels**, a **minimum confidence score**, and specific **zones**.
+To connect it, open the SK Video app and go to **Settings → Operational → Frigate**: enter the broker **host / port** (and a **username / password** if your broker needs one — the password is write-only and never shown back), and optionally the **HTTP API URL** for clips. You can filter by **labels**, a **minimum confidence score**, and specific **zones**. Saving briefly restarts the plugin to connect.
 
 Honest limits — these matter:
 
@@ -62,9 +62,9 @@ Frigate is also what powers the **experimental visual MOB refine** (see [Safety 
 
 For an event worth keeping, SK Video can assemble a single **incident bundle**: a short **before-and-after clip** from each camera, a **sampled track** of the boat's telemetry across the event, and **snapshots** — all packaged together with the position and time.
 
-- The reliable trigger is the **manual "mark incident"** button. You can also point the plugin at one of your **notification paths** (e.g. an alarm subtree) so a bundle is captured automatically when that alarm fires.
+- The reliable trigger is the **manual "mark incident"** button — in the SK Video app's **Review → Recordings**, where you can also scrub the DVR timeline back and **mark an incident from a past moment**. You can also set an **incident auto-trigger path** in **Settings → Operational** (e.g. an alarm subtree) so a bundle is captured automatically when that alarm fires.
 - A bundle is **honest about completeness**: if a clip couldn't be captured but the telemetry and snapshots were, it's marked _partial_ with the failures recorded — never silently claimed complete.
-- You can **pin** a bundle so retention never prunes it, and add a label or notes.
+- Browse and review bundles in **Review → Incidents**; **pin** one so retention never prunes it, add a label or notes, and **export a `.zip`** to share what was captured (manifest + clips + telemetry + an honesty README).
 
 > Pre-roll (the "before") means the plugin is always keeping a short rolling buffer — a small continuous cost, even when you're not actively recording. It's best-effort evidence, not a legal black box.
 
@@ -72,6 +72,7 @@ For an event worth keeping, SK Video can assemble a single **incident bundle**: 
 
 ## Where to next
 
+- **[The SK Video app](the-app.md)** — the console where you drive all of this (Live, Review, Safety, Settings).
 - **[Hardware & performance](hardware-and-performance.md)** — which of these your hardware can sustain.
 - **[What it is — and isn't](../reference/capabilities.md)** — the full honesty ledger.
-- **[Plugin configuration](../reference/configuration.md)** — every setting these features use.
+- **[Settings & configuration](../reference/configuration.md)** — every operational setting these features use.

@@ -8,7 +8,7 @@ SK Video can turn your cameras into safety instruments: point every capable came
 
 ## Man-overboard (MOB) camera pointing
 
-When you trigger a man-overboard event (from a button in KIP, or a key mapped to it on the boat), SK Video does several things at once:
+When you trigger a man-overboard event — from the **Safety console in the SK Video app**, a button in KIP, or a key mapped to it on the boat — SK Video does several things at once:
 
 1. **Drops a marker** at the person's last known position (`navigation.mob.position`) — the same kind of marker a chartplotter's MOB button creates.
 2. **Raises an emergency notification** on the boat's network so every screen and alarm hears it.
@@ -39,7 +39,7 @@ What it **can't** do, stated plainly:
 
 ### Experimental: visual refine (off by default)
 
-There's an optional, clearly-labelled **"Experimental visual MOB refine (NOT safety-rated)"** setting. When it's on _and_ you run a [Frigate](advanced.md#frigate-motion-alerts) person-detector, a confident detection can add a **small, bounded nudge** on top of the geo-pointing — a little correction toward a detected person, layered over the authoritative position-based aim.
+There's an optional, clearly-labelled **"Experimental visual MOB refine (NOT safety-rated)"** setting in the SK Video app under **Settings → Operational**. When it's on _and_ you run a [Frigate](advanced.md#frigate-motion-alerts) person-detector, a confident detection can add a **small, bounded nudge** on top of the geo-pointing — a little correction toward a detected person, layered over the authoritative position-based aim.
 
 It is deliberately conservative:
 
@@ -62,7 +62,7 @@ If you already get an **anchor-drag or geofence alarm** — from Signal K's Anch
 
 Important: SK Video **does not compute anchor drag itself.** It _consumes_ the alarm you already produce and turns it into local evidence on the right cameras. It's "automatic evidence when the alarm sounds", not a monitoring service.
 
-To use it, set the **Anchor/geofence watch path** in the plugin config (it defaults to `notifications.navigation.anchor`) and tag the relevant cameras with the **anchor** or **security** role (see [Adding cameras](cameras.md)). Leave the path blank to turn it off.
+To use it, set the **Anchor/geofence watch path** in the SK Video app under **Settings → Operational** (it defaults to `notifications.navigation.anchor`) and tag the relevant cameras with the **anchor** or **security** role (see [Adding cameras](cameras.md)). Leave the path blank to turn it off.
 
 ---
 

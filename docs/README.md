@@ -12,7 +12,8 @@ Plain-language, step-by-step guides. No coding required.
 
 | Guide | What it covers |
 | --- | --- |
-| **[Getting started](guides/getting-started.md)** | Install the plugin, switch it on, and see your first camera. |
+| **[Getting started](guides/getting-started.md)** | Install the plugin, switch it on, open the app, and see your first camera. |
+| **[The SK Video app](guides/the-app.md)** | A tour of the console: Live, Review (recordings, incidents, events, snapshots), Safety, Settings, and installing it as an app. |
 | **[Adding & organizing cameras](guides/cameras.md)** | Scan the network or add a camera by hand, give it a login, and tell the boat where it's mounted. |
 | **[Watching video](guides/viewing.md)** | Delivery modes (smooth vs. low-latency), moving a PTZ camera, and night/fog/glare picture presets. |
 | **[Snapshots & recording](guides/snapshots-and-recording.md)** | Save a photo with your GPS position baked in, and record a camera to the boat. |
@@ -27,7 +28,7 @@ Look-it-up tables for when you need an exact value.
 
 | Reference | What's in it |
 | --- | --- |
-| **[Plugin configuration](reference/configuration.md)** | Every setting on the plugin's config page. |
+| **[Settings & configuration](reference/configuration.md)** | Every operational setting (in the app's Settings → Operational), with types and defaults. |
 | **[Camera model](reference/camera-model.md)** | Every field a camera can have (mount, role, capabilities, calibration…). |
 | **[HTTP API](reference/http-api.md)** | Every endpoint the plugin exposes, grouped by feature. |
 | **[What it is — and isn't](reference/capabilities.md)** | An honest capability ledger: the promises we keep and the ones we deliberately don't make. |
@@ -52,4 +53,4 @@ Also useful: [`CONTRIBUTING.md`](../CONTRIBUTING.md) (setup + checks), [`AGENTS.
 
 ## What is SK Video, in one paragraph?
 
-SK Video is a [Signal K](https://signalk.org/) **server plugin**. Browsers can't open the `rtsp://` streams most IP cameras produce, can't speak the **ONVIF** language cameras use for pan/tilt/zoom, and can't find cameras on the network. SK Video does all of that **on the boat's server** and hands the browser a picture it can show — same-origin, with your camera logins never leaving the boat. On top of plain viewing it adds marine-specific instruments: point every camera at a man-overboard position, capture position-stamped snapshots and incident clips, record to the boat, and react to your own anchor and AIS alarms. The viewing UI lives in the separate [KIP](https://github.com/mxtommy/Kip) app's Video widget; this plugin is the engine behind it.
+SK Video is a [Signal K](https://signalk.org/) **server plugin**. Browsers can't open the `rtsp://` streams most IP cameras produce, can't speak the **ONVIF** language cameras use for pan/tilt/zoom, and can't find cameras on the network. SK Video does all of that **on the boat's server** and hands the browser a picture it can show — same-origin, with your camera logins never leaving the boat. On top of plain viewing it adds marine-specific instruments: point every camera at a man-overboard position, capture position-stamped snapshots and incident clips, record to the boat, and react to your own anchor and AIS alarms. It ships its **own app** — a console you open from the Signal K Webapps menu (or install to your home screen) for live viewing, review, and safety — and it also feeds the [KIP](https://github.com/mxtommy/Kip) Video widget for those who prefer it.

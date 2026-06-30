@@ -32,38 +32,35 @@ Then restart Signal K.
 
 1. In the Signal K admin, go to **Server → Plugin Config**.
 2. Find **SK Video** in the list and switch it **On**.
-3. Leave **Hardware tier** on **Auto-detect** — the plugin figures out what your hardware can do.
-4. Click **Submit**.
+3. Click **Submit**.
 
-<p align="center">
-  <img src="../images/plugin-config.png" alt="Enabling SK Video in the Signal K admin Plugin Config screen" width="85%">
-</p>
+That's it — this screen only turns the plugin on and off. There are **no settings to fill in here**: everything you configure (cameras, Frigate, anchor watch, themes, alerts) lives in the **SK Video app**, which you'll open in the next step. The plugin auto-detects what your hardware can do; you can override that later in the app under **Settings → Operational** if it ever guesses wrong.
 
 > **First-run note:** the very first time you add a camera, the plugin downloads a small helper program ([go2rtc](https://github.com/AlexxIT/go2rtc)) once. So the server needs internet access on that first run. After that, everything works offline.
 
-That's all the configuration most boats ever need here. **You don't add cameras on this screen** — you add them from the Video widget (next step), and the plugin remembers them for every device on the boat.
+---
+
+## 3. Open the SK Video app
+
+SK Video ships its own console — a web app served by your boat's server, so there's nothing extra to install.
+
+1. In the Signal K admin, open the **Webapps** menu (or go straight to `http://<your-server>:3000/sk-video/`).
+2. Click **SK Video**. The app opens to the **Live Wall**.
+3. On a phone or tablet, use your browser's **Add to Home Screen** to install it like a native app (it then runs full-screen and can send you safety alerts).
+
+> Prefer KIP? You can also watch cameras in [KIP](https://github.com/mxtommy/Kip)'s **Video widget** — see [Viewing your cameras](viewing.md). Both share the same cameras; set up once, use anywhere.
 
 ---
 
-## 3. See your first camera
+## 4. Add your first camera
 
-The video itself shows up in **[KIP](https://github.com/mxtommy/Kip)**, the Signal K dashboard app, through its **Video widget**.
+In the SK Video app:
 
-1. Open KIP and edit a dashboard.
-2. Add a **Video** widget.
-3. Open the widget's settings and set **Source** to **Camera**.
-4. Click **Scan** to find cameras on the network, pick yours from the list — or **Add a camera** by hand if it doesn't appear (you'll need its address, and a login if the camera requires one).
-5. Choose a delivery mode (start with **Standard / HLS**) and **Save**.
+1. Go to **Cameras** and choose **Add a camera** (or the onboarding wizard if your wall is empty).
+2. Click **Scan** to find cameras on the network and pick yours — or add it by hand if it doesn't appear (you'll need its address, and a login if the camera requires one).
+3. Give it a name, set where it's mounted, and **Save**.
 
-<p align="center">
-  <img src="../images/camera-setup.png" alt="Adding a camera from KIP's Video widget settings" width="85%">
-</p>
-
-You should now have live video:
-
-<p align="center">
-  <img src="../images/widget-playing.png" alt="A boat camera playing live in the KIP Video widget" width="85%">
-</p>
+Open it from the **Live Wall** and you should have live video. If a camera shows controls but a black picture, see [Troubleshooting](troubleshooting.md) — it's almost always an H.265 main stream, which SK Video works around with the camera's H.264 sub-stream.
 
 ---
 
@@ -76,6 +73,7 @@ You should now have live video:
 
 ## Where to next
 
+- **[The SK Video app](the-app.md)** — a tour of the console: Live, Review (recordings, incidents, events, snapshots), Safety, and Settings.
 - **[Adding & organizing cameras](cameras.md)** — scanning vs. adding by hand, logins, and telling the boat where each camera is mounted (which unlocks the smart features).
 - **[Watching video](viewing.md)** — pick the right delivery mode, move a PTZ camera, and use the night/fog picture presets.
 - **[Troubleshooting](troubleshooting.md)** — if the scan finds nothing or the picture won't load.

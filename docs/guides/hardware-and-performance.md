@@ -6,7 +6,7 @@ SK Video runs on the same little computer as your Signal K server. Plain viewing
 
 ## Hardware tiers
 
-On startup the plugin sizes up your hardware (CPU cores, memory, architecture, and any AI accelerator) and picks a **tier**. You can override it in the plugin config if the auto-detection is wrong, but **Auto-detect** is right for almost everyone.
+On startup the plugin sizes up your hardware (CPU cores, memory, architecture, and any AI accelerator) and picks a **tier**. You can override it in the SK Video app under **Settings → Operational → Advanced** if the auto-detection is wrong, but **Auto-detect** is right for almost everyone.
 
 | Tier | Typical hardware | Recording | Fast snapshots | On-device AI | Cameras you can record at once |
 | --- | --- | --- | --- | --- | --- |
@@ -46,4 +46,4 @@ If you're tight on space on a Pi, lean on snapshots and incident bundles rather 
 
 - **[Snapshots & recording](snapshots-and-recording.md)** — what recording costs in practice.
 - **[Advanced features](advanced.md)** — the tier-gated features.
-- **[Plugin configuration](../reference/configuration.md)** — the hardware-tier override and other settings.
+- **[Settings & configuration](../reference/configuration.md)** — the hardware-tier override and other operational settings, in the app.

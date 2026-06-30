@@ -6,7 +6,7 @@ Two ground rules hold everywhere:
 
 - **Same-origin only.** The browser talks to these endpoints; the plugin talks to go2rtc and the cameras. A browser never reaches go2rtc or a camera directly, and a client-supplied `src=` is never honored.
 - **`503` until started.** Anything that needs the plugin's services returns `503` until the plugin has finished starting.
-- **Auth on mutating routes.** On a server with **security enabled**, every state-changing route — PTZ moves, imaging presets, calibration, recording start/stop, snapshots, MOB activate, AIS slew, incident create/edit/delete, and video upload/delete (plus the credential routes) — requires an authenticated request and answers `401` otherwise. The auth check runs first, so it can't be used to probe which cameras or bundles exist. Read-only routes and the live stream stay open to the same-origin browser session, and on an open server (security disabled) everything passes through. _(Not yet gated: the streaming-negotiation routes `…/whep` and `…/talk`, which need a token-on-signaling design, and the rate-limited, SSRF-guarded `…/discover`, `…/test`, and `…/discover/introspect` probes — see the [security model](../developers/security-model.md).)_
+- **Auth on mutating routes.** On a server with **security enabled**, every state-changing route — PTZ moves, imaging presets, calibration, recording start/stop, snapshots, MOB activate, AIS slew, incident create/edit/delete, two-way talk, the `…/test` and `…/discover/introspect` probes, push subscribe/unsubscribe, operational-config writes, and video upload/delete (plus the credential routes) — requires an authenticated request and answers `401` otherwise. The auth check runs first, so it can't be used to probe which cameras or bundles exist. Read-only routes and the live stream stay open to the same-origin browser session, and on an open server (security disabled) everything passes through. Only two paths stay ungated by design: the streaming-negotiation `…/whep` (gating just one signaling rung while HLS/MJPEG stay open would be security theatre) and the rate-limited, SSRF-guarded `…/discover` LAN scan — see the [security model](../developers/security-model.md).
 
 Camera definitions are managed through the standard Signal K Resources API at `/signalk/v2/api/resources/cameras` — not through these routes.
 
@@ -17,6 +17,7 @@ Camera definitions are managed through the standard Signal K Resources API at `/
 | Method | Path | Purpose | Notes |
 | --- | --- | --- | --- |
 | `GET` | `/status` | Plugin health: ready flag, camera count, detected hardware. | — |
+| `GET` | `/session` | Whoami: `securityEnabled` / `authenticated` booleans + `pluginVersion` (booleans only — no token). The app calls it on connect / after a `401` to decide sign-in UI; tier/capabilities stay sourced from `/status`. | ungated |
 | `GET` | `/cameras/:id/credentials` | Whether a login is stored (presence flags only — **no secrets**). | auth required¹ · rate-limited (20/min) |
 | `POST` | `/cameras/:id/credentials` | Store a write-only camera login (never echoed). | auth required¹ · rate-limited (20/min) → `204` |
 | `DELETE` | `/cameras/:id/credentials` | Delete a stored login. | auth required¹ · rate-limited (20/min) → `204`/`404` |
@@ -52,9 +53,9 @@ Camera definitions are managed through the standard Signal K Resources API at `/
 | Method | Path | Purpose | Notes |
 | --- | --- | --- | --- |
 | `GET` | `/cameras/discover` | Scan the LAN (WS-Discovery + mDNS) for cameras. | throttled (~30 s) → `200`/`429` |
-| `POST` | `/cameras/discover/introspect` | Zero-typing onboarding: introspect an ONVIF camera (SSRF-guarded; credentials used for the probe are ephemeral). | rate-limited (20/min) |
+| `POST` | `/cameras/discover/introspect` | Zero-typing onboarding: introspect an ONVIF camera (SSRF-guarded; credentials used for the probe are ephemeral). | auth required · rate-limited (20/min) |
 | `GET` | `/cameras/onboarding-hints` | Curated make/model hints (GoPro, Insta360…). | — |
-| `POST` | `/cameras/test` | Connection-test an _unsaved_ camera (ffprobe/TCP, SSRF-guarded). | rate-limited (20/min) |
+| `POST` | `/cameras/test` | Connection-test an _unsaved_ camera (ffprobe/TCP, SSRF-guarded). | auth required · rate-limited (20/min) |
 
 ## Recording, snapshots & uploads
 
@@ -65,6 +66,8 @@ Camera definitions are managed through the standard Signal K Resources API at `/
 | `GET` | `/recordings/timeline` | Scrubbable-DVR timeline: per-camera tracks with segment spans + coverage gaps ([contract](#dvr-timeline-contract)). | `200`, `503` |
 | `GET` | `/recordings/:name` | Stream a segment with HTTP Range. | `200`, `206`, `404`, `416`, `503` |
 | `POST` | `/cameras/:id/snapshot` | Capture a telemetry-stamped still. | `201`, `404`, `502`, `503` |
+| `GET` | `/snapshots` | Snapshot library: stored stills' telemetry-stamped metadata, newest-first. | `200`, `503` |
+| `GET` | `/snapshots/:id` | Serve a stored JPEG by its opaque id (`private` cache, `nosniff`). | `200`, `400`, `404`, `503` |
 | `POST` | `/videos` | Upload a video (magic-byte validated, quota-bounded, streamed to disk). | `201`, `400`, `413`, `415`, `503` |
 | `GET` | `/videos` | List stored videos. | `200`, `503` |
 | `GET` | `/videos/:id` | Stream a stored video with HTTP Range. | `200`, `206`, `404`, `416`, `503` |
@@ -75,6 +78,7 @@ Camera definitions are managed through the standard Signal K Resources API at `/
 | Method | Path | Purpose | Codes |
 | --- | --- | --- | --- |
 | `POST` | `/mob` | Activate/deactivate the man-overboard response (`{ active }`). Also a Signal K PUT action. | `200`, `503` |
+| `GET` | `/mob` | Read-only MOB status (booleans + a count) so a client can seed/repair the armed state on connect without re-aiming. Ungated, like `/status`. | `200`, `503` |
 | `POST` | `/cameras/:id/slew-to-cue` | Aim a calibrated PTZ camera at the nearest-CPA AIS target (single aim; re-POST to re-cue). | `200`, `404`, `409`, `502`, `503` |
 | `GET` | `/cameras/layout` | Role/placement grouping hints for auto-arranging cameras. | `200`, `503` |
 
@@ -82,14 +86,29 @@ Camera definitions are managed through the standard Signal K Resources API at `/
 
 | Method | Path | Purpose | Codes |
 | --- | --- | --- | --- |
-| `POST` | `/incidents` | Trigger an incident bundle (`{ cameras?, preMs?, postMs?, note? }`). | `202`, `400`, `503` |
+| `POST` | `/incidents` | Trigger an incident bundle (`{ cameras?, preMs?, postMs?, note?, triggerAt? }`; `triggerAt` is an epoch-ms anchor for a retrospective "mark a past moment" cut, capped at now). Returns `202` with a `Location: incidents/:id` header and the started bundle body. | `202`, `400`, `503` |
 | `GET` | `/incidents` | List bundles (newest first). | `200`, `503` |
 | `GET` | `/incidents/:id` | Fetch a bundle manifest. | `200`, `400`, `404`, `503` |
 | `GET` | `/incidents/:id/assets/:assetId` | Stream a bundle asset (clip/snapshot/telemetry) with Range. | `200`, `206`, `400`, `404`, `416`, `503` |
+| `GET` | `/incidents/:id/export.zip` | Shareable zip of the whole bundle: manifest + honesty README + every asset (foldered by kind). A read, so ungated; missing blobs are skipped best-effort and noted in the README. | `200`, `400`, `404`, `503` |
 | `PATCH` | `/incidents/:id` | Edit label / notes / pinned only. | `200`, `400`, `404`, `503` |
 | `DELETE` | `/incidents/:id` | Delete a bundle (refuses a pinned one). | `204`, `400`, `404`, `409`, `503` |
 | `GET` | `/frigate/clips` | List cached Frigate event clips. | `200`, `503` |
 | `GET` | `/frigate/clips/:id` | Stream a cached clip with Range. | `200`, `206`, `400`, `404`, `416`, `503` |
+
+## Activity log, config & notifications
+
+These serve the SK Video web app (the management surface the Signal K admin form deliberately leaves empty).
+
+| Method | Path | Purpose | Notes |
+| --- | --- | --- | --- |
+| `GET` | `/events/log` | The durable, newest-first activity feed (MOB, incidents, anchor drag, camera-offline). `?limit=` bounds the page; `?before=<epoch-ms>` pages strictly-older rows. Carries only type/state/message — no secrets. | ungated → `200`, `503` |
+| `GET` | `/operational-config` | The web-app-owned operational settings (hardware tier, trigger/anchor paths, Frigate). The write-only Frigate `mqttPassword` is redacted to an `mqttPasswordSet` boolean. | auth required → `200`, `503` |
+| `PUT` | `/operational-config` | Validate + merge (preserving the password) + apply via the server's `restart()` — a brief plugin restart, so the response says `{ restarting: true }`. | auth required → `200`, `400`, `503` |
+| `GET` | `/push/vapid-public-key` | The web-push application-server public key the browser needs before it can subscribe. | ungated → `200`, `503` |
+| `POST` | `/push/subscribe` | Store a device's push subscription (`{ subscription }`) — changes who receives safety alerts. | auth required → `201`, `400`, `503` |
+| `POST` | `/push/unsubscribe` | Drop a subscription (`{ endpoint }`). | auth required → `204`, `400`, `503` |
+| `GET` | `/app/*` | Static serving of the built web app under `/app/`. Hashed assets are `immutable`; `index.html` is `no-store` so a redeploy is picked up; extension-less paths fall back to `index.html` (SPA routing); traversal is rejected. | `200`, `400`, `404` |
 
 ---
 

@@ -75,6 +75,8 @@ sequenceDiagram
 
 The address ONVIF hands back (`getStreamUri`) is itself re-validated — a camera can't talk the server into connecting somewhere it shouldn't.
 
+`POST /cameras/discover/introspect` is **auth-gated** on a secured server (`registerIntrospectRoute` is wired with `gate: unauthorized` in `src/index.ts`), on top of being rate-limited and SSRF-guarded — connecting to an operator-supplied host with operator-supplied credentials is an action, not an open probe.
+
 For non-ONVIF cameras, a curated **RTSP-path library** offers likely paths as _suggestions_, gated behind the existing `/cameras/test` probe (which is rate-limited and SSRF-guarded). It's always a suggestion the operator confirms — never authoritative.
 
 ---

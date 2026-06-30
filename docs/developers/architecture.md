@@ -82,6 +82,7 @@ Each lives in its own `src/` directory and is mostly independent. The entrypoint
 | `src/analytics/` | Frigate MQTT client + cached clips. | [Safety & awareness](safety-and-awareness.md) |
 | `src/uploads/` | Uploaded-video store, quota, HTTP Range, magic-byte sniff. | [Storage & data](storage-and-data.md) |
 | `src/signalk/` | The bridge: deltas, notifications, self-state reads, PUT/action handlers. | this page (below) |
+| `src/web/` | The web-app seam: serves the bundled React console under `/app`, the session/whoami probe, the durable event log, web-push (VAPID + subscriptions + fan-out), and the web-app-owned operational config. | this page (below) |
 | `src/security/` | SSRF guard, rate limiter, log redaction, timeouts. | [Security model](security-model.md) |
 | `src/hardware/` | Tier detection (cores/RAM/arch/accelerator) → feature matrix. | [Hardware & performance](../guides/hardware-and-performance.md) |
 | `src/util/` | Small shared helpers (e.g. atomic file writes). | — |
@@ -101,6 +102,26 @@ Each lives in its own `src/` directory and is mostly independent. The entrypoint
 
 The Signal K API surface varies by server version, so the bridge probes for what's available rather than assuming it.
 
+One newer seam is worth calling out: the bridge takes an **`onNotify` tap** (wired in `src/index.ts`). Every notification it raises is handed to that callback, which **writes the event into the durable event log _and_ fans it out as web-push**. That single hook is how transient Signal K notifications become a retrospective record and a phone alert without each safety path having to know about either.
+
+---
+
+## The web app, event log, and push
+
+`src/web/` is the boundary between the plugin and the first-class console (the web app owns management; the plugin is the thin conduit). It is mostly small, IO-injected modules the entrypoint composes:
+
+- **Serving the app** (`app-routes.ts`) — the built React/Vite bundle in the package's `public/` dir is served same-origin under `/plugins/sk-video/app/`, alongside but never shadowing the HTTP API. Hashed assets are immutable; `index.html` is `no-store`; extension-less paths fall back to the SPA entry; path traversal is rejected so a request can't escape `public/`.
+- **Session probe** (`session-routes.ts`) — `GET /session` is an auth-only "whoami" returning booleans (security enabled? this request authenticated?) plus the plugin version, so the app can decide whether to show sign-in UI without leaking a token.
+- **Durable event log** (`event-log.ts`, `event-log-routes.ts`) — an append-only record of safety/system events (MOB, incident, anchor drag, camera-offline). Notifications vanish when cleared; this log is how "reconstruct what happened last night" becomes real. `GET /events/log` reads it newest-first; the bridge tap owns writes.
+- **Web-push** (`vapid.ts`, `push-store.ts`, `push-sender.ts`, `push-events.ts`, `push-routes.ts`) — a stable VAPID keypair (persisted, never rotated, since a browser's subscription is bound to the key it subscribed with), an owner-only subscription store, a best-effort fan-out that prunes dead endpoints (404/410) and never lets a push failure touch the safety path, and the shaping that turns an alerting event into a tappable notification. The Pi only makes outbound requests to the browser's push service.
+- **Operational config** (`operational-config.ts`, `config-routes.ts`) — settings the web app owns instead of the Signal K admin form (hardware tier, trigger/anchor paths, Frigate MQTT). `GET/PUT /operational-config` validate + merge (the write-only Frigate password is redacted on read, preserved on write) and apply via the server's **`restart()` contract** — persist the options, then stop/start to re-wire MQTT, delta subscriptions, and timers. The path is `/operational-config`, not `/config`, because signalk-server itself owns `/plugins/:id/config`.
+
+### Bundled front-end and PWA
+
+The console lives in a `webapp/` sub-project (its own npm package, built with `npm --prefix webapp run build`) whose output is the package's `public/` dir — the hashed `assets/`, `index.html`, `manifest.webmanifest`, icons, and a PWA service worker (`webapp/public/sw.js`). It's served read-only and same-origin under `/app`.
+
+The plugin is also registered as a **Signal K webapp**: the `signalk-webapp` keyword plus `signalk.displayName`/`appIcon` in `package.json` make it appear at `/sk-video/` in the server's Webapps menu, so an operator can reach the console straight from Signal K.
+
 ---
 
 ## Lifecycle: start and stop
@@ -110,8 +131,8 @@ The Signal K API surface varies by server version, so the bridge probes for what
 ```mermaid
 flowchart TD
     A[Signal K calls start] --> B[detect hardware tier]
-    B --> C[create stores: cameras, credentials, videos,<br/>recordings, snapshots, incidents]
-    C --> D[build SignalKBridge]
+    B --> C[create stores: cameras, credentials, videos,<br/>recordings, FileSnapshotStore snapshots, incidents,<br/>EventLog, PushStore + VAPID keys]
+    C --> D[build SignalKBridge with onNotify tap<br/>→ event log + web-push fan-out]
     D --> E[create go2rtc gateway + binary manager + supervisor]
     E --> F[create MOB / watch / slew / Frigate / incidents]
     F --> G[registerWithRouter: all HTTP routes]

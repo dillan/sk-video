@@ -75,6 +75,8 @@ flowchart TD
 
 The honest-reporting rules that fall out of this: with no fix the message says cameras could **not** be aimed; the `aimedCameras` count excludes pan-clamped cameras and reflects what was _commanded_, not what a (possibly flaky) motor confirmed.
 
+Every notification the controllers raise flows through one bridge `onNotify` tap in `src/index.ts`, which does two more things off the safety path: it writes a durable **event-log** row (the source for the activity feed) and fans out a best-effort **web-push** (`sendSafetyPush`) to subscribed devices. A push failure — or push being unconfigured — never affects the safety path that raised the notification.
+
 ### Experimental visual refine
 
 `src/safety/mob-visual-refine.ts` consumes a Frigate person-detection and produces a **bounded relativeMove nudge** layered on top of the authoritative absolute aim. It is gated to cameras that have **both** absolute PTZ **and** calibration (i.e. ones MOB actually geo-aims), so there's always a baseline underneath. It is rate-limited so a burst of detections can't accumulate drift, and it fails safe:

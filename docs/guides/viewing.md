@@ -2,14 +2,16 @@
 
 Once a camera is added, a few choices get you the best picture for the moment — smooth for everyday watching, low-latency for docking. This guide also covers steering a pan/tilt/zoom (PTZ) camera and the night/fog/glare picture presets.
 
+> The controls below are in the **SK Video app** (open a camera in **Camera Focus** — see [The SK Video app](the-app.md)) and, if you prefer it, in KIP's Video widget. Both drive the same plugin.
+
 ---
 
 ## Delivery modes: smooth vs. low-latency
 
-The same camera can be delivered to your browser three different ways. You pick one in the widget settings under **Quality & Latency**.
+The same camera can be delivered to your browser three different ways. The SK Video app's player picks the best one automatically and walks down if the network can't sustain it; in KIP's widget you can force one under **Quality & Latency**.
 
 <p align="center">
-  <img src="../images/quality.png" alt="The Quality & Latency delivery options in the widget settings" width="85%">
+  <img src="../images/quality.webp" alt="The Quality & Latency delivery options in the widget settings" width="85%">
 </p>
 
 | Mode | Best for | Trade-off |
@@ -26,10 +28,10 @@ The same camera can be delivered to your browser three different ways. You pick 
 
 ## Moving a PTZ camera
 
-If your camera supports **pan / tilt / zoom** (the plugin detects this automatically when you add it), the widget shows on-screen controls. Drag or use the arrows to pan and tilt; use the zoom control to zoom; the camera stops when you let go.
+If your camera supports **pan / tilt / zoom** (the plugin detects this automatically when you add it), Camera Focus shows on-screen controls with a hard **STOP**. Use the arrows to pan and tilt and the zoom control to zoom. (On a slow still-refresh feed, continuous panning is disabled on purpose — steering a 1-fps view near a dock is dangerous.)
 
 <p align="center">
-  <img src="../images/ptz.png" alt="On-screen pan/tilt/zoom controls over a live camera" width="85%">
+  <img src="../images/ptz.webp" alt="On-screen pan/tilt/zoom controls over a live camera" width="85%">
 </p>
 
 If the camera has **saved positions** ("presets") set up in its own app, those appear too — tap one to send the camera there.
@@ -49,7 +51,7 @@ Cameras that expose **imaging controls** over ONVIF (infrared cut, wide-dynamic-
 | **Fog**        | Reduced visibility — turns on defog / contrast help if the camera has it. |
 | **Glare**      | Bright sun on water — tames blown-out highlights.                         |
 
-These are **best-effort** and **capability-gated**: the widget only offers a preset if the camera actually supports the controls it needs, and a fixed-lens camera won't show focus options. They nudge the camera's settings rather than fighting its automatic mode, so it's safe to experiment — set it back to **Day** to return to neutral.
+These are **best-effort** and **capability-gated**: a preset is only offered if the camera actually supports the controls it needs, and a fixed-lens camera won't show focus options. They nudge the camera's settings rather than fighting its automatic mode, so it's safe to experiment — set it back to **Day** to return to neutral.
 
 > Honesty check: a defog preset can't see through dense fog, and night/IR depends entirely on the camera's own hardware. These help the picture; they don't work miracles.
 
@@ -59,7 +61,7 @@ These are **best-effort** and **capability-gated**: the widget only offers a pre
 
 ## Multiple cameras at once
 
-Because cameras carry a **role** and **mount** (see [Adding cameras](cameras.md)), an app can arrange them for you — group the docking cameras, put the anchor camera front-and-center, and so on. The plugin publishes these grouping hints; the actual layout is up to the viewing app.
+The SK Video app's **Live Wall** is a mosaic of every camera, arranged by where they're mounted (cameras carry a **role** and **mount** — see [Adding cameras](cameras.md)). To keep a wall of cameras smooth even on marina wifi, tiles use the lighter **sub-stream**, and each tile is honest about its state — connecting, live, never-seen, or gone dark — rather than showing a stale frame as if it were live. Tap a tile to open one camera in **Camera Focus**. (KIP can lay cameras out from the same grouping hints, too.)
 
 ---
 
