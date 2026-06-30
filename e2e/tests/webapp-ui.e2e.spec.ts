@@ -157,12 +157,26 @@ test.describe('SK Video webapp — Review (Recordings + Incidents)', () => {
     await expect(page.getByRole('heading', { name: 'Imported videos' })).toBeVisible();
   });
 
-  test('Recordings shows a camera with a live Recording badge', async ({ page, request }) => {
+  test('Recordings shows a scrubbable DVR track and marks an incident from a scrubbed moment', async ({
+    page,
+    request,
+  }) => {
     await request.post(plugin(`/cameras/${CAMERA}/record`), { data: { active: true } });
-    await new Promise((r) => setTimeout(r, 4000)); // let a segment land on disk
+    await new Promise((r) => setTimeout(r, 5000)); // let a couple of segments land on disk
+    await request.post(plugin(`/cameras/${CAMERA}/record`), { data: { active: false } });
+
     await page.goto(`${APP}#/review/recordings`);
     await expect(page.getByText(CAMERA, { exact: true })).toBeVisible({ timeout: 15_000 });
-    await request.post(plugin(`/cameras/${CAMERA}/record`), { data: { active: false } });
+    const track = page.getByRole('slider', { name: new RegExp(`Scrub ${CAMERA}`) });
+    await expect(track).toBeVisible();
+
+    // Scrub with the keyboard (deterministic) until the playhead lands on a covered moment, then mark.
+    await track.focus();
+    await track.press('ArrowRight');
+    const mark = page.getByRole('button', { name: /Mark incident here/ });
+    await expect(mark).toBeVisible();
+    await mark.click();
+    await expect(page.getByText(/Incident marked/)).toBeVisible({ timeout: 15_000 });
   });
 
   test('Incidents lists a triggered bundle and opens its detail', async ({ page, request }) => {

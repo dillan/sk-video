@@ -659,6 +659,65 @@ button.tile {
   color: var(--status-caution-bright);
   padding: 4px 0;
 }
+.rec__span {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+/* ---- DVR scrubber ---- */
+.dvr__track {
+  position: relative;
+  height: 36px;
+  margin: 10px 0 6px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-0);
+  box-shadow: inset 0 0 0 1px var(--border);
+  cursor: pointer;
+  overflow: hidden;
+}
+.dvr__track:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.dvr__seg,
+.dvr__gap {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+}
+.dvr__seg {
+  background: var(--status-online);
+  opacity: 0.7;
+}
+/* Gaps are neutral hatching — the data carries no cause, so the UI invents none. */
+.dvr__gap {
+  background: repeating-linear-gradient(
+    45deg,
+    rgba(255, 159, 10, 0.18),
+    rgba(255, 159, 10, 0.18) 5px,
+    transparent 5px,
+    transparent 10px
+  );
+}
+.dvr__playhead {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 2px;
+  background: var(--status-live);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4);
+  pointer-events: none;
+}
+.dvr__panel {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.dvr__at {
+  font-size: 13px;
+  font-weight: 600;
+}
 .asset__head {
   display: flex;
   align-items: center;

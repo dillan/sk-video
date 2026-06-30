@@ -268,9 +268,21 @@ export const armMob = async (active: boolean): Promise<IMobStatus> => {
   return (await res.json()) as IMobStatus;
 };
 
-/** Package an incident bundle now (the reliable manual trigger). */
-export const markIncident = (): Promise<Response> =>
-  send('/incidents', { method: 'POST', body: JSON.stringify({}) }, 'mark incident');
+/**
+ * Package an incident bundle (the reliable manual trigger). With `triggerAt` (epoch-ms) it's a
+ * RETROSPECTIVE mark from a scrubbed DVR moment — the clip is cut from the rolling buffer around that
+ * time. No args = a live mark now.
+ */
+export const markIncident = (
+  req: {
+    cameras?: string[];
+    triggerAt?: number;
+    preMs?: number;
+    postMs?: number;
+    note?: string;
+  } = {},
+): Promise<Response> =>
+  send('/incidents', { method: 'POST', body: JSON.stringify(req) }, 'mark incident');
 
 /** Aim one calibrated PTZ camera at the nearest-CPA AIS target (a single deterministic aim). */
 export const slewToCue = (id: string): Promise<Response> =>
