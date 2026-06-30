@@ -15,7 +15,7 @@ import { CameraFocus } from './screens/CameraFocus';
 import { Safety } from './screens/Safety';
 import { Cameras } from './screens/Cameras';
 import { Settings } from './screens/Settings';
-import { ImportedVideos } from './screens/ImportedVideos';
+import { Review } from './screens/Review';
 
 /**
  * The Deference app shell: a side rail (tablet/desktop) or bottom tab bar (phone) around the active
@@ -70,7 +70,9 @@ export function App() {
           ) : (
             <LiveWall mob={mob} onOpenCamera={(id) => navigate('live', id)} />
           ))}
-        {route.cluster === 'review' && <ImportedVideos />}
+        {route.cluster === 'review' && (
+          <Review tab={route.id} onTab={(t) => navigate('review', t)} />
+        )}
         {route.cluster === 'cameras' && <Cameras />}
         {route.cluster === 'safety' && <Safety onMobChange={setMob} />}
         {route.cluster === 'settings' && (

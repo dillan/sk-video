@@ -92,8 +92,8 @@ export function ImportedVideos() {
     <div className="settings">
       <header className="page-head">
         <div>
-          <h1>Review</h1>
-          <div className="page-head__sub">Imported videos</div>
+          <h1>Imported videos</h1>
+          <div className="page-head__sub">Kept separate from camera footage</div>
         </div>
         <div className="page-head__spacer" />
         <button

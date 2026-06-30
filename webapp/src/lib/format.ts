@@ -41,6 +41,19 @@ export function formatBytes(n: number): string {
   return `${value < 10 ? value.toFixed(1) : Math.round(value)} ${units[i]}`;
 }
 
+/** Short wall-clock time for a timestamp, e.g. "14:32" (locale-formatted). */
+export function formatClock(ms: number): string {
+  return new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+/** Compact duration m:ss, e.g. 90000 → "1:30", 5000 → "0:05". */
+export function formatDuration(ms: number): string {
+  if (!Number.isFinite(ms) || ms < 0) return '—';
+  const total = Math.round(ms / 1000);
+  const m = Math.floor(total / 60);
+  return `${m}:${String(total % 60).padStart(2, '0')}`;
+}
+
 export interface IVesselState {
   hasFix: boolean;
   lat?: number;

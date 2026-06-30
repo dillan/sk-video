@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   formatBytes,
+  formatDuration,
   radToDeg,
   mpsToKnots,
   degMin,
@@ -77,5 +78,17 @@ describe('formatBytes', () => {
   it('handles a bad size honestly', () => {
     expect(formatBytes(-1)).toBe('—');
     expect(formatBytes(NaN)).toBe('—');
+  });
+});
+
+describe('formatDuration', () => {
+  it('formats m:ss', () => {
+    expect(formatDuration(5000)).toBe('0:05');
+    expect(formatDuration(90_000)).toBe('1:30');
+    expect(formatDuration(600_000)).toBe('10:00');
+  });
+  it('handles a bad duration honestly', () => {
+    expect(formatDuration(-1)).toBe('—');
+    expect(formatDuration(NaN)).toBe('—');
   });
 });

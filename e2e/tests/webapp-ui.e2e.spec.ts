@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { BASE, plugin, CAMERA, ensureCamera, waitForStatus } from './helpers';
+import { BASE, plugin, CAMERA, ensureCamera, waitForStatus, pollJson } from './helpers';
 
 const CAMERAS_URL = `${BASE}/signalk/v2/api/resources/cameras`;
 
@@ -119,8 +119,8 @@ test.describe('SK Video webapp — Live Wall + Camera Focus', () => {
 test.describe('SK Video webapp — Review / Imported videos', () => {
   test('uploads, plays, and deletes an imported video', async ({ page }) => {
     const NAME = 'webapp-ui-clip.mp4';
-    await page.goto(`${APP}#/review`);
-    await expect(page.getByRole('heading', { name: 'Review' })).toBeVisible();
+    await page.goto(`${APP}#/review/imported`);
+    await expect(page.getByRole('heading', { name: 'Imported videos' })).toBeVisible();
 
     // A minimal valid MP4 (ftyp + isom brand) so the server accepts it by magic bytes.
     const mp4 = Buffer.concat([
@@ -142,5 +142,43 @@ test.describe('SK Video webapp — Review / Imported videos', () => {
     await row.getByRole('button', { name: 'Delete' }).click();
     await row.getByRole('button', { name: 'Confirm delete' }).click();
     await expect(row).toHaveCount(0);
+  });
+});
+
+test.describe('SK Video webapp — Review (Recordings + Incidents)', () => {
+  test('the Review tabs default to Recordings and switch', async ({ page }) => {
+    await page.goto(`${APP}#/review`);
+    await expect(page.getByRole('heading', { name: 'Recordings' })).toBeVisible();
+    await page.getByRole('button', { name: 'Incidents' }).click();
+    await expect(page.getByRole('heading', { name: 'Incidents' })).toBeVisible();
+    await page.getByRole('button', { name: 'Imported' }).click();
+    await expect(page.getByRole('heading', { name: 'Imported videos' })).toBeVisible();
+  });
+
+  test('Recordings shows a camera with a live Recording badge', async ({ page, request }) => {
+    await request.post(plugin(`/cameras/${CAMERA}/record`), { data: { active: true } });
+    await new Promise((r) => setTimeout(r, 4000)); // let a segment land on disk
+    await page.goto(`${APP}#/review/recordings`);
+    await expect(page.getByText(CAMERA, { exact: true })).toBeVisible({ timeout: 15_000 });
+    await request.post(plugin(`/cameras/${CAMERA}/record`), { data: { active: false } });
+  });
+
+  test('Incidents lists a triggered bundle and opens its detail', async ({ page, request }) => {
+    const res = await request.post(plugin('/incidents'), {
+      data: { cameras: [CAMERA], preMs: 0, postMs: 1500 },
+    });
+    const { id } = await res.json();
+    await pollJson(
+      request,
+      plugin(`/incidents/${id}`),
+      (b: { status: string }) => b.status !== 'capturing',
+      30_000,
+    );
+    await page.goto(`${APP}#/review/incidents`);
+    const row = page.locator('.incident__row').first();
+    await expect(row).toBeVisible({ timeout: 15_000 });
+    await row.click();
+    await expect(page.getByRole('heading', { name: 'Incident' })).toBeVisible();
+    await expect(page.getByText(/best-effort/)).toBeVisible();
   });
 });

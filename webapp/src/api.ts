@@ -497,3 +497,115 @@ export const uploadVideo = async (file: File): Promise<IVideoAsset> => {
 export const deleteVideo = async (id: string): Promise<void> => {
   await send(`/videos/${encodeURIComponent(id)}`, { method: 'DELETE' }, 'delete video');
 };
+
+// ---- Recordings / DVR (the rolling-buffer timeline) ----
+
+export interface IRecordingSegment {
+  name: string;
+  startedAt: number;
+  durationMs: number;
+  bytes: number;
+}
+export interface IRecordingGap {
+  startedAt: number;
+  endedAt: number;
+  durationMs: number;
+}
+export interface IRecordingCameraTimeline {
+  camera: string;
+  recording: boolean;
+  startedAt: number;
+  endedAt: number;
+  segments: IRecordingSegment[];
+  gaps: IRecordingGap[];
+}
+export interface IRecordingTimeline {
+  generatedAt: number;
+  segmentSeconds: number;
+  cameras: IRecordingCameraTimeline[];
+}
+
+export const fetchRecordingTimeline = (signal?: AbortSignal): Promise<IRecordingTimeline> =>
+  getJson<IRecordingTimeline>('/recordings/timeline', 'recordings', signal);
+
+/** Same-origin URL to stream a recorded segment (Range-served video/mp4). */
+export const recordingUrl = (name: string): string =>
+  `${API_BASE}/recordings/${encodeURIComponent(name)}`;
+
+// ---- Incidents (evidence bundles) ----
+
+export type TIncidentStatus = 'capturing' | 'complete' | 'partial' | 'failed';
+
+/** The lightweight list shape (a finalized bundle has the extra fields; a capturing one does not). */
+export interface IIncidentListItem {
+  id: string;
+  status: TIncidentStatus;
+  createdAt: number;
+  finalizedAt?: number;
+  cameras?: string[];
+  pinned?: boolean;
+  assetCount?: number;
+  failureCount?: number;
+}
+
+export interface IIncidentAsset {
+  id: string;
+  kind: 'clip' | 'snapshot' | 'telemetry';
+  cameraId: string | null;
+  contentType: string;
+  size: number;
+  sha256: string;
+  name: string;
+  createdAt: number;
+  coverage?: {
+    actualStartMs: number;
+    actualEndMs: number;
+    contiguous: boolean;
+    segmentCount: number;
+  };
+}
+export interface IIncidentFailure {
+  kind: 'clip' | 'snapshot' | 'telemetry';
+  cameraId: string | null;
+  reason: string;
+}
+export interface IIncidentBundle {
+  id: string;
+  status: TIncidentStatus;
+  createdAt: number;
+  finalizedAt: number;
+  evidence: 'best-effort';
+  cameras: string[];
+  assets: IIncidentAsset[];
+  failures: IIncidentFailure[];
+  digest: { algo: 'sha256'; value: string };
+  telemetry: { coversPreRoll: boolean; positionAvailable?: boolean };
+  label?: string;
+  notes?: string;
+  pinned?: boolean;
+}
+
+export const fetchIncidents = (signal?: AbortSignal): Promise<IIncidentListItem[]> =>
+  getJson<{ incidents: IIncidentListItem[] }>('/incidents', 'incidents', signal).then(
+    (r) => r.incidents,
+  );
+
+export const fetchIncident = (id: string, signal?: AbortSignal): Promise<IIncidentBundle> =>
+  getJson<IIncidentBundle>(`/incidents/${encodeURIComponent(id)}`, 'incident', signal);
+
+/** Same-origin URL to fetch/stream an incident asset (Range-served clip / snapshot / telemetry). */
+export const incidentAssetUrl = (id: string, assetId: string): string =>
+  `${API_BASE}/incidents/${encodeURIComponent(id)}/assets/${encodeURIComponent(assetId)}`;
+
+export const setIncidentPinned = async (id: string, pinned: boolean): Promise<void> => {
+  await send(
+    `/incidents/${encodeURIComponent(id)}`,
+    { method: 'PATCH', body: JSON.stringify({ pinned }) },
+    'update incident',
+  );
+};
+
+/** Delete an incident. Throws ApiError(409) when the bundle is pinned. */
+export const deleteIncident = async (id: string): Promise<void> => {
+  await send(`/incidents/${encodeURIComponent(id)}`, { method: 'DELETE' }, 'delete incident');
+};
