@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { frameUrl, hlsUrl, whepUrl, type TTransport, type TStreamVariant } from '../api';
-import { nextTransport } from '../lib/transport';
+import { nextTransport, trackStall } from '../lib/transport';
 
 /**
  * Same-origin player driven by the server's transport walk (webrtc → hls → mjpeg, reordered for
@@ -14,6 +14,10 @@ import { nextTransport } from '../lib/transport';
  */
 
 const MJPEG_INTERVAL_MS = 1200;
+// Stall watchdog: poll playback progress on the live rungs and walk down a transport if a feed freezes
+// (or never starts). Generous timeout so a slow WHEP/HLS negotiation on a marina link isn't cut short.
+const STALL_CHECK_MS = 2000;
+const STALL_TIMEOUT_MS = 8000;
 
 interface Props {
   cameraId: string;
@@ -32,25 +36,31 @@ async function negotiateWhep(
   variant: TStreamVariant,
 ): Promise<RTCPeerConnection> {
   const pc = new RTCPeerConnection();
-  pc.addTransceiver('video', { direction: 'recvonly' });
-  pc.addTransceiver('audio', { direction: 'recvonly' });
-  pc.ontrack = (e) => {
-    video.srcObject = e.streams[0] ?? null;
-  };
-  const offer = await pc.createOffer();
-  await pc.setLocalDescription(offer);
-  const res = await fetch(whepUrl(id, variant), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/sdp' },
-    credentials: 'include',
-    body: offer.sdp ?? '',
-  });
-  if (!res.ok) {
+  // Close the PeerConnection on ANY failure (offer/SDP/fetch), not just a bad response — otherwise a
+  // reject mid-negotiation leaks a PC (and its ICE sockets) every fallback/retry.
+  try {
+    pc.addTransceiver('video', { direction: 'recvonly' });
+    pc.addTransceiver('audio', { direction: 'recvonly' });
+    pc.ontrack = (e) => {
+      video.srcObject = e.streams[0] ?? null;
+    };
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    const res = await fetch(whepUrl(id, variant), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/sdp' },
+      credentials: 'include',
+      body: offer.sdp ?? '',
+    });
+    if (!res.ok) {
+      throw new Error(`whep ${res.status}`);
+    }
+    await pc.setRemoteDescription({ type: 'answer', sdp: await res.text() });
+    return pc;
+  } catch (err) {
     pc.close();
-    throw new Error(`whep ${res.status}`);
+    throw err;
   }
-  await pc.setRemoteDescription({ type: 'answer', sdp: await res.text() });
-  return pc;
 }
 
 export function VideoPlayer({ cameraId, transports, variant = 'main', onRung, onActive }: Props) {
@@ -118,6 +128,24 @@ export function VideoPlayer({ cameraId, transports, variant = 'main', onRung, on
       video.removeAttribute('src');
     };
     // advance/transports are stable enough for this effect; rung+cameraId+variant drive it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rung, cameraId, variant]);
+
+  // Stall watchdog for the live rungs: if playback stops advancing (frozen, or never started — e.g. a
+  // WebRTC that negotiates but gets no media on a starved link), walk down to the next transport. MJPEG
+  // is the floor (it re-fetches frames on its own), so there's nothing to walk to from there.
+  useEffect(() => {
+    if (rung !== 'webrtc' && rung !== 'hls') return;
+    let sample = { time: 0, at: performance.now() };
+    const iv = setInterval(() => {
+      const video = videoRef.current;
+      if (!video) return;
+      const r = trackStall(sample, video.currentTime, performance.now(), STALL_TIMEOUT_MS);
+      sample = r.sample;
+      if (r.stalled) advance();
+    }, STALL_CHECK_MS);
+    return () => clearInterval(iv);
+    // advance is stable enough; rung/camera/variant restart the watchdog.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rung, cameraId, variant]);
 

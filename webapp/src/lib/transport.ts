@@ -46,6 +46,29 @@ export function transportsForVariant(useSub: boolean, recommended: TTransport[])
   return useSub ? H264_TRANSPORTS : recommended;
 }
 
+/** A progress sample for the stall watchdog: the feed's playback `time` and when we last saw it grow. */
+export interface IStallSample {
+  time: number;
+  at: number;
+}
+
+/**
+ * The stall-watchdog decision (kept pure so it can be tested without a media element). A live feed
+ * whose playback time keeps growing is healthy; one that hasn't advanced for `timeoutMs` has stalled
+ * (frozen, or it never started) and the player should walk down to the next transport.
+ */
+export function trackStall(
+  prev: IStallSample,
+  currentTime: number,
+  now: number,
+  timeoutMs: number,
+): { sample: IStallSample; stalled: boolean } {
+  if (currentTime > prev.time) {
+    return { sample: { time: currentTime, at: now }, stalled: false };
+  }
+  return { sample: prev, stalled: now - prev.at >= timeoutMs };
+}
+
 /** Human label for a codec id — `h265` → "H.265" (so the UI never shows a bare "H265"). */
 export function codecLabel(codec: string): string {
   switch (codec.toLowerCase()) {

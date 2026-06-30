@@ -7,6 +7,7 @@ import {
   isHevc,
   transportsForVariant,
   codecLabel,
+  trackStall,
   H264_TRANSPORTS,
 } from './transport';
 
@@ -52,5 +53,28 @@ describe('codec helpers + variant walk', () => {
     expect(codecLabel('h264')).toBe('H.264');
     expect(codecLabel('mjpeg')).toBe('MJPEG');
     expect(codecLabel('mpeg4')).toBe('MPEG4');
+  });
+});
+
+describe('trackStall (stall watchdog)', () => {
+  it('resets the sample and is not stalled while playback advances', () => {
+    const r = trackStall({ time: 1, at: 1000 }, 1.5, 3000, 6000);
+    expect(r.stalled).toBe(false);
+    expect(r.sample).toEqual({ time: 1.5, at: 3000 });
+  });
+
+  it('keeps the sample and stays patient before the timeout elapses', () => {
+    const r = trackStall({ time: 2, at: 1000 }, 2, 5000, 6000); // no progress, only 4s in
+    expect(r.stalled).toBe(false);
+    expect(r.sample).toEqual({ time: 2, at: 1000 });
+  });
+
+  it('flags a stall once playback has not advanced for the timeout', () => {
+    const r = trackStall({ time: 2, at: 1000 }, 2, 7000, 6000); // frozen for 6s
+    expect(r.stalled).toBe(true);
+  });
+
+  it('flags a feed that never started (time stuck at 0) past the timeout', () => {
+    expect(trackStall({ time: 0, at: 0 }, 0, 6000, 6000).stalled).toBe(true);
   });
 });
