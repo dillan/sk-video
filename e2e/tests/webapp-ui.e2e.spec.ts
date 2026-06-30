@@ -58,6 +58,10 @@ test.describe('SK Video webapp — shell + navigation', () => {
     expect(manifest.name).toBe('SK Video');
     expect(manifest.display).toBe('standalone');
     expect(manifest.icons.length).toBeGreaterThan(0);
+    // A real PNG icon (for iOS apple-touch-icon + Android install) is served, not only the SVG.
+    const png = await request.get(`${BASE}${APP}icons/icon-192.png`);
+    expect(png.ok()).toBeTruthy();
+    expect(png.headers()['content-type']).toContain('image/png');
 
     // The service worker registers and becomes active (localhost is a secure context).
     await page.goto(`${APP}#/live`);
