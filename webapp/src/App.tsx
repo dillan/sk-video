@@ -7,11 +7,13 @@ import {
   type IMobStatus,
 } from './api';
 import { useHashRoute } from './lib/router';
+import { applyTheme, loadTheme, type Theme } from './lib/theme';
 import { NavRail, TabBar } from './components/Nav';
 import { LiveWall } from './screens/LiveWall';
 import { CameraFocus } from './screens/CameraFocus';
 import { Safety } from './screens/Safety';
 import { Cameras } from './screens/Cameras';
+import { Settings } from './screens/Settings';
 import { Stub } from './screens/Stub';
 
 /**
@@ -23,6 +25,11 @@ export function App() {
   const [route, navigate] = useHashRoute();
   const [session, setSession] = useState<ISessionInfo | null>(null);
   const [mob, setMob] = useState<IMobStatus | null>(null);
+  const [theme, setTheme] = useState<Theme>(() => loadTheme());
+
+  useEffect(() => {
+    applyTheme(theme);
+  }, [theme]);
 
   useEffect(() => {
     const ctrl = new AbortController();
@@ -66,6 +73,7 @@ export function App() {
         )}
         {route.cluster === 'cameras' && <Cameras />}
         {route.cluster === 'safety' && <Safety onMobChange={setMob} />}
+        {route.cluster === 'settings' && <Settings theme={theme} onTheme={setTheme} />}
       </div>
       <TabBar current={route.cluster} onNavigate={(c) => navigate(c)} />
     </div>

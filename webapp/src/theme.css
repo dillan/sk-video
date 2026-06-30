@@ -46,6 +46,57 @@
   color-scheme: dark;
 }
 
+/* Night-Red: red on near-black for dark adaptation at sea. Only chrome changes — video stays on the
+ * invariant near-black mat (and is luminance-capped below). No blue/green/white; greens/blues remap to
+ * the red-orange family, with icon + text still carrying meaning. */
+[data-theme='night'] {
+  --surface-0: #05070a;
+  --surface-1: #07090c;
+  --surface-2: #0b0e13;
+  --video-mat: #07090c; /* INVARIANT */
+  --glass: rgba(7, 9, 12, 0.66);
+  --hairline: rgba(255, 129, 89, 0.16);
+  --inset-ring: rgba(255, 129, 89, 0.22);
+
+  --text-primary: #f2693c;
+  --text-secondary: #cf6336;
+  --text-dim: #9c5230;
+  --text-faint: #74402a;
+
+  --accent: #ff8159;
+  --accent-bright: #ff9a78;
+  --accent-grad: linear-gradient(160deg, #ff8159, #d85a30);
+  --status-live: #ff3b30; /* red is already night-safe */
+  --status-online: #ff9f0a; /* no green at sea — amber stands for healthy; icon + text carry it */
+  --status-caution: #ff9f0a;
+  --status-caution-text: #ffc24d;
+  --status-caution-bright: #ffb84d;
+  --status-dark: #7a4a30;
+  --status-never: #4a2e1e;
+
+  color-scheme: dark;
+}
+
+/* A real engineering mode, not a tint: cap video luminance so a bright feed can't blow out night
+ * vision, and flatten glow/blur (dark adaptation + a Pi GPU win). */
+[data-theme='night'] .player__media {
+  filter: brightness(0.4);
+}
+[data-theme='night'] .focus__dock,
+[data-theme='night'] .btn--ghost {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+[data-theme='night'] .dot--online {
+  box-shadow: none;
+}
+[data-theme='night'] .chip--info {
+  /* the only hardcoded blue chip — remap to the red-orange family */
+  background: rgba(255, 129, 89, 0.14);
+  box-shadow: inset 0 0 0 1px rgba(255, 129, 89, 0.3);
+  color: var(--accent-bright);
+}
+
 @keyframes recPulse {
   0%,
   100% {
@@ -355,6 +406,22 @@ button.tile {
   border: 1px solid var(--hairline);
   border-radius: var(--radius);
   padding: 24px;
+}
+.panel__title {
+  margin: 0 0 6px;
+  font-size: 15px;
+  font-weight: 600;
+}
+.settings {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.seg {
+  display: inline-flex;
+  gap: 8px;
+  margin-top: 12px;
+  flex-wrap: wrap;
 }
 .empty {
   flex: 1;

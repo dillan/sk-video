@@ -50,3 +50,12 @@ export function SafetyIcon(props: SVGProps<SVGSVGElement>) {
     </svg>
   );
 }
+
+export function SettingsIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg {...base(props)}>
+      <circle cx="12" cy="12" r="3.2" />
+      <path d="M19.4 13.5a1.7 1.7 0 000-3l1-1.7-1.7-3-1.9.6a7 7 0 00-2.6-1.5L13 2h-2l-.3 1.9a7 7 0 00-2.6 1.5L6.3 4.8l-1.7 3 1 1.7a1.7 1.7 0 000 3l-1 1.7 1.7 3 1.9-.6a7 7 0 002.6 1.5L11 22h2l.3-1.9a7 7 0 002.6-1.5l1.9.6 1.7-3z" />
+    </svg>
+  );
+}

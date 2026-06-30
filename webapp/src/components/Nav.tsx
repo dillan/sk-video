@@ -1,6 +1,6 @@
 import type { ComponentType, ReactNode, SVGProps } from 'react';
 import type { Cluster } from '../lib/router';
-import { LiveIcon, ReviewIcon, CamerasIcon, SafetyIcon } from './icons';
+import { LiveIcon, ReviewIcon, CamerasIcon, SafetyIcon, SettingsIcon } from './icons';
 
 interface NavItem {
   cluster: Cluster;
@@ -13,6 +13,7 @@ const NAV_ITEMS: NavItem[] = [
   { cluster: 'review', label: 'Review', Icon: ReviewIcon },
   { cluster: 'cameras', label: 'Cameras', Icon: CamerasIcon },
   { cluster: 'safety', label: 'Safety', Icon: SafetyIcon },
+  { cluster: 'settings', label: 'Settings', Icon: SettingsIcon },
 ];
 
 interface NavProps {

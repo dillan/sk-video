@@ -5,8 +5,8 @@ import { useEffect, useState } from 'react';
  * /plugins/sk-video/app/ and the server has no deep-path fallback, so client routes live after the #.
  * A route is a cluster plus an optional id (e.g. the focused camera: `#/live/foredeck`).
  */
-export type Cluster = 'live' | 'review' | 'cameras' | 'safety';
-const CLUSTERS: readonly Cluster[] = ['live', 'review', 'cameras', 'safety'];
+export type Cluster = 'live' | 'review' | 'cameras' | 'safety' | 'settings';
+const CLUSTERS: readonly Cluster[] = ['live', 'review', 'cameras', 'safety', 'settings'];
 
 export interface IRoute {
   cluster: Cluster;
