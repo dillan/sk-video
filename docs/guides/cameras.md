@@ -51,6 +51,30 @@ If you later point a camera at a different address, the saved login is **automat
 
 ---
 
+## Seeing what a camera supports
+
+When SK Video adds an ONVIF camera it **detects what the camera can do** and shows it as small chips on each row in the **Cameras** list — so you can see at a glance which features are available:
+
+- **PTZ** — pan/tilt/zoom.
+- **Imaging** — the Day/Night/Fog/Glare picture presets.
+- **Audio** — the camera has a microphone you can listen to.
+- **Two-way** — the camera has a speaker for [two-way audio](advanced.md#two-way-audio).
+- **H.264 sub** — a lighter sub-stream for weak networks.
+- **Spotlight** / **Alarm** — a white-light spotlight or an audible siren, where the camera exposes one.
+
+A plain camera that reports nothing shows no chips — SK Video never claims a capability the camera didn't report. These same chips light up the matching controls in [Camera Focus](viewing.md).
+
+## Re-scanning capabilities
+
+Each camera row has a **Re-scan** button. It reconnects to the camera with its stored login, re-detects the capabilities, and updates the camera — **without** deleting and re-adding it, so your name, mount, role, and calibration are kept. Use it when:
+
+- You've **updated the plugin** and want an existing camera to pick up newly-supported controls.
+- You **enabled a feature on the camera itself** (e.g. turned on ONVIF, or a spotlight/siren) and want SK Video to notice.
+
+SK Video also **re-scans automatically when a camera's firmware changes.** On start it checks each camera's firmware version; if it differs from what it last recorded, it re-scans that camera on its own. The first time this runs after updating, it backfills capabilities for cameras you added before capability detection existed — so after a plugin update and a restart, your cameras' chips (and controls) refresh themselves.
+
+---
+
 ## Tell the boat where the camera is
 
 This is optional, but it's what turns a plain feed into a smart instrument. In the camera's settings you can record:

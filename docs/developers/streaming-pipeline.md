@@ -107,7 +107,13 @@ flowchart TD
     Recover -- no --> MJPEG
 ```
 
-The walk UX lives in the widget; the plugin only publishes the recommendation + a frame-friendly `Cache-Control: no-store` on the still frame.
+The walk UX lives in the client; the plugin only publishes the recommendation + a frame-friendly `Cache-Control: no-store` on the still frame. The **SK Video web app** player (`webapp/src/components/VideoPlayer.tsx`) implements the walk with a few marine-network hardenings worth knowing:
+
+- **Recover up, not just down.** The walk falls back on stall/error, but a one-way walk would strand a feed on the 1 fps MJPEG floor after a transient miss (e.g. a go2rtc restart). So when it's below the preferred rung it re-attempts the top rung on a backoff (8 s / 20 s / 45 s, then gives up), and holds there once it sticks. On first run this also lands H.264 cameras back on WebRTC after any early hiccup.
+- **Keep the last frame.** During a rung switch it shows the last painted still as a poster, so an upgrade attempt never blanks the video.
+- **WHEP ICE gathering.** go2rtc's WHEP is a single non-trickle POST, so the player waits briefly (≤400 ms) for ICE to gather host candidates before POSTing the offer — a candidate-bearing offer connects far more reliably on marina wifi than a bare one relying on peer-reflexive discovery.
+- **Fast MJPEG under control.** While a PTZ control is being driven, the still-refresh floor polls `frame.jpeg` at ≈4 fps (vs the ≈1 fps idle cadence) so a move is visible right away, then relaxes.
+- **A stall watchdog** on the live rungs walks down if playback stops advancing (a WebRTC that negotiates but never delivers media), rather than only on a hard error.
 
 ---
 
@@ -155,7 +161,13 @@ sequenceDiagram
     Note over R,O: a runaway move auto-stops,<br/>absolute moves are clamped to +/-1
 ```
 
-`PtzManager` caches one controller per camera and re-validates the host through the SSRF guard. Imaging presets (Day/Night/Fog/Glare) are capability-gated — the route only applies a control the camera actually reports.
+`PtzManager` caches one controller per camera and re-validates the host through the SSRF guard. Imaging presets (Auto/Day/Night/Fog/Glare) are capability-gated — the route only applies a control the camera actually reports.
+
+A few details on this path:
+
+- **ONVIF port probing.** A camera onboarded by its RTSP URL only stored the RTSP port (554); its ONVIF service is a different port. When no ONVIF port is configured the connection layer (`onvif-connect.ts`) probes the common ones (80, 8000, 8899, 2020) and caches the first that completes the handshake — so PTZ "just works" on RTSP-onboarded cameras without extra config.
+- **Actionable failures.** `onvif-errors.ts` classifies a failure into `unreachable` / `auth` / `onvif` / `unknown` and the routes return `{ error: <hint>, reason, detail }` (a `502`), so the app can tell the operator _why_ a control failed.
+- **Spotlight & alarm** ride ONVIF **auxiliary commands** (`aux-routes.ts` + `aux-commands.ts`): there's no standard ONVIF spotlight/siren, so the advertised aux tokens (e.g. `tt:WhiteLight`) are classified into spotlight/alarm and sent as `<token>|On` / `|Off`. Two-way audio (`/talk`) is a separate WebRTC backchannel negotiated through go2rtc — the browser's mic offer is proxied same-origin to the camera's native audio output.
 
 ---
 

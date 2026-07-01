@@ -41,12 +41,12 @@ A rail (tablet/desktop) or bottom tab bar (phone) gives you five areas:
 
 Tap a tile to open **Camera Focus** — one camera, full attention:
 
-- **The player** picks the best delivery automatically (low-latency WebRTC where it can, HLS or a still-refresh fallback otherwise) and tells you which it landed on.
-- **Pan/tilt/zoom** with on-screen controls and a hard **STOP**; jump to **saved positions** if the camera has them. (On a slow still-refresh feed, continuous PTZ is disabled — panning a 1-fps view near a dock is dangerous.)
-- **Picture presets** (Day / Night / Fog / Glare) for cameras with ONVIF imaging.
-- **Snapshot** a still — stamped with the boat's position and time, honest when there's no GPS fix.
-- **Push-to-talk** on cameras with a speaker (best-effort hailing, not telephony).
-- **Sub / Full-res toggle** when a camera has a sub-stream — and an automatic switch to the H.264 sub when the main stream is H.265 (which most browsers can't play).
+- **The player** picks the best delivery automatically (low-latency WebRTC where it can, HLS or a still-refresh fallback otherwise), tells you which it landed on, and **climbs back up to WebRTC** on its own once the network recovers — so a hiccup doesn't leave you stuck at 1 fps.
+- **Pan/tilt/zoom** with a floating glass **joystick pad** (drag the knob or tap the chevrons) plus a zoom pill and a hard **STOP** — or just drag on the video, pinch/scroll to zoom. Jump to **saved positions** if the camera has them. On a slow still-refresh feed continuous PTZ is disabled, and a failed move tells you _why_ rather than a generic "try again".
+- **Vision presets** (Auto / Day / Night / Fog / Glare) for cameras with ONVIF imaging.
+- **Snapshot** a still — stamped with the boat's position and time, honest when there's no GPS fix — and **Record** where the hardware and channels allow.
+- **Listen** / **Two-way audio** on cameras with a mic/speaker (best-effort hailing, not telephony), and **Spotlight** / **Alarm** on cameras that expose one (the siren asks you to confirm).
+- **Stream selector** — switch between the full-resolution main and the lighter H.264 sub-stream, with an automatic switch to the sub when the main is H.265 (which most browsers can't play).
 
 <p align="center">
   <img src="../images/app-camera-focus.webp" alt="Camera Focus — a single camera full-bleed with the imaging-preset and snapshot/record dock" width="90%">
@@ -76,7 +76,7 @@ Everything worth keeping lives under **Review**, as tabs.
 
 ## Cameras
 
-Manage every camera in one place: add by hand or **scan** the network, set the login (write-only — never shown back), tell the boat where each camera is mounted and what role it plays, and run the **calibration wizard** (two samples per axis) so geo-pointing knows where the camera points. A health view shows the negotiated codec, the transport walk, and an honest last-seen state for diagnosing a stalling feed without server logs. See [Adding & organizing cameras](cameras.md) for the details.
+Manage every camera in one place: add by hand or **scan** the network, set the login (write-only — never shown back), tell the boat where each camera is mounted and what role it plays, and run the **calibration wizard** (two samples per axis) so geo-pointing knows where the camera points. Each row shows **capability chips** for what the camera supports (PTZ, imaging, audio, two-way, sub-stream, spotlight, alarm), and a **Re-scan** button re-detects them in place — SK Video also re-scans automatically when a camera's firmware changes. A health view shows the negotiated codec, the transport walk, and an honest last-seen state for diagnosing a stalling feed without server logs. See [Adding & organizing cameras](cameras.md) for the details.
 
 ---
 

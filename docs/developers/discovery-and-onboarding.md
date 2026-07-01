@@ -79,6 +79,16 @@ The address ONVIF hands back (`getStreamUri`) is itself re-validated — a camer
 
 For non-ONVIF cameras, a curated **RTSP-path library** offers likely paths as _suggestions_, gated behind the existing `/cameras/test` probe (which is rate-limited and SSRF-guarded). It's always a suggestion the operator confirms — never authoritative.
 
+### What introspection detects
+
+`probeCapabilities()` (`onvif-controller.ts`) probes each optional feature and treats any error as "unsupported" — capabilities are detected, never assumed. It fills in: PTZ / absolute PTZ, audio + audio backchannel, sub-streams, the **imaging** control names the library actually exposes (`irCut`, `brightness`, `contrast`, `colorSaturation`, `sharpness`, `focus`, `exposure` — the resource validator's vocabulary is kept in sync via `TImagingControl`), the advertised **auxiliary-command** tokens (classified into `spotlight` / `alarm` by `aux-commands.ts`), and the **device info** (`getDeviceInformation` → manufacturer / model / serial / **firmware**, persisted on the resource for a durable identity + change detection). The ONVIF port is not required in the introspect body — the connection layer probes the common ports (see [ONVIF: PTZ & imaging](streaming-pipeline.md#onvif-ptz--imaging)).
+
+### Re-scanning an existing camera
+
+`POST /cameras/:id/rescan` (`rescan-routes.ts`) re-runs introspection for an **already-added** camera using its **stored** credentials and returns the fresh discovery; the client merges it into the resource (`mergeRescan` in the web app; `mergeDiscovered` server-side) — refreshing capabilities/media/device while preserving operator-set fields (name, role, placement, calibration).
+
+On start, `refreshChangedCameras()` (`capability-refresh.ts`) cheaply probes each camera's current firmware and, when it differs from the stored `device.firmware` (including the first run, when none is recorded), runs a full re-scan and re-saves — a best-effort, background pass that backfills capabilities for cameras added before capability discovery existed and self-heals after a camera firmware update. Only changed cameras are re-introspected, so there's no churn otherwise.
+
 ---
 
 ## A note on the harness

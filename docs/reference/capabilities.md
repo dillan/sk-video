@@ -66,7 +66,7 @@ SK Video tries hard not to over-promise. This page is the honest ledger: what ea
 
 ## Adaptive transport
 
-- **Is:** a server-published recommendation (codec-aware `webrtc → hls → mjpeg`) so a viewing app can walk down to a still-refresh on a starved link and recover. MJPEG mode is a **still-refresh loop**, a photo every second or two.
+- **Is:** a server-published recommendation (codec-aware `webrtc → hls → mjpeg`) that the app's player walks down on a starved link **and climbs back up** to WebRTC when the network recovers — so a transient hiccup doesn't strand you on the still-refresh floor. The player keeps the last frame on screen during a switch, and refreshes the still-image floor faster (≈4 fps) while you're actively driving PTZ, so a move is visible right away. MJPEG mode is a **still-refresh loop**, a photo every second or two.
 - **Isn't:** a true adaptive-bitrate (ABR) ladder, and not continuous video at the bottom rung. Browser H.265 support is uneven; H.264 is the most reliable everywhere.
 
 ## 360° & action cameras
@@ -76,8 +76,13 @@ SK Video tries hard not to over-promise. This page is the honest ledger: what ea
 
 ## Two-way audio
 
-- **Is:** the camera's **native** push-to-talk backchannel (where it has a speaker), routed same-origin.
+- **Is:** the camera's **native** two-way audio backchannel (where it has a speaker), routed same-origin. In Camera Focus it's a toggle — open the channel to hail, close it to release the mic. There's also a **Listen** toggle that un-mutes the camera's own audio.
 - **Isn't:** telephony-grade, and not WHIP ingest. Camera- and codec-dependent; quality varies.
+
+## Spotlight & alarm
+
+- **Is:** control of a camera's white-light **spotlight** and audible **alarm/siren** — _only_ when the camera advertises the matching ONVIF auxiliary command. Both surface as toggles in Camera Focus; sounding the alarm takes a confirm.
+- **Isn't:** universal. ONVIF has **no standard** spotlight/siren command, so this rides freeform auxiliary commands that many cameras (including some that drive these fixtures through a proprietary API) don't expose over ONVIF — so the controls simply won't appear there. State is optimistic (ONVIF gives no reliable read-back). Detection + control are implemented to the ONVIF spec and unit-tested, but were **not yet verified on real aux-capable hardware**.
 
 ## Installable PWA & offline bounds
 

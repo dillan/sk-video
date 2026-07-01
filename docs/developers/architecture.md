@@ -72,9 +72,9 @@ Each lives in its own `src/` directory and is mostly independent. The entrypoint
 | Directory | Responsibility | Deep-dive |
 | --- | --- | --- |
 | `src/gateway/` | Manage the **go2rtc** child process and proxy WebRTC/HLS/MJPEG/frame same-origin; stream health + watchdog. | [Streaming pipeline](streaming-pipeline.md) |
-| `src/onvif/` | ONVIF PTZ, imaging presets, capability probe, connection. | [Streaming pipeline](streaming-pipeline.md) |
+| `src/onvif/` | ONVIF PTZ, imaging presets, spotlight/alarm auxiliary commands, capability probe, port-probing connection, and the re-scan endpoint. | [Streaming pipeline](streaming-pipeline.md) |
 | `src/discovery/` | WS-Discovery, mDNS, SSDP; zero-typing introspection; device hints. | [Discovery & onboarding](discovery-and-onboarding.md) |
-| `src/cameras/` | The `cameras` resource model + validation, the camera & credential stores. | [Storage & data](storage-and-data.md) |
+| `src/cameras/` | The `cameras` resource model + validation, the camera & credential stores, capability merge + firmware-change re-scan. | [Storage & data](storage-and-data.md) |
 | `src/recording/` | DVR recording manager + position-stamped snapshots + their stores. | [Storage & data](storage-and-data.md) |
 | `src/incidents/` | Event bundles: pre/post-roll clip + telemetry track + snapshots. | [Storage & data](storage-and-data.md) |
 | `src/safety/` | Man-overboard, anchor-watch, experimental visual refine, geo math. | [Safety & awareness](safety-and-awareness.md) |

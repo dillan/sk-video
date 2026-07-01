@@ -25,8 +25,22 @@ Work down this list:
 
 ## The picture stalls or is choppy
 
-- **Your network is the bottleneck.** Step down: WebRTC → HLS → still-refresh, or switch to the camera's lighter **sub-stream**.
+- **Your network is the bottleneck.** The app steps down automatically (WebRTC → HLS → still-refresh) and **climbs back up to WebRTC** once the link recovers, so a brief hiccup shouldn't strand you. If it feels stuck, switch to the camera's lighter **sub-stream**.
 - **Too many high-res streams at once.** Each live high-resolution camera costs bandwidth and a little CPU. Use sub-streams for the "glance" views.
+
+> If the live view is showing a **photo every second or two** ("still-refresh, ~1 fps"), it fell back to MJPEG because low-latency WebRTC couldn't connect. The app keeps trying to recover to WebRTC on its own; if it never does, WebRTC's media path is likely blocked on your network — see [The picture won't load](#the-picture-wont-load) and try the sub-stream.
+
+---
+
+## PTZ controls don't move the camera
+
+If tapping the joystick pad or an arrow does nothing, SK Video now tells you the **reason** in a message over the video — read it first:
+
+- **"Can't reach the camera's ONVIF service…"** — pan/tilt/zoom runs over **ONVIF**, which is a separate service (and often a different port) from the video stream. A camera added by its RTSP address may have ONVIF on another port; SK Video probes the common ones automatically, but if ONVIF is turned off on the camera, turn it on in the camera's settings.
+- **"The camera rejected the login…"** — the stored login works for video but not for ONVIF control. Re-enter the camera's credentials under **Cameras**.
+- **Reached the camera but it's not its ONVIF service** — usually ONVIF is disabled, or the camera exposes it on a non-standard port. Enable ONVIF on the camera.
+
+After changing anything on the camera (enabling ONVIF, a firmware update), use **Re-scan** on the camera's row so SK Video re-detects its controls. On a slow still-refresh feed, continuous panning is disabled on purpose — that's not a fault.
 
 ---
 

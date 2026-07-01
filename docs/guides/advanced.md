@@ -21,7 +21,7 @@ Great for "what's that ship crossing our bow?" without leaving the helm.
 
 ## Two-way audio
 
-Cameras that have a built-in speaker (an ONVIF audio output) can be used for **push-to-talk** — hail the foredeck, talk to someone at the dock. SK Video routes this through the same same-origin path as the video.
+Cameras that have a built-in speaker (an ONVIF audio output) can be used to **hail** — talk to someone on the foredeck or at the dock. In Camera Focus it's a **Two-way audio** toggle: open the channel to talk through the camera's speaker, then tap again to close it and release your mic. (A separate **Listen** toggle un-mutes the camera's own microphone so you can hear it.) SK Video routes this through the same same-origin path as the video.
 
 Honest limits:
 

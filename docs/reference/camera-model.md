@@ -51,7 +51,25 @@ Filled in by the server when it introspects a camera over ONVIF. These describe 
 | `capabilities.audio` | boolean | Audio input available. |
 | `capabilities.audioBackchannel` | boolean | Two-way audio (a speaker/output) — enables [hailing](../guides/advanced.md#two-way-audio). |
 | `capabilities.substreams` | boolean | A low-res sub-stream variant exists. |
-| `capabilities.imaging` | string[] | Imaging controls present: any of `irCut`, `wdr`, `defog`, `focus`, `brightness`, `exposure`. |
+| `capabilities.imaging` | string[] | Imaging controls present: any of `irCut`, `brightness`, `contrast`, `colorSaturation`, `sharpness`, `focus`, `exposure` — the controls `onvif@0.8.1` actually exposes (there is no WDR/defog in this library). |
+| `capabilities.spotlight` | boolean | A white-light spotlight is drivable via an ONVIF auxiliary command. |
+| `capabilities.alarm` | boolean | An audible alarm/siren is drivable via an ONVIF auxiliary command. |
+| `capabilities.auxCommands` | string[] | The raw ONVIF auxiliary-command tokens the camera advertised (e.g. `tt:Wiper`, `tt:WhiteLight`). The spotlight/alarm routes resolve these to the `<token>\|On` / `<token>\|Off` data ONVIF expects. |
+
+> **Untested on hardware.** ONVIF has no standard spotlight or siren command, so these are detected from the freeform _auxiliary commands_ a camera advertises and are best-effort. The detection + control are implemented to the ONVIF spec and covered by automated tests, but had not been verified against a real aux-capable camera at the time of writing.
+
+---
+
+## Device (server-written)
+
+Device identity read from ONVIF `getDeviceInformation` at onboarding and on every re-scan. It gives a camera a durable identity and lets a re-scan detect a **firmware change**.
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `device.manufacturer` | string (≤200) | e.g. `REOLINK`. |
+| `device.model` | string (≤200) | e.g. `RLC-823S2`. |
+| `device.serial` | string (≤200) | Serial number (falls back to other identity when a camera reports an IP-shaped serial). |
+| `device.firmware` | string (≤200) | Firmware version. Compared on start; a change triggers an automatic capability [re-scan](../guides/cameras.md#re-scanning-capabilities). |
 
 ---
 
@@ -82,8 +100,9 @@ A fully-described foredeck PTZ camera (credentials are set separately, not here)
   "placement": { "mount": "mast", "bearingRelativeDeg": 0, "heightM": 8 },
   "role": "navigation",
   "safetyCritical": true,
-  "capabilities": { "ptz": true, "absolutePtz": true, "imaging": ["irCut", "wdr"] },
+  "capabilities": { "ptz": true, "absolutePtz": true, "imaging": ["irCut", "brightness"] },
   "media": { "codec": "h264", "substreamPath": "/stream2" },
+  "device": { "manufacturer": "REOLINK", "model": "RLC-823S2", "firmware": "v3.1.0.0" },
   "calibration": {
     "pan": { "offset": 0, "scalePerDeg": 0.0111 },
     "tilt": { "offset": 0, "scalePerDeg": 0.0222 }

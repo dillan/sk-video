@@ -28,32 +28,45 @@ The same camera can be delivered to your browser three different ways. The SK Vi
 
 ## Moving a PTZ camera
 
-If your camera supports **pan / tilt / zoom** (the plugin detects this automatically when you add it), Camera Focus shows on-screen controls with a hard **STOP**. Use the arrows to pan and tilt and the zoom control to zoom. (On a slow still-refresh feed, continuous panning is disabled on purpose — steering a 1-fps view near a dock is dangerous.)
+If your camera supports **pan / tilt / zoom** (the plugin detects this automatically when you add it), Camera Focus floats a set of glass controls over the video. The heart of it is a **joystick pad**: drag the centre knob to pan and tilt — the further you push, the faster it moves — or tap one of the four **chevrons** to nudge a step (hold to keep going). Beside it are a **zoom** pill (+ / −, with a live readout) and a red **STOP**. You can also just **drag on the video itself** to steer, pinch or scroll to zoom.
 
 <p align="center">
-  <img src="../images/ptz.webp" alt="On-screen pan/tilt/zoom controls over a live camera" width="85%">
+  <img src="../images/ptz.webp" alt="The glass PTZ joystick pad, zoom pill, and STOP floating over a live camera" width="85%">
 </p>
 
-If the camera has **saved positions** ("presets") set up in its own app, those appear too — tap one to send the camera there.
+On a slow **still-refresh** feed, continuous panning is disabled on purpose — steering a 1-fps view near a dock is dangerous — and a note tells you why. If a move can't reach the camera, SK Video shows the **reason** ("can't reach the camera's ONVIF service — it may use a non-standard port", "the camera rejected the login", …) rather than a generic "try again", so you know what to fix. (A common one: a camera added by its RTSP address whose ONVIF service is on a different port — SK Video now probes the common ONVIF ports automatically, so this usually just works.)
+
+If the camera has **saved positions** ("presets") set up in its own app, those appear in a **Presets** menu above the pad — tap one to send the camera there.
 
 A PTZ camera that also reports **absolute positioning** can do more than be nudged around: it can be pointed at a real-world position. That's what powers the man-overboard pointing and the AIS "point at that ship" tool — see [Safety features](safety.md) and [Advanced features](advanced.md).
+
+### Other Focus controls
+
+Depending on what the camera reports, Camera Focus also offers:
+
+- **Vision mode** — the picture presets below.
+- **Stream** — switch between the full-resolution main and the lighter H.264 sub-stream, with the current codec and delivery mode shown.
+- **Snapshot** and **Record** (recording is offered where the hardware tier and free recording channels allow).
+- **Listen** and **Two-way audio** — hear the camera, or open a channel to hail through its speaker ([two-way audio](advanced.md#two-way-audio)).
+- **Spotlight** and **Alarm** — a white-light spotlight or an audible siren, on cameras that expose one. Sounding the alarm asks you to confirm first.
 
 ---
 
 ## Night, fog & glare picture presets
 
-Cameras that expose **imaging controls** over ONVIF (infrared cut, wide-dynamic-range, defog, focus, brightness) get one-tap picture presets tuned for marine conditions:
+Cameras that expose **imaging controls** over ONVIF (infrared-cut mode, brightness, contrast, colour saturation, sharpness, focus) get one-tap picture presets tuned for marine conditions, chosen from the **Vision** menu:
 
-| Preset         | Use it when                                                               |
-| -------------- | ------------------------------------------------------------------------- |
-| **Day**        | Normal daylight — the neutral baseline.                                   |
-| **Night (IR)** | After dark — leans on the camera's infrared mode.                         |
-| **Fog**        | Reduced visibility — turns on defog / contrast help if the camera has it. |
-| **Glare**      | Bright sun on water — tames blown-out highlights.                         |
+| Preset         | Use it when                                                                   |
+| -------------- | ----------------------------------------------------------------------------- |
+| **Auto**       | Hand the picture back to the camera's own automatic mode — the neutral reset. |
+| **Day**        | Normal daylight.                                                              |
+| **Night (IR)** | After dark — leans on the camera's infrared mode.                             |
+| **Fog**        | Reduced visibility — lifts contrast and sharpness if the camera has them.     |
+| **Glare**      | Bright sun on water — tames blown-out highlights.                             |
 
-These are **best-effort** and **capability-gated**: a preset is only offered if the camera actually supports the controls it needs, and a fixed-lens camera won't show focus options. They nudge the camera's settings rather than fighting its automatic mode, so it's safe to experiment — set it back to **Day** to return to neutral.
+These are **best-effort** and **capability-gated**: a preset is only offered if the camera actually supports the controls it needs, and a fixed-lens camera won't show focus options. They nudge the camera's settings rather than fighting its automatic mode, so it's safe to experiment — pick **Auto** to hand control back to the camera.
 
-> Honesty check: a defog preset can't see through dense fog, and night/IR depends entirely on the camera's own hardware. These help the picture; they don't work miracles.
+> Honesty check: the Fog preset can't see through dense fog (there's no true defog control in the library it uses — it just lifts contrast and sharpness), and night/IR depends entirely on the camera's own hardware. These help the picture; they don't work miracles.
 
 **Automatic after dark.** During a man-overboard or anchor/geofence alarm, SK Video checks the sun's position from the boat's location and time, and if it's past dusk it switches the imaging-capable cameras to the **Night (IR)** preset on its own — so the evidence and any camera aim are as clear as the hardware allows, with nobody at the screen. It only acts when the boat has a position fix and only on cameras that expose ONVIF imaging; everything else is left untouched. You can still change the preset by hand at any time.
 

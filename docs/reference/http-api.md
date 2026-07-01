@@ -6,7 +6,7 @@ Two ground rules hold everywhere:
 
 - **Same-origin only.** The browser talks to these endpoints; the plugin talks to go2rtc and the cameras. A browser never reaches go2rtc or a camera directly, and a client-supplied `src=` is never honored.
 - **`503` until started.** Anything that needs the plugin's services returns `503` until the plugin has finished starting.
-- **Auth on mutating routes.** On a server with **security enabled**, every state-changing route — PTZ moves, imaging presets, calibration, recording start/stop, snapshots, MOB activate, AIS slew, incident create/edit/delete, two-way talk, the `…/test` and `…/discover/introspect` probes, push subscribe/unsubscribe, operational-config writes, and video upload/delete (plus the credential routes) — requires an authenticated request and answers `401` otherwise. The auth check runs first, so it can't be used to probe which cameras or bundles exist. Read-only routes and the live stream stay open to the same-origin browser session, and on an open server (security disabled) everything passes through. Only two paths stay ungated by design: the streaming-negotiation `…/whep` (gating just one signaling rung while HLS/MJPEG stay open would be security theatre) and the rate-limited, SSRF-guarded `…/discover` LAN scan — see the [security model](../developers/security-model.md).
+- **Auth on mutating routes.** On a server with **security enabled**, every state-changing route — PTZ moves, imaging presets, spotlight/alarm, calibration, capability re-scan, recording start/stop, snapshots, MOB activate, AIS slew, incident create/edit/delete, two-way talk, the `…/test` and `…/discover/introspect` probes, push subscribe/unsubscribe, operational-config writes, and video upload/delete (plus the credential routes) — requires an authenticated request and answers `401` otherwise. The auth check runs first, so it can't be used to probe which cameras or bundles exist. Read-only routes and the live stream stay open to the same-origin browser session, and on an open server (security disabled) everything passes through. Only two paths stay ungated by design: the streaming-negotiation `…/whep` (gating just one signaling rung while HLS/MJPEG stay open would be security theatre) and the rate-limited, SSRF-guarded `…/discover` LAN scan — see the [security model](../developers/security-model.md).
 
 Camera definitions are managed through the standard Signal K Resources API at `/signalk/v2/api/resources/cameras` — not through these routes.
 
@@ -45,8 +45,13 @@ Camera definitions are managed through the standard Signal K Resources API at `/
 | `GET` | `/cameras/:id/ptz/presets` | List the camera's saved presets. | `200`, `404`, `502`, `503` |
 | `POST` | `/cameras/:id/ptz/preset` | Go to a preset by token. | `204`, `404`, `502`, `503` |
 | `GET` | `/cameras/:id/imaging` | Current imaging settings + the presets/controls the camera supports. | `200`, `404`, `502`, `503` |
-| `POST` | `/cameras/:id/imaging/preset` | Apply a Day / Night-IR / Fog / Glare preset (capability-gated). | `200`, `400`, `409`, `502`, `503` |
+| `POST` | `/cameras/:id/imaging/preset` | Apply an Auto / Day / Night-IR / Fog / Glare preset (capability-gated). | `200`, `400`, `409`, `502`, `503` |
+| `POST` | `/cameras/:id/spotlight` | Toggle a white-light spotlight via ONVIF auxiliary command. Body `{ on }`; only `on: true` fires it. Capability-gated → `404` if the camera advertised no matching command. | `204`, `404`, `502`, `503` |
+| `POST` | `/cameras/:id/alarm` | Toggle an audible alarm/siren via ONVIF auxiliary command. Body `{ on }`; defaults to **off** — only an explicit `on: true` sounds it. Capability-gated → `404`. | `204`, `404`, `502`, `503` |
+| `POST` | `/cameras/:id/rescan` | Re-introspect this camera with its **stored** login and return the fresh discovery (capabilities, media, device/firmware) for the client to merge. Read-only on the server. | `200`, `404`, `502`, `503` |
 | `POST` | `/cameras/:id/calibration` | Capture a one-time FOV calibration from two `{deg, normalized}` samples per axis; solved and stored for geo-pointing/slew. | `200`, `400`, `404`, `500`, `503` |
+
+**Failure responses carry a reason.** When an ONVIF control can't reach the camera, a `502` body is `{ "error": <operator-facing next step>, "reason": "unreachable" | "auth" | "onvif" | "unknown", "detail": <redacted message> }`. The `error` string is a plain-language hint (e.g. _"Reached the camera but not its ONVIF service — enable ONVIF; it may use a non-standard port"_) so the app can tell the operator **why** a move failed instead of a generic "try again". Applies to the PTZ, imaging, spotlight/alarm, and rescan routes.
 
 ## Discovery & onboarding
 
