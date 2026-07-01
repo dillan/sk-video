@@ -39,6 +39,8 @@ export interface IIntrospectResult {
   manufacturer?: string;
   model?: string;
   serialNumber?: string;
+  /** Camera firmware version — persisted so a later re-scan can detect a firmware change. */
+  firmwareVersion?: string;
   /** Auto-filled stream source, present only when a usable, SSRF-allowed URI was obtained. */
   source?: IIntrospectSource;
   /** Codec of the main (recording) stream — lets the UI route around H.265 in the browser. */
@@ -110,6 +112,9 @@ export async function introspectOnvifCamera(
   }
   if (info?.model) {
     result.model = info.model;
+  }
+  if (info?.firmwareVersion) {
+    result.firmwareVersion = info.firmwareVersion;
   }
   if (info?.serialNumber) {
     result.serialNumber = info.serialNumber;

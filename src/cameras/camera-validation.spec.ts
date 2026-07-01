@@ -183,6 +183,18 @@ describe('validateCamera — vessel-context metadata', () => {
     expect(validateCamera({ ...base, capabilities: { imaging: ['defog'] } }).valid).toBe(false);
   });
 
+  it('accepts device identity/firmware and rejects a non-string or over-long value', () => {
+    const ok = validateCamera({
+      ...base,
+      device: { manufacturer: 'REOLINK', model: 'RLC-823S2', serial: 'ABC', firmware: 'v3.1.0' },
+    });
+    expect(ok.errors).toEqual([]);
+    expect(ok.value).toMatchObject({ device: { firmware: 'v3.1.0' } });
+    expect(validateCamera({ ...base, device: { firmware: 42 } }).valid).toBe(false);
+    expect(validateCamera({ ...base, device: { serial: 'x'.repeat(201) } }).valid).toBe(false);
+    expect(validateCamera({ ...base, device: { bogus: 'y' } }).valid).toBe(false);
+  });
+
   it('rejects an unknown codec, a bad profile token and a traversal substream path', () => {
     expect(validateCamera({ ...base, media: { codec: 'av1' } }).valid).toBe(false);
     expect(validateCamera({ ...base, media: { profileToken: 'bad token!' } }).valid).toBe(false);

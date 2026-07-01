@@ -119,6 +119,15 @@ export interface ICameraMedia {
   projection?: TCameraProjection;
 }
 
+/** Device identity from ONVIF getDeviceInformation — a durable identity + firmware for re-scan/change
+ *  detection (and forward-compatible with a OneNet device descriptor). Free-text, so bounded in length. */
+export interface ICameraDevice {
+  manufacturer?: string;
+  model?: string;
+  serial?: string;
+  firmware?: string;
+}
+
 /** One axis of a per-camera degrees → normalised ONVIF (-1..1) calibration. */
 export interface ICalibrationAxisConfig {
   offset: number;
@@ -139,6 +148,7 @@ export interface ICamera {
   role?: TCameraRole;
   capabilities?: ICameraCapabilities;
   media?: ICameraMedia;
+  device?: ICameraDevice;
   calibration?: ICameraCalibration;
   /**
    * Opt in to trusting a self-signed TLS certificate for this one camera (marine gear often ships
@@ -176,6 +186,7 @@ const ALLOWED_TOP_KEYS = new Set([
   'role',
   'capabilities',
   'media',
+  'device',
   'calibration',
   'allowSelfSigned',
   'safetyCritical',
@@ -193,6 +204,8 @@ const CAPABILITY_BOOLS = [
 ] as const;
 const CAPABILITY_KEYS = new Set<string>([...CAPABILITY_BOOLS, 'imaging', 'auxCommands']);
 const MEDIA_KEYS = new Set(['codec', 'profileToken', 'substreamPath', 'projection']);
+const DEVICE_KEYS_ARR = ['manufacturer', 'model', 'serial', 'firmware'] as const;
+const DEVICE_KEYS = new Set<string>(DEVICE_KEYS_ARR);
 const CALIBRATION_KEYS = new Set(['pan', 'tilt']);
 const AXIS_KEYS = new Set(['offset', 'scalePerDeg']);
 
@@ -344,6 +357,27 @@ function validateMedia(input: unknown, errors: string[]): ICameraMedia | undefin
   return out;
 }
 
+function validateDevice(input: unknown, errors: string[]): ICameraDevice | undefined {
+  const o = asObject(input);
+  if (!o) {
+    errors.push('device must be an object');
+    return undefined;
+  }
+  rejectUnknownKeys(o, DEVICE_KEYS, 'device', errors);
+  const out: ICameraDevice = {};
+  for (const key of DEVICE_KEYS_ARR) {
+    if (o[key] !== undefined) {
+      // Free-text identity strings from the camera — bound the length to keep the resource sane.
+      if (typeof o[key] === 'string' && (o[key] as string).length <= 200) {
+        out[key] = o[key] as string;
+      } else {
+        errors.push(`device.${key} must be a string (max 200 chars)`);
+      }
+    }
+  }
+  return out;
+}
+
 function validateAxis(
   input: unknown,
   label: string,
@@ -465,6 +499,7 @@ export function validateCamera(input: unknown): IValidationResult {
   const capabilities =
     obj.capabilities !== undefined ? validateCapabilities(obj.capabilities, errors) : undefined;
   const media = obj.media !== undefined ? validateMedia(obj.media, errors) : undefined;
+  const device = obj.device !== undefined ? validateDevice(obj.device, errors) : undefined;
   const calibration =
     obj.calibration !== undefined ? validateCalibration(obj.calibration, errors) : undefined;
 
@@ -500,6 +535,7 @@ export function validateCamera(input: unknown): IValidationResult {
       ...(role ? { role } : {}),
       ...(capabilities && Object.keys(capabilities).length ? { capabilities } : {}),
       ...(media && Object.keys(media).length ? { media } : {}),
+      ...(device && Object.keys(device).length ? { device } : {}),
       ...(calibration ? { calibration } : {}),
       ...(allowSelfSigned !== undefined ? { allowSelfSigned } : {}),
       ...(safetyCritical !== undefined ? { safetyCritical } : {}),

@@ -49,6 +49,10 @@ import { registerDiscoveryRoutes } from './discovery/discovery-routes';
 import { registerIntrospectRoute } from './discovery/introspect-routes';
 import { registerOnboardingHintsRoute } from './discovery/device-hints';
 import { introspectOnvifCamera } from './onvif/onvif-introspect';
+import { registerRescanRoutes } from './onvif/rescan-routes';
+import { refreshChangedCameras } from './cameras/capability-refresh';
+import { createOnvifConnect } from './onvif/onvif-connect';
+import { OnvifPtzController } from './onvif/onvif-controller';
 import { MobController } from './safety/mob-controller';
 import { toMobCamera, ownShipFromSelfState, findMobBeacon } from './safety/mob-wiring';
 import { MobVisualRefine, frigatePersonDetection } from './safety/mob-visual-refine';
@@ -870,25 +874,28 @@ export = function (app: ServerAPI): Plugin {
         }
 
         const base = createCameraResourceMethods(cameras);
+        // Validate + host-check + persist a camera resource. Shared by the resource-provider write path
+        // and the firmware-change auto re-scan so both go through the same guards.
+        const persistCamera = async (id: string, value: Record<string, unknown>): Promise<void> => {
+          const result = validateCamera(value);
+          if (result.valid && result.value) {
+            await assertHostAllowed(result.value.source.host, ssrfOptions, lookup);
+            // If the camera is repointed at a different endpoint, drop its stored credentials so a
+            // saved password can't be exfiltrated by editing the host to an attacker's server.
+            const prev = cameras?.get(id)?.source;
+            if (prev && sourceEndpointChanged(prev, result.value.source)) {
+              credentials?.delete(id);
+            }
+          }
+          await base.setResource(id, value);
+          ptz?.invalidate(id);
+          scheduleSync();
+        };
         app.registerResourceProvider({
           type: 'cameras',
           methods: {
             ...base,
-            async setResource(id: string, value: Record<string, unknown>) {
-              const result = validateCamera(value);
-              if (result.valid && result.value) {
-                await assertHostAllowed(result.value.source.host, ssrfOptions, lookup);
-                // If the camera is repointed at a different endpoint, drop its stored credentials so a
-                // saved password can't be exfiltrated by editing the host to an attacker's server.
-                const prev = cameras?.get(id)?.source;
-                if (prev && sourceEndpointChanged(prev, result.value.source)) {
-                  credentials?.delete(id);
-                }
-              }
-              await base.setResource(id, value);
-              ptz?.invalidate(id);
-              scheduleSync();
-            },
+            setResource: persistCamera,
             async deleteResource(id: string) {
               await base.deleteResource(id);
               // Drop the camera's stored credentials too, so a deleted camera never leaves an
@@ -903,6 +910,38 @@ export = function (app: ServerAPI): Plugin {
         started = true;
         app.setPluginStatus(readyStatus());
         scheduleSync(); // start go2rtc if cameras are already configured
+
+        // Auto re-scan capabilities for any camera whose firmware changed since we last stored it
+        // (and backfill cameras that predate capability discovery). Best-effort + background, so a
+        // slow/offline camera never delays start; only cameras whose firmware actually changed are
+        // re-introspected and re-saved.
+        void refreshChangedCameras({
+          cameras: () => Object.entries(cameras?.list() ?? {}),
+          probeFirmware: async (id, camera) => {
+            const creds = credentials?.get(id);
+            const connect = createOnvifConnect({
+              hostname: camera.source.host,
+              port: camera.source.scheme === 'onvif' ? camera.source.port : undefined,
+              username: creds?.username,
+              password: creds?.password,
+              allowSelfSigned: camera.allowSelfSigned,
+            });
+            const info = await new OnvifPtzController(connect).probeDeviceInfo();
+            return info?.firmwareVersion || undefined;
+          },
+          introspect: (id, camera) =>
+            introspectOnvifCamera(
+              {
+                host: camera.source.host,
+                port: camera.source.scheme === 'onvif' ? camera.source.port : undefined,
+                username: credentials?.get(id)?.username,
+                password: credentials?.get(id)?.password,
+              },
+              { assertHostAllowed: (host) => assertHostAllowed(host, ssrfOptions, lookup) },
+            ),
+          save: (id, camera) => persistCamera(id, camera as unknown as Record<string, unknown>),
+          log: (message) => app.debug?.(message),
+        }).catch(() => undefined);
       } catch (err) {
         const message = redactUrl(err instanceof Error ? err.message : String(err));
         app.error?.(`[sk-video] failed to start: ${message}`);
@@ -1224,6 +1263,22 @@ export = function (app: ServerAPI): Plugin {
         rateLimit,
         gate: unauthorized,
       });
+
+      // Re-scan an existing camera's capabilities using its stored credentials (so a camera picks up
+      // newly-supported capabilities after a plugin update or a camera firmware change, without re-adding).
+      registerRescanRoutes(
+        router,
+        {
+          ready: () => cameras !== null,
+          getCamera: (id) => cameras?.get(id) ?? null,
+          getCredentials: (id) => credentials?.get(id) ?? null,
+          introspect: (input) =>
+            introspectOnvifCamera(input, {
+              assertHostAllowed: (host) => assertHostAllowed(host, ssrfOptions, lookup),
+            }),
+        },
+        unauthorized,
+      );
 
       // Uploaded video library: store + Range-served playback.
       registerUploadRoutes(router, () => videos, unauthorized);

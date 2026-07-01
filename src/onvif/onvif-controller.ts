@@ -317,6 +317,12 @@ export class OnvifPtzController {
     });
   }
 
+  /** A lightweight device-info probe (manufacturer/model/serial/firmware) — used to cheaply detect a
+   *  firmware change before deciding whether a full capability re-scan is warranted. */
+  async probeDeviceInfo(): Promise<IDeviceInformation | null> {
+    return this.getDeviceInformation().catch(() => null);
+  }
+
   /** The auxiliary-command tokens the camera advertises on its PTZ nodes (spotlight / alarm / wiper …). */
   private async getAuxCommands(): Promise<string[]> {
     const cam = await this.connect();
