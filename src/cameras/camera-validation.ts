@@ -40,12 +40,17 @@ export const CAMERA_ROLES = [
 export type TCameraRole = (typeof CAMERA_ROLES)[number];
 
 /** Optional imaging controls a camera reports (detected over ONVIF, never assumed). */
+// The imaging controls onvif@0.8.1 actually exposes — kept in sync with the ONVIF probe's
+// imagingControlsOf() (src/onvif/onvif-controller.ts), which is the only producer of this list. There
+// is no WDR/defog/backlight in this library version, so those are intentionally absent (a camera can't
+// report a control we can't read or write).
 export const IMAGING_CONTROLS = [
   'irCut',
-  'wdr',
-  'defog',
-  'focus',
   'brightness',
+  'contrast',
+  'colorSaturation',
+  'sharpness',
+  'focus',
   'exposure',
 ] as const;
 export type TImagingControl = (typeof IMAGING_CONTROLS)[number];

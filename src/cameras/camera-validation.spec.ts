@@ -114,7 +114,7 @@ describe('validateCamera — vessel-context metadata', () => {
       ...base,
       placement: { mount: 'mast', bearingRelativeDeg: 90, heightM: 12 },
       role: 'anchor',
-      capabilities: { ptz: true, absolutePtz: true, imaging: ['irCut', 'wdr'], audio: false },
+      capabilities: { ptz: true, absolutePtz: true, imaging: ['irCut', 'contrast'], audio: false },
       media: { codec: 'h265', profileToken: 'profile_1', substreamPath: '/sub' },
       calibration: {
         pan: { offset: 0, scalePerDeg: 0.01 },
@@ -125,7 +125,7 @@ describe('validateCamera — vessel-context metadata', () => {
     expect(r.value).toMatchObject({
       placement: { mount: 'mast', bearingRelativeDeg: 90, heightM: 12 },
       role: 'anchor',
-      capabilities: { ptz: true, absolutePtz: true, imaging: ['irCut', 'wdr'], audio: false },
+      capabilities: { ptz: true, absolutePtz: true, imaging: ['irCut', 'contrast'], audio: false },
       media: { codec: 'h265', profileToken: 'profile_1', substreamPath: '/sub' },
       calibration: {
         pan: { offset: 0, scalePerDeg: 0.01 },
@@ -159,6 +159,28 @@ describe('validateCamera — vessel-context metadata', () => {
     expect(validateCamera({ ...base, capabilities: { ptz: 'yes' } }).valid).toBe(false);
     expect(validateCamera({ ...base, capabilities: { imaging: ['xray'] } }).valid).toBe(false);
     expect(validateCamera({ ...base, capabilities: { bogus: true } }).valid).toBe(false);
+  });
+
+  it('accepts the imaging controls the ONVIF probe actually emits, and rejects phantom ones', () => {
+    // The vocabulary is reconciled with imagingControlsOf(); contrast/colorSaturation/sharpness are the
+    // real controls the presets use, while WDR/defog don't exist in onvif@0.8.1.
+    const ok = validateCamera({
+      ...base,
+      capabilities: {
+        imaging: [
+          'irCut',
+          'brightness',
+          'contrast',
+          'colorSaturation',
+          'sharpness',
+          'focus',
+          'exposure',
+        ],
+      },
+    });
+    expect(ok.errors).toEqual([]);
+    expect(validateCamera({ ...base, capabilities: { imaging: ['wdr'] } }).valid).toBe(false);
+    expect(validateCamera({ ...base, capabilities: { imaging: ['defog'] } }).valid).toBe(false);
   });
 
   it('rejects an unknown codec, a bad profile token and a traversal substream path', () => {

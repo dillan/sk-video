@@ -71,6 +71,7 @@ describe('draftFromIntrospect', () => {
       substreams: false,
       spotlight: false,
       alarm: false,
+      imaging: ['irCut'],
     });
     expect(d.media).toBeUndefined(); // this fixture carries no codec/substream
   });
@@ -83,6 +84,19 @@ describe('draftFromIntrospect', () => {
     expect(d.capabilities.spotlight).toBe(true);
     expect(d.capabilities.alarm).toBe(true);
     expect(d.capabilities.auxCommands).toEqual(['tt:WhiteLight', 'tt:Siren']);
+  });
+
+  it('persists the detected imaging controls (drives the Imaging capability badge)', () => {
+    const d = draftFromIntrospect(
+      { ...result, imaging: true, imagingControls: ['irCut', 'brightness', 'contrast'] },
+      '192.168.1.100',
+    );
+    expect(d.capabilities.imaging).toEqual(['irCut', 'brightness', 'contrast']);
+  });
+
+  it('omits imaging when the camera exposed no imaging controls', () => {
+    const d = draftFromIntrospect({ ...result, imaging: false, imagingControls: [] }, 'cam');
+    expect(d.capabilities.imaging).toBeUndefined();
   });
   it('falls back to the host when make/model are absent', () => {
     expect(
@@ -138,6 +152,7 @@ describe('toResourceBody', () => {
         substreams: false,
         spotlight: false,
         alarm: false,
+        imaging: ['irCut'],
       },
       role: 'security',
       placement: { mount: 'mast', bearingRelativeDeg: 90 },

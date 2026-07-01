@@ -6,6 +6,7 @@ import {
   type IPtzPosition,
 } from './ptz-command';
 import { auxTokensFromNodes, type IPtzNodeAux } from './aux-commands';
+import type { TImagingControl } from '../cameras/camera-validation';
 
 /** PTZ status in ONVIF normalized space. */
 export interface IPtzStatus {
@@ -419,8 +420,9 @@ const EMPTY_DEVICE_INFO: IDeviceInformation = {
   hardwareId: '',
 };
 
-/** Maps the imaging settings a camera returned to the control names it actually exposes. */
-const IMAGING_CONTROL_KEYS: readonly [keyof IImagingSettings, string][] = [
+/** Maps the imaging settings a camera returned to the control names it actually exposes. The names are
+ *  typed as TImagingControl so this list can never drift from the resource schema's IMAGING_CONTROLS. */
+const IMAGING_CONTROL_KEYS: readonly [keyof IImagingSettings, TImagingControl][] = [
   ['irCutFilter', 'irCut'],
   ['brightness', 'brightness'],
   ['contrast', 'contrast'],
@@ -430,7 +432,7 @@ const IMAGING_CONTROL_KEYS: readonly [keyof IImagingSettings, string][] = [
   ['exposure', 'exposure'],
 ];
 
-function imagingControlsOf(settings: IImagingSettings): string[] {
+function imagingControlsOf(settings: IImagingSettings): TImagingControl[] {
   return IMAGING_CONTROL_KEYS.filter(([key]) => settings[key] !== undefined).map(
     ([, name]) => name,
   );

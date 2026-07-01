@@ -84,6 +84,7 @@ export interface ICameraDraft {
     substreams: boolean;
     spotlight?: boolean;
     alarm?: boolean;
+    imaging?: string[];
     auxCommands?: string[];
   };
   /** Main-stream codec + the H.264 substream path captured by introspection (drives live routing). */
@@ -117,6 +118,9 @@ export function draftFromIntrospect(r: IIntrospectResult, host: string): ICamera
       substreams: hasSub,
       spotlight: r.spotlight === true,
       alarm: r.alarm === true,
+      // The imaging controls the camera exposes (irCut, brightness, …). The plugin only reports names
+      // its resource validator accepts, so they persist as-is and drive the "Imaging" capability badge.
+      ...(r.imaging && r.imagingControls.length ? { imaging: r.imagingControls } : {}),
       ...(r.auxCommands && r.auxCommands.length ? { auxCommands: r.auxCommands } : {}),
     },
   };
