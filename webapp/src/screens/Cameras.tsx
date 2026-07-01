@@ -11,6 +11,7 @@ import {
 import { CameraWizard } from '../components/CameraWizard';
 import { CameraHealth } from '../components/CameraHealth';
 import { CalibrationWizard } from '../components/CalibrationWizard';
+import { capabilityBadges } from '../lib/camera';
 
 type Load =
   | { state: 'loading' }
@@ -166,7 +167,11 @@ export function Cameras() {
                 </span>
               </div>
               <div className="camrow__chips">
-                {c.capabilities?.absolutePtz && <span className="chip chip--neutral">PTZ</span>}
+                {capabilityBadges(c).map((b) => (
+                  <span key={b.key} className="chip chip--info" title={b.title}>
+                    {b.label}
+                  </span>
+                ))}
                 {creds[c.id] && <span className="chip chip--neutral">login stored</span>}
                 {!c.enabled && <span className="chip chip--caution">disabled</span>}
               </div>

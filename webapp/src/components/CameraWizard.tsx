@@ -6,7 +6,9 @@ import {
   setCredentials,
   ApiError,
   type ICandidate,
+  type ICamera,
 } from '../api';
+import { capabilityBadges } from '../lib/camera';
 import {
   rankCandidates,
   isOnvifCandidate,
@@ -255,20 +257,13 @@ export function CameraWizard({ onDone }: { onDone: (saved: boolean) => void }) {
             </span>
           </p>
           <div className="caps">
-            {draft.capabilities.absolutePtz && (
-              <span className="chip chip--info">absolute PTZ</span>
-            )}
-            {draft.capabilities.ptz && !draft.capabilities.absolutePtz && (
-              <span className="chip chip--info">PTZ</span>
-            )}
-            {draft.capabilities.audioBackchannel && (
-              <span className="chip chip--info">two-way audio</span>
-            )}
+            {capabilityBadges({ capabilities: draft.capabilities } as ICamera).map((b) => (
+              <span key={b.key} className="chip chip--info" title={b.title}>
+                {b.label}
+              </span>
+            ))}
             {draft.media?.codec && (
               <span className="chip chip--neutral">main: {codecLabel(draft.media.codec)}</span>
-            )}
-            {draft.capabilities.substreams && (
-              <span className="chip chip--info">H.264 sub-stream</span>
             )}
           </div>
           {draft.streams && draft.streams.length > 0 && (

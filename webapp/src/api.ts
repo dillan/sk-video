@@ -118,6 +118,7 @@ export interface ICamera {
     substreams?: boolean;
     spotlight?: boolean;
     alarm?: boolean;
+    imaging?: string[];
     auxCommands?: string[];
   };
   media?: { codec?: string; substreamPath?: string; projection?: string };

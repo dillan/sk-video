@@ -1,8 +1,51 @@
 import { describe, it, expect } from 'vitest';
-import { cameraSubtitle, tileStatus, tileCategory, summarizeCategories } from './camera';
+import {
+  cameraSubtitle,
+  tileStatus,
+  tileCategory,
+  summarizeCategories,
+  capabilityBadges,
+} from './camera';
 import type { ICamera } from '../api';
 
 const base: ICamera = { name: 'Bow', enabled: true };
+
+describe('capabilityBadges', () => {
+  const cam = (capabilities: ICamera['capabilities']): ICamera => ({ ...base, capabilities });
+
+  it('surfaces each supported capability from discovery as a badge', () => {
+    const labels = capabilityBadges(
+      cam({
+        absolutePtz: true,
+        audio: true,
+        audioBackchannel: true,
+        substreams: true,
+        spotlight: true,
+        alarm: true,
+        imaging: ['irCut'],
+      }),
+    ).map((b) => b.label);
+    expect(labels).toEqual([
+      'PTZ',
+      'Imaging',
+      'Audio',
+      'Two-way',
+      'H.264 sub',
+      'Spotlight',
+      'Alarm',
+    ]);
+  });
+
+  it('shows nothing for a plain camera with no reported capabilities (no "unsupported" chips)', () => {
+    expect(capabilityBadges(cam({}))).toEqual([]);
+    expect(capabilityBadges(base)).toEqual([]);
+  });
+
+  it('labels PTZ by whether absolute pointing was detected', () => {
+    expect(capabilityBadges(cam({ ptz: true }))[0].title).toMatch(/Pan\/tilt\/zoom/);
+    expect(capabilityBadges(cam({ absolutePtz: true }))[0].title).toMatch(/absolute/);
+  });
+});
 
 describe('tileCategory', () => {
   it('classifies live, still-refresh, reconnecting, and offline', () => {

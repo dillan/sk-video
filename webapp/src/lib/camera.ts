@@ -24,6 +24,52 @@ export function cameraSubtitle(c: ICamera): string {
   return parts.join(' · ');
 }
 
+/** A discovered-capability badge for the camera-management list. */
+export interface ICapabilityBadge {
+  key: string;
+  /** Short glanceable label. */
+  label: string;
+  /** Fuller description for the title tooltip. */
+  title: string;
+}
+
+/**
+ * The capabilities a camera reports from ONVIF discovery, as compact badges for the management list —
+ * so an operator can see at a glance what each camera can do. Only supported capabilities produce a
+ * badge (never a "not supported" chip); a plain RTSP camera simply shows none.
+ */
+export function capabilityBadges(c: ICamera): ICapabilityBadge[] {
+  const caps = c.capabilities;
+  if (!caps) return [];
+  const badges: ICapabilityBadge[] = [];
+  if (caps.ptz || caps.absolutePtz) {
+    badges.push({
+      key: 'ptz',
+      label: 'PTZ',
+      title: caps.absolutePtz ? 'Pan/tilt/zoom with absolute pointing' : 'Pan/tilt/zoom',
+    });
+  }
+  if (caps.imaging && caps.imaging.length > 0) {
+    badges.push({ key: 'imaging', label: 'Imaging', title: 'Day/Night/Fog/Glare vision presets' });
+  }
+  if (caps.audio) {
+    badges.push({ key: 'audio', label: 'Audio', title: 'Camera audio (listen)' });
+  }
+  if (caps.audioBackchannel) {
+    badges.push({ key: 'talk', label: 'Two-way', title: 'Two-way audio (talk to the camera)' });
+  }
+  if (caps.substreams) {
+    badges.push({ key: 'sub', label: 'H.264 sub', title: 'Low-latency H.264 substream' });
+  }
+  if (caps.spotlight) {
+    badges.push({ key: 'spotlight', label: 'Spotlight', title: 'White-light spotlight' });
+  }
+  if (caps.alarm) {
+    badges.push({ key: 'alarm', label: 'Alarm', title: 'Audible alarm / siren' });
+  }
+  return badges;
+}
+
 export type TileTone = 'live' | 'neutral' | 'caution';
 
 export interface ITileStatus {

@@ -75,7 +75,7 @@ describe('CameraWizard', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Connect & read' }));
 
     await waitFor(() => expect(screen.getByText('REOLINK RLC-823S2')).toBeTruthy());
-    expect(screen.getByText('absolute PTZ')).toBeTruthy();
+    expect(screen.getByText('PTZ')).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'Save camera' }));
     await waitFor(() => expect(onDone).toHaveBeenCalledWith(true));
@@ -129,7 +129,7 @@ describe('CameraWizard', () => {
 
     await waitFor(() => expect(screen.getByText('REOLINK RLC-823S2')).toBeTruthy());
     // The H.264 sub-stream is surfaced and the H.265 caveat is explained honestly.
-    expect(screen.getByText('H.264 sub-stream')).toBeTruthy();
+    expect(screen.getByText('H.264 sub')).toBeTruthy();
     expect(screen.getByText(/the live view will use the camera’s H.264 sub-stream/)).toBeTruthy();
     // Both detected profiles are listed with their resolution.
     expect(screen.getByText(/3840×2160/)).toBeTruthy();
