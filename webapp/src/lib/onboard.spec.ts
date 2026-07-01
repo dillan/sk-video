@@ -6,8 +6,9 @@ import {
   isValidSlug,
   draftFromIntrospect,
   toResourceBody,
+  mergeRescan,
 } from './onboard';
-import type { ICandidate, IIntrospectResult } from '../api';
+import type { ICandidate, IIntrospectResult, ICameraEntry } from '../api';
 
 const onvif: ICandidate = {
   name: '192.168.1.100',
@@ -98,6 +99,19 @@ describe('draftFromIntrospect', () => {
     const d = draftFromIntrospect({ ...result, imaging: false, imagingControls: [] }, 'cam');
     expect(d.capabilities.imaging).toBeUndefined();
   });
+
+  it('persists device identity + firmware from discovery', () => {
+    const d = draftFromIntrospect(
+      { ...result, manufacturer: 'REOLINK', serialNumber: 'ABC123', firmwareVersion: 'v3.1.0' },
+      'cam',
+    );
+    expect(d.device).toMatchObject({
+      manufacturer: 'REOLINK',
+      serial: 'ABC123',
+      firmware: 'v3.1.0',
+    });
+  });
+
   it('falls back to the host when make/model are absent', () => {
     expect(
       draftFromIntrospect({ ...result, manufacturer: undefined, model: undefined }, 'cam').name,
@@ -154,6 +168,7 @@ describe('toResourceBody', () => {
         alarm: false,
         imaging: ['irCut'],
       },
+      device: { manufacturer: 'REOLINK', model: 'RLC-823S2' },
       role: 'security',
       placement: { mount: 'mast', bearingRelativeDeg: 90 },
     });
@@ -176,5 +191,56 @@ describe('toResourceBody', () => {
   it('omits media entirely when no codec or substream was captured', () => {
     const body = toResourceBody(draftFromIntrospect(result, '192.168.1.100'));
     expect(body.media).toBeUndefined();
+  });
+});
+
+describe('mergeRescan', () => {
+  // An already-onboarded camera, including fields the web app type doesn't model (calibration) that
+  // must survive a re-scan — mirrors the runtime object fetchCameras returns.
+  const existing = {
+    id: 'foredeck',
+    name: 'My Foredeck',
+    enabled: true,
+    role: 'security',
+    source: { scheme: 'rtsp', host: '192.168.1.100', port: 554, path: '/main' },
+    placement: { mount: 'mast', bearingRelativeDeg: 90 },
+    calibration: { pan: { offset: 0, scalePerDeg: 0.01 } },
+    safetyCritical: true,
+    capabilities: { ptz: true }, // stale — no spotlight/imaging yet
+    media: { codec: 'h264', projection: 'equirect' },
+  } as unknown as ICameraEntry;
+
+  const fresh: IIntrospectResult = {
+    ptz: true,
+    absolutePtz: true,
+    imaging: true,
+    imagingControls: ['irCut', 'brightness'],
+    audio: true,
+    audioBackchannel: true,
+    spotlight: true,
+    alarm: true,
+    auxCommands: ['tt:WhiteLight', 'tt:Siren'],
+    firmwareVersion: 'v4.0.0',
+    manufacturer: 'REOLINK',
+  };
+
+  it('refreshes discovered capabilities + device while preserving operator-set fields', () => {
+    const body = mergeRescan(existing, fresh);
+    // Refreshed from the scan:
+    expect(body.capabilities?.spotlight).toBe(true);
+    expect(body.capabilities?.imaging).toEqual(['irCut', 'brightness']);
+    expect(body.device?.firmware).toBe('v4.0.0');
+    // Preserved operator fields (incl. calibration + safetyCritical, which the web app type omits):
+    expect(body.name).toBe('My Foredeck');
+    expect(body.role).toBe('security');
+    expect(body.placement).toEqual({ mount: 'mast', bearingRelativeDeg: 90 });
+    expect((body as unknown as Record<string, unknown>).calibration).toEqual({
+      pan: { offset: 0, scalePerDeg: 0.01 },
+    });
+    expect((body as unknown as Record<string, unknown>).safetyCritical).toBe(true);
+    // A projection (360 geometry) the operator set is kept even though the scan doesn't report it.
+    expect(body.media?.projection).toBe('equirect');
+    // The resource body must not carry the entry id (that's the URL param).
+    expect(body).not.toHaveProperty('id');
   });
 });

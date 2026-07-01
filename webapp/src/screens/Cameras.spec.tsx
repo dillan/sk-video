@@ -4,13 +4,16 @@ import { Cameras } from './Cameras';
 
 const ok = (json: unknown) => Promise.resolve({ ok: true, json: async () => json });
 
-function mockApi(opts: { cameras?: Record<string, unknown>; presence?: unknown } = {}) {
+function mockApi(
+  opts: { cameras?: Record<string, unknown>; presence?: unknown; rescanResult?: unknown } = {},
+) {
   const calls: { url: string; init?: RequestInit }[] = [];
   vi.stubGlobal(
     'fetch',
     vi.fn((url: string, init?: RequestInit) => {
       calls.push({ url: String(url), init });
       const u = String(url);
+      if (u.includes('/rescan') && init?.method === 'POST') return ok(opts.rescanResult ?? {});
       if (u.includes('/credentials'))
         return ok(opts.presence ?? { hasUsername: false, hasPassword: false });
       if (u.includes('/resources/cameras')) {
@@ -54,6 +57,43 @@ describe('Cameras manage', () => {
     await waitFor(() => expect(screen.getByText('Bow')).toBeTruthy());
     expect(screen.getByText('PTZ')).toBeTruthy();
     await waitFor(() => expect(screen.getByText('login stored')).toBeTruthy());
+  });
+
+  it('re-scans a camera and saves the refreshed capabilities + device', async () => {
+    const calls = mockApi({
+      cameras: {
+        bow: {
+          name: 'Bow',
+          enabled: true,
+          role: 'security',
+          source: { scheme: 'rtsp', host: '192.168.1.100' },
+          capabilities: { ptz: true }, // stale: no imaging yet
+        },
+      },
+      rescanResult: {
+        ptz: true,
+        absolutePtz: true,
+        imaging: true,
+        imagingControls: ['irCut'],
+        audio: true,
+        audioBackchannel: false,
+        spotlight: false,
+        alarm: false,
+        firmwareVersion: 'v2.0',
+      },
+    });
+    render(<Cameras />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Re-scan' }));
+    await waitFor(() => {
+      const put = calls.find(
+        (c) => c.url.includes('/resources/cameras/bow') && c.init?.method === 'PUT',
+      );
+      expect(put).toBeTruthy();
+      const body = JSON.parse(put!.init!.body as string);
+      expect(body.capabilities.imaging).toEqual(['irCut']); // refreshed
+      expect(body.role).toBe('security'); // preserved
+      expect(body.device.firmware).toBe('v2.0'); // captured
+    });
   });
 
   it('disables a camera by re-PUTting the resource with enabled:false', async () => {

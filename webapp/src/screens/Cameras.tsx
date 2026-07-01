@@ -4,6 +4,7 @@ import {
   getCredentialPresence,
   saveCamera,
   deleteCamera,
+  rescanCamera,
   ApiError,
   type ICameraEntry,
   type ICameraWrite,
@@ -12,6 +13,7 @@ import { CameraWizard } from '../components/CameraWizard';
 import { CameraHealth } from '../components/CameraHealth';
 import { CalibrationWizard } from '../components/CalibrationWizard';
 import { capabilityBadges } from '../lib/camera';
+import { mergeRescan } from '../lib/onboard';
 
 type Load =
   | { state: 'loading' }
@@ -49,6 +51,7 @@ export function Cameras() {
   const [creds, setCreds] = useState<Record<string, boolean>>({});
   const [view, setView] = useState<View>({ kind: 'list' });
   const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [rescanId, setRescanId] = useState<string | null>(null);
   const [msg, setMsg] = useState<Msg | null>(null);
 
   const refresh = useCallback(() => {
@@ -99,6 +102,21 @@ export function Cameras() {
     deleteCamera(id)
       .then(() => refresh())
       .catch((err: unknown) => fail(err, 'delete the camera'));
+  };
+
+  // Re-introspect the camera (server-side, with its stored login), merge the fresh discovery into the
+  // stored resource (preserving operator fields), and save — so it picks up newly-supported capabilities.
+  const rescan = (entry: ICameraEntry): void => {
+    setRescanId(entry.id);
+    setMsg(null);
+    rescanCamera(entry.id)
+      .then((r) => saveCamera(entry.id, mergeRescan(entry, r)))
+      .then(() => {
+        setMsg({ kind: 'info', text: `Re-scanned ${entry.name} — capabilities refreshed.` });
+        refresh();
+      })
+      .catch((err: unknown) => fail(err, 're-scan the camera'))
+      .finally(() => setRescanId(null));
   };
 
   if (view.kind === 'add') {
@@ -182,6 +200,15 @@ export function Cameras() {
                   onClick={() => setView({ kind: 'health', id: c.id, name: c.name })}
                 >
                   Diagnostics
+                </button>
+                <button
+                  type="button"
+                  className="btn btn--ghost"
+                  disabled={rescanId === c.id}
+                  onClick={() => rescan(c)}
+                  title="Re-detect this camera’s capabilities using its stored login"
+                >
+                  {rescanId === c.id ? 'Re-scanning…' : 'Re-scan'}
                 </button>
                 {c.capabilities?.absolutePtz && (
                   <button

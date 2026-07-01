@@ -1,4 +1,4 @@
-import type { ICandidate, IIntrospectResult, ICameraWrite } from '../api';
+import type { ICandidate, IIntrospectResult, ICameraWrite, ICameraEntry } from '../api';
 
 /** Vessel mounts + roles (mirrors the plugin's closed enums so dropdowns produce valid values). */
 export const MOUNTS = [
@@ -89,48 +89,107 @@ export interface ICameraDraft {
   };
   /** Main-stream codec + the H.264 substream path captured by introspection (drives live routing). */
   media?: { codec?: string; substreamPath?: string };
+  /** Device identity + firmware captured by introspection (durable identity; firmware-change detection). */
+  device?: { manufacturer?: string; model?: string; serial?: string; firmware?: string };
   /** Read-only: the media profiles introspection found, surfaced in the wizard (never persisted). */
   streams?: { codec: string; width?: number; height?: number }[];
+}
+
+/** The discovered fields an introspection produces — capabilities, media, and device identity — shared
+ *  by first-time onboarding and a later re-scan so both stay consistent. */
+export function capabilitiesFromIntrospect(r: IIntrospectResult): ICameraDraft['capabilities'] {
+  // A substream is only usable if its path is one the resource validator accepts; otherwise drop it so
+  // the camera still saves. The capability tracks the path exactly — never claim a sub we can't store.
+  const hasSub = !!r.substreamPath && r.substreams === true && isSafeMediaPath(r.substreamPath);
+  return {
+    ptz: r.ptz === true,
+    absolutePtz: r.absolutePtz === true,
+    audio: r.audio === true,
+    audioBackchannel: r.audioBackchannel === true,
+    substreams: hasSub,
+    spotlight: r.spotlight === true,
+    alarm: r.alarm === true,
+    // The imaging controls the camera exposes (irCut, brightness, …). The plugin only reports names its
+    // resource validator accepts, so they persist as-is and drive the "Imaging" capability badge.
+    ...(r.imaging && r.imagingControls.length ? { imaging: r.imagingControls } : {}),
+    ...(r.auxCommands && r.auxCommands.length ? { auxCommands: r.auxCommands } : {}),
+  };
+}
+
+export function mediaFromIntrospect(r: IIntrospectResult): {
+  codec?: string;
+  substreamPath?: string;
+} {
+  const media: { codec?: string; substreamPath?: string } = {};
+  if (r.codec && RESOURCE_CODECS.has(r.codec)) {
+    media.codec = r.codec;
+  }
+  if (!!r.substreamPath && r.substreams === true && isSafeMediaPath(r.substreamPath)) {
+    media.substreamPath = r.substreamPath;
+  }
+  return media;
+}
+
+/** Device identity (durable id + firmware) from the scan, when the camera reported any of it. */
+export function deviceFromIntrospect(
+  r: IIntrospectResult,
+): { manufacturer?: string; model?: string; serial?: string; firmware?: string } | undefined {
+  const device: { manufacturer?: string; model?: string; serial?: string; firmware?: string } = {};
+  if (r.manufacturer) device.manufacturer = r.manufacturer;
+  if (r.model) device.model = r.model;
+  if (r.serialNumber !== undefined) device.serial = String(r.serialNumber);
+  if (r.firmwareVersion) device.firmware = r.firmwareVersion;
+  return Object.keys(device).length ? device : undefined;
 }
 
 /** Build an editable draft from an introspection result, defaulting the name from make + model. */
 export function draftFromIntrospect(r: IIntrospectResult, host: string): ICameraDraft {
   const name = [r.manufacturer, r.model].filter(Boolean).join(' ').trim() || host;
-  const media: { codec?: string; substreamPath?: string } = {};
-  if (r.codec && RESOURCE_CODECS.has(r.codec)) {
-    media.codec = r.codec;
-  }
-  // A substream is only usable if its path is one the resource validator accepts; otherwise drop it so
-  // the camera still saves. The capability tracks the path exactly — never claim a sub we can't store.
-  const hasSub = !!r.substreamPath && r.substreams === true && isSafeMediaPath(r.substreamPath);
-  if (hasSub) {
-    media.substreamPath = r.substreamPath;
-  }
+  const media = mediaFromIntrospect(r);
+  const device = deviceFromIntrospect(r);
   const draft: ICameraDraft = {
     id: slugify(name),
     name,
     source: r.source ?? { scheme: 'rtsp', host },
-    capabilities: {
-      ptz: r.ptz === true,
-      absolutePtz: r.absolutePtz === true,
-      audio: r.audio === true,
-      audioBackchannel: r.audioBackchannel === true,
-      substreams: hasSub,
-      spotlight: r.spotlight === true,
-      alarm: r.alarm === true,
-      // The imaging controls the camera exposes (irCut, brightness, …). The plugin only reports names
-      // its resource validator accepts, so they persist as-is and drive the "Imaging" capability badge.
-      ...(r.imaging && r.imagingControls.length ? { imaging: r.imagingControls } : {}),
-      ...(r.auxCommands && r.auxCommands.length ? { auxCommands: r.auxCommands } : {}),
-    },
+    capabilities: capabilitiesFromIntrospect(r),
   };
   if (media.codec || media.substreamPath) {
     draft.media = media;
+  }
+  if (device) {
+    draft.device = device;
   }
   if (r.streams && r.streams.length > 0) {
     draft.streams = r.streams.map((s) => ({ codec: s.codec, width: s.width, height: s.height }));
   }
   return draft;
+}
+
+/**
+ * Merge a re-scan into an existing camera: refresh the discovered fields (capabilities, media, device)
+ * while preserving every operator-set field (name, role, placement, calibration, safety flag, source).
+ * The whole resource is spread through, so fields the web app doesn't model (e.g. calibration) survive.
+ */
+export function mergeRescan(existing: ICameraEntry, r: IIntrospectResult): ICameraWrite {
+  const { id: _id, ...rest } = existing as ICameraEntry & Record<string, unknown>;
+  void _id;
+  const media = mediaFromIntrospect(r);
+  const device = deviceFromIntrospect(r);
+  const existingMedia = (rest.media ?? {}) as { projection?: string };
+  return {
+    ...rest,
+    capabilities: capabilitiesFromIntrospect(r),
+    // Refresh codec/substream from the scan; keep a projection (360 geometry) the operator may have set.
+    ...(media.codec || media.substreamPath || existingMedia.projection
+      ? {
+          media: {
+            ...media,
+            ...(existingMedia.projection ? { projection: existingMedia.projection } : {}),
+          },
+        }
+      : {}),
+    ...(device ? { device } : {}),
+  } as ICameraWrite;
 }
 
 /** Assemble the resource body to PUT — only the validator's allowed, non-credential fields. */
@@ -143,6 +202,9 @@ export function toResourceBody(d: ICameraDraft): ICameraWrite {
   };
   if (d.media && (d.media.codec || d.media.substreamPath)) {
     body.media = d.media;
+  }
+  if (d.device) {
+    body.device = d.device;
   }
   if (d.role) {
     body.role = d.role;

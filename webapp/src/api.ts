@@ -122,6 +122,8 @@ export interface ICamera {
     auxCommands?: string[];
   };
   media?: { codec?: string; substreamPath?: string; projection?: string };
+  /** Device identity from ONVIF (durable identity + firmware, for re-scan / change detection). */
+  device?: { manufacturer?: string; model?: string; serial?: string; firmware?: string };
 }
 export interface ICameraEntry extends ICamera {
   id: string;
@@ -421,6 +423,7 @@ export interface IIntrospectResult {
   spotlight?: boolean;
   alarm?: boolean;
   auxCommands?: string[];
+  firmwareVersion?: string;
 }
 
 export interface IIntrospectInput {
@@ -438,6 +441,12 @@ export const introspectCamera = async (input: IIntrospectInput): Promise<IIntros
   return (await res.json()) as IIntrospectResult;
 };
 
+/** Re-introspect an existing camera using its stored credentials; returns the fresh discovery to merge. */
+export const rescanCamera = async (id: string): Promise<IIntrospectResult> => {
+  const res = await send(`${cam(id)}/rescan`, { method: 'POST' }, 'rescan');
+  return (await res.json()) as IIntrospectResult;
+};
+
 // ---- Camera resource CRUD + credentials ----
 
 /** The camera definition written to the Signal K resource (closed field-set; no credentials). */
@@ -447,15 +456,10 @@ export interface ICameraWrite {
   source: { scheme: string; host: string; port?: number; path?: string };
   placement?: { mount?: string; bearingRelativeDeg?: number };
   role?: string;
-  capabilities?: {
-    ptz?: boolean;
-    absolutePtz?: boolean;
-    audio?: boolean;
-    audioBackchannel?: boolean;
-    substreams?: boolean;
-  };
+  capabilities?: ICamera['capabilities'];
   /** Codec + substream path captured at onboarding; drives go2rtc's `_sub` stream + transport routing. */
-  media?: { codec?: string; substreamPath?: string };
+  media?: { codec?: string; substreamPath?: string; projection?: string };
+  device?: ICamera['device'];
 }
 
 export const saveCamera = async (id: string, body: ICameraWrite): Promise<void> => {
