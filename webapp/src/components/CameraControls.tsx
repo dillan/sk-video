@@ -18,6 +18,7 @@ import { codecLabel, transportLabel } from '../lib/transport';
 import { actionMessage, type IMsg } from '../lib/camera-messages';
 import { GlassMenu, type IMenuRow } from './GlassMenu';
 import { PtzPad, type IPtzDetail } from './PtzPad';
+import { useTwoWayTalk } from './useTwoWayTalk';
 
 /**
  * The floating-cluster camera controls (Deference v2 "floating clusters"). Controls float as separate
@@ -76,6 +77,7 @@ const ICON = {
   snapshot: 'M3 6h18v13H3z|M12 9.1a3.4 3.4 0 100 6.8 3.4 3.4 0 000-6.8',
   record: 'M5 11h14v9H5z|M8 11V8a4 4 0 018 0v3',
   speaker: 'M4 9v6h4l5 4V5L8 9zM16 8a5 5 0 010 8',
+  mic: 'M12 3a3 3 0 013 3v5a3 3 0 01-6 0V6a3 3 0 013-3z|M5 11a7 7 0 0014 0M12 18v3',
 };
 
 export function CameraControls(props: Props) {
@@ -84,7 +86,9 @@ export function CameraControls(props: Props) {
   const { mainIsHevc, onBack, live, flash, onPtzActivity, listening, onListen } = props;
   const ptz = camera.capabilities?.ptz === true;
   const hasAudio = camera.capabilities?.audio === true;
+  const hasBackchannel = camera.capabilities?.audioBackchannel === true;
   const phone = formFactor === 'phone';
+  const talk = useTwoWayTalk(cameraId, flash);
 
   // --- Vision (imaging presets) ---
   const [vision, setVision] = useState<TImagingPreset>('auto');
@@ -218,15 +222,35 @@ export function CameraControls(props: Props) {
   }
 
   // --- Discovered capabilities: only ones the camera reports AND we can act on. Audio "Listen"
-  //     (unmute the stream we already have) is the honest, backend-free one; spotlight / alarm /
-  //     two-way talk need capability flags + endpoints we don't have, so they're intentionally absent. ---
-  const capabilityRows: IMenuRow[] = [];
+  //     (unmute the stream) and "Two-way audio" (mic → the camera's native backchannel) are the ones
+  //     with real backing; spotlight / alarm have no capability flag or endpoint, so — per "don't
+  //     invent capabilities" — they're intentionally absent until a camera reports and a route drives them. ---
+  interface ICapability {
+    key: string;
+    label: string;
+    icon: string;
+    active: boolean;
+    busy?: boolean;
+    onToggle: () => void;
+  }
+  const capabilities: ICapability[] = [];
   if (hasAudio) {
-    capabilityRows.push({
+    capabilities.push({
       key: 'listen',
       label: 'Listen',
+      icon: ICON.speaker,
       active: listening,
-      onSelect: () => onListen(!listening),
+      onToggle: () => onListen(!listening),
+    });
+  }
+  if (hasBackchannel) {
+    capabilities.push({
+      key: 'talk',
+      label: 'Two-way audio',
+      icon: ICON.mic,
+      active: talk.talking,
+      busy: talk.connecting,
+      onToggle: talk.toggle,
     });
   }
 
@@ -377,18 +401,18 @@ export function CameraControls(props: Props) {
     </div>
   );
 
-  const capabilityRail = capabilityRows.length > 0 && (
+  const capabilityRail = capabilities.length > 0 && (
     <div className="rail">
-      {capabilityRows.map((c) => (
+      {capabilities.map((c) => (
         <button
           key={c.key}
           type="button"
-          className={`rail__btn${c.active ? ' rail__btn--on' : ''}`}
-          aria-pressed={!!c.active}
-          aria-label={typeof c.label === 'string' ? c.label : c.key}
-          onClick={c.onSelect}
+          className={`rail__btn${c.active ? ' rail__btn--on' : ''}${c.busy ? ' rail__btn--busy' : ''}`}
+          aria-pressed={c.active}
+          aria-label={c.label}
+          onClick={c.onToggle}
         >
-          {svg(ICON.speaker, 21, 'currentColor', 1.8)}
+          {svg(c.icon, 21, 'currentColor', 1.8)}
         </button>
       ))}
     </div>
@@ -439,18 +463,17 @@ export function CameraControls(props: Props) {
           onSelect: () => pickVision(m.id),
         }))}
         footer={
-          capabilityRows.length > 0 ? (
+          capabilities.length > 0 ? (
             <>
               <div className="menu__sep" />
-              {capabilityRows.map((c) => (
+              {capabilities.map((c) => (
                 <button
                   key={c.key}
                   type="button"
                   className="menu__row"
-                  aria-pressed={!!c.active}
-                  onClick={() => {
-                    c.onSelect();
-                  }}
+                  aria-pressed={c.active}
+                  aria-label={c.label}
+                  onClick={c.onToggle}
                 >
                   <span className="menu__rowmain">
                     <span className="menu__label">{c.label}</span>

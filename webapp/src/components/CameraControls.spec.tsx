@@ -105,9 +105,22 @@ describe('CameraControls', () => {
     expect(onListen).toHaveBeenCalledWith(true);
   });
 
-  it('does not invent spotlight/alarm/two-way-audio controls', () => {
+  it('offers two-way audio only when the camera reports an audio backchannel', () => {
     mockApi();
-    render(<CameraControls {...base} camera={camera({ ptz: true, audio: true })} />);
+    const { rerender } = render(<CameraControls {...base} camera={camera({ ptz: true })} />);
+    expect(screen.queryByRole('button', { name: 'Two-way audio' })).toBeNull();
+    rerender(<CameraControls {...base} camera={camera({ ptz: true, audioBackchannel: true })} />);
+    expect(screen.getByRole('button', { name: 'Two-way audio' })).toBeTruthy();
+  });
+
+  it('does not invent spotlight/alarm controls (no capability flag or endpoint backs them)', () => {
+    mockApi();
+    render(
+      <CameraControls
+        {...base}
+        camera={camera({ ptz: true, audio: true, audioBackchannel: true })}
+      />,
+    );
     expect(screen.queryByRole('button', { name: /Spotlight/i })).toBeNull();
     expect(screen.queryByRole('button', { name: /Alarm/i })).toBeNull();
   });

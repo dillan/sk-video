@@ -257,6 +257,25 @@ export const listPtzPresets = (id: string, signal?: AbortSignal): Promise<IPtzPr
 export const gotoPtzPreset = (id: string, token: string): Promise<Response> =>
   send(`${cam(id)}/ptz/preset`, { method: 'POST', body: JSON.stringify({ token }) }, 'preset');
 
+/**
+ * Two-way audio: POST the browser's SDP offer (carrying a mic track) to the camera's native backchannel
+ * and return go2rtc's SDP answer. Same-origin proxied; gated server-side on the camera reporting an
+ * audio output (a 404 means no backchannel). Best-effort hailing/intercom — not telephony-grade.
+ */
+export const negotiateTalk = async (id: string, offerSdp: string): Promise<string> => {
+  const res = await fetch(`${API_BASE}${cam(id)}/talk`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/sdp' },
+    body: offerSdp,
+  });
+  if (!res.ok) {
+    const body = await readErrorBody(res);
+    throw new ApiError(`talk failed (${res.status})`, res.status, body.error, body.reason);
+  }
+  return res.text();
+};
+
 export type TImagingPreset = 'day' | 'night' | 'fog' | 'glare' | 'auto';
 export const applyImagingPreset = async (id: string, preset: TImagingPreset): Promise<void> => {
   await send(

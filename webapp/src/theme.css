@@ -1811,6 +1811,9 @@ button.tile {
   box-shadow: inset 0 0 0 1px rgba(46, 155, 255, 0.42);
   color: var(--cx-accent-txt);
 }
+.rail__btn--busy {
+  opacity: 0.6;
+}
 
 /* --- honesty notices sit by the cluster they explain --- */
 .cluster__notes,
