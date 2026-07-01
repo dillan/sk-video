@@ -137,12 +137,28 @@ export function CameraFocus({ cameraId, onBack }: Props) {
   const delayed = ptzDelayed(rung);
   const padSize = usePadSize();
 
+  // While the operator is driving PTZ, tell the player to refresh a still-refresh feed fast (so the
+  // move is visible right away). Held ~700 ms past the last input so it spans brief pauses, then relaxes.
+  const [ptzActive, setPtzActive] = useState(false);
+  const ptzActiveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const bumpPtzActive = useCallback(() => {
+    setPtzActive(true);
+    if (ptzActiveTimer.current) clearTimeout(ptzActiveTimer.current);
+    ptzActiveTimer.current = setTimeout(() => setPtzActive(false), 700);
+  }, []);
+  useEffect(() => {
+    return () => {
+      if (ptzActiveTimer.current) clearTimeout(ptzActiveTimer.current);
+    };
+  }, []);
+
   // Full-frame drag/pinch/scroll gestures over the video, in addition to the dock pad — a quick way
   // to nudge the camera without reaching for the control. Continuous PTZ is unsafe on a 1 fps still-
   // refresh feed (you can't see where you're aiming for 1–2 s), so it's live-feed only.
   const gestures = usePtzGestures({
     enabled: ptz && !delayed,
     onMove: (v) => {
+      bumpPtzActive();
       void ptzNudge(cameraId, v).catch((err: unknown) =>
         flash(actionMessage(err, 'move the camera')),
       );
@@ -177,6 +193,7 @@ export function CameraFocus({ cameraId, onBack }: Props) {
   );
   const onPtzPad = useCallback(
     (d: IPtzDetail) => {
+      bumpPtzActive();
       if (d.type === 'panend') {
         if (lastPan.current.timer) clearTimeout(lastPan.current.timer);
         lastPan.current = { t: 0, timer: null };
@@ -190,7 +207,7 @@ export function CameraFocus({ cameraId, onBack }: Props) {
         sendPan(d.x, d.y);
       }
     },
-    [cameraId, flash, sendPan],
+    [cameraId, flash, sendPan, bumpPtzActive],
   );
 
   const snapshot = run('save a snapshot', async () => {
@@ -243,6 +260,7 @@ export function CameraFocus({ cameraId, onBack }: Props) {
             variant={variant}
             onRung={setRung}
             onActive={setActive}
+            responsive={ptzActive}
           />
         )}
         {ptz && !delayed && (

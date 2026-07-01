@@ -880,6 +880,10 @@ button.tile {
   object-fit: cover;
   background: var(--video-mat);
 }
+/* Last-frame poster shown over the <video> while a rung negotiates, so an upgrade never blanks. */
+.player__poster {
+  z-index: 1;
+}
 .focus__top {
   position: absolute;
   top: 16px;
