@@ -79,13 +79,14 @@ describe('CameraFocus', () => {
     });
   });
 
-  it('hides the drag-gesture surface on a still-refresh feed (continuous PTZ is unsafe at ~1 fps)', async () => {
-    // The mock transport resolves to MJPEG (still-refresh), so the joystick is gated off while the
-    // discrete dock — including its delay warning — stays available.
+  it('shows the PTZ pad for a PTZ camera, but gates the full-frame drag on a still-refresh feed', async () => {
+    // The dock pad is the primary control and is always offered; the full-frame drag surface is gated
+    // off on a 1 fps still-refresh (MJPEG) feed, where the delay warning stands in.
     mockApi({ cameras: { bow: { name: 'Foredeck', enabled: true, capabilities: { ptz: true } } } });
-    render(<CameraFocus cameraId="bow" onBack={() => undefined} />);
+    const { container } = render(<CameraFocus cameraId="bow" onBack={() => undefined} />);
     await screen.findByText('Foredeck');
-    expect(screen.queryByTestId('ptz-gestures')).toBeNull();
+    expect(container.querySelector('ptz-pad-variant')).toBeTruthy();
+    expect(container.querySelector('.focus__gestures')).toBeNull();
     expect(screen.getByText(/still-refresh — PTZ delayed/)).toBeTruthy();
   });
 
@@ -114,8 +115,7 @@ describe('CameraFocus', () => {
     );
     render(<CameraFocus cameraId="bow" onBack={() => undefined} />);
     await screen.findByText('Foredeck');
-    const up = await screen.findByRole('button', { name: 'Tilt up' });
-    fireEvent.click(up);
+    fireEvent.click(await screen.findByRole('button', { name: 'Zoom in' }));
     await waitFor(() => expect(screen.getByText(hint)).toBeTruthy());
     expect(screen.queryByText(/try again/)).toBeNull();
   });

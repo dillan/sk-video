@@ -16,6 +16,7 @@ import {
 } from '../api';
 import { transportLabel, ptzDelayed, isHevc, transportsForVariant } from '../lib/transport';
 import { VideoPlayer } from '../components/VideoPlayer';
+import { PtzPad, type IPtzDetail } from '../components/PtzPad';
 import { usePtzGestures } from '../components/usePtzGestures';
 
 interface Props {
@@ -51,6 +52,22 @@ const PRESETS: { id: TImagingPreset; label: string }[] = [
   { id: 'fog', label: 'Fog' },
   { id: 'glare', label: 'Glare' },
 ];
+
+/** Pad footprint by form factor: the design uses 88 on phones, 100 on tablet/desktop. */
+function usePadSize(): number {
+  const query = '(max-width: 640px)';
+  const [size, setSize] = useState(() =>
+    typeof window !== 'undefined' && window.matchMedia?.(query).matches ? 88 : 100,
+  );
+  useEffect(() => {
+    const mq = window.matchMedia?.(query);
+    if (!mq) return;
+    const onChange = (): void => setSize(mq.matches ? 88 : 100);
+    mq.addEventListener?.('change', onChange);
+    return () => mq.removeEventListener?.('change', onChange);
+  }, []);
+  return size;
+}
 
 /** A live HH:MM:SS clock for the focus top bar (matches the design's stamped-time treatment). */
 function FocusClock() {
@@ -118,10 +135,11 @@ export function CameraFocus({ cameraId, onBack }: Props) {
 
   const ptz = camera?.capabilities?.ptz === true;
   const delayed = ptzDelayed(rung);
-  // Continuous PTZ is unsafe on a 1 fps still-refresh feed (you can't see where you're aiming until
-  // 1–2 s later), so the drag/pinch joystick is offered only when the feed is live, matching the
-  // discrete-nudge fallback the dock already shows. Velocity goes straight to ONVIF continuousMove;
-  // releasing sends Stop (and the server arms a runaway auto-stop as a backstop).
+  const padSize = usePadSize();
+
+  // Full-frame drag/pinch/scroll gestures over the video, in addition to the dock pad — a quick way
+  // to nudge the camera without reaching for the control. Continuous PTZ is unsafe on a 1 fps still-
+  // refresh feed (you can't see where you're aiming for 1–2 s), so it's live-feed only.
   const gestures = usePtzGestures({
     enabled: ptz && !delayed,
     onMove: (v) => {
@@ -131,6 +149,49 @@ export function CameraFocus({ cameraId, onBack }: Props) {
     },
     onStop: () => void ptzStop(cameraId).catch(() => undefined),
   });
+
+  // The glass PTZ pad drives ONVIF continuousMove: dragging the knob is a velocity joystick, a chevron
+  // is a discrete step. A continuousMove holds until changed/stopped, so drag commands are throttled
+  // (only the latest lands within a window) and the server arms a runaway auto-stop behind us.
+  const lastPan = useRef<{ t: number; timer: ReturnType<typeof setTimeout> | null }>({
+    t: 0,
+    timer: null,
+  });
+  const sendPan = useCallback(
+    (x: number, y: number) => {
+      if (lastPan.current.timer) {
+        clearTimeout(lastPan.current.timer);
+        lastPan.current.timer = null;
+      }
+      const wait = Math.max(0, 140 - (Date.now() - lastPan.current.t));
+      const fire = () => {
+        lastPan.current.t = Date.now();
+        void ptzNudge(cameraId, { pan: x, tilt: y }).catch((err: unknown) =>
+          flash(actionMessage(err, 'move the camera')),
+        );
+      };
+      if (wait === 0) fire();
+      else lastPan.current.timer = setTimeout(fire, wait);
+    },
+    [cameraId, flash],
+  );
+  const onPtzPad = useCallback(
+    (d: IPtzDetail) => {
+      if (d.type === 'panend') {
+        if (lastPan.current.timer) clearTimeout(lastPan.current.timer);
+        lastPan.current = { t: 0, timer: null };
+        void ptzStop(cameraId).catch(() => undefined);
+      } else if (d.type === 'step') {
+        // A chevron is a discrete nudge: brief move toward the direction, then auto-stop.
+        void ptzNudge(cameraId, { pan: d.x * 0.5, tilt: d.y * 0.5 })
+          .then(() => setTimeout(() => void ptzStop(cameraId).catch(() => undefined), 350))
+          .catch((err: unknown) => flash(actionMessage(err, 'move the camera')));
+      } else {
+        sendPan(d.x, d.y);
+      }
+    },
+    [cameraId, flash, sendPan],
+  );
 
   const snapshot = run('save a snapshot', async () => {
     const r = await captureSnapshot(cameraId);
@@ -188,12 +249,9 @@ export function CameraFocus({ cameraId, onBack }: Props) {
           <div
             ref={gestures.setRef}
             className={`focus__gestures${gestures.active ? ' focus__gestures--active' : ''}`}
-            data-testid="ptz-gestures"
-            // A pointer-only convenience layer; the dock's pan/tilt/zoom buttons are the keyboard- and
-            // screen-reader-accessible equivalent, so this surface is hidden from assistive tech.
             aria-hidden="true"
           >
-            {gestures.active && gestures.vector ? (
+            {gestures.active && gestures.vector && (
               <div className="joystick" aria-hidden="true">
                 <span
                   className="joystick__knob"
@@ -204,10 +262,6 @@ export function CameraFocus({ cameraId, onBack }: Props) {
                   }}
                 />
               </div>
-            ) : (
-              <span className="focus__gesturehint" aria-hidden="true">
-                Drag to move · pinch or scroll to zoom
-              </span>
             )}
           </div>
         )}
@@ -271,38 +325,9 @@ export function CameraFocus({ cameraId, onBack }: Props) {
               {delayed && (
                 <span className="chip chip--caution">still-refresh — PTZ delayed ~1–2 s</span>
               )}
-              <button
-                type="button"
-                className="iconbtn"
-                onClick={nudge({ pan: -0.4 })}
-                aria-label="Pan left"
-              >
-                ◀
-              </button>
-              <button
-                type="button"
-                className="iconbtn"
-                onClick={nudge({ tilt: 0.4 })}
-                aria-label="Tilt up"
-              >
-                ▲
-              </button>
-              <button
-                type="button"
-                className="iconbtn"
-                onClick={nudge({ tilt: -0.4 })}
-                aria-label="Tilt down"
-              >
-                ▼
-              </button>
-              <button
-                type="button"
-                className="iconbtn"
-                onClick={nudge({ pan: 0.4 })}
-                aria-label="Pan right"
-              >
-                ▶
-              </button>
+              <div className="ptzpad" style={{ width: padSize, height: padSize }}>
+                <PtzPad size={padSize} onPtz={onPtzPad} />
+              </div>
               <button
                 type="button"
                 className="iconbtn"
