@@ -35,6 +35,8 @@ interface Props {
   onActive?: (active: boolean) => void;
   /** When true (e.g. a PTZ control is being driven), refresh the MJPEG floor fast for live feedback. */
   responsive?: boolean;
+  /** Mute the audio track. Default true (autoplay needs it); a "Listen" control can unmute. */
+  muted?: boolean;
 }
 
 // go2rtc's WHEP is a single POST (non-trickle), so the browser's ICE candidates can only travel in the
@@ -98,6 +100,7 @@ export function VideoPlayer({
   onRung,
   onActive,
   responsive = false,
+  muted = true,
 }: Props) {
   const [rung, setRung] = useState<TTransport>(() => transports[0] ?? 'mjpeg');
   const [frameTick, setFrameTick] = useState(0);
@@ -249,7 +252,7 @@ export function VideoPlayer({
             className="player__media"
             ref={videoRef}
             autoPlay
-            muted
+            muted={muted}
             playsInline
             onPlaying={() => markActive(true)}
             onError={() => {

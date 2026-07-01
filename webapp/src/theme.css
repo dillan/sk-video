@@ -901,8 +901,12 @@ button.tile {
 }
 .focus__msg {
   position: absolute;
-  left: 16px;
-  bottom: 92px;
+  top: 72px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 7;
+  max-width: min(92%, 460px);
+  text-align: center;
 }
 /* Transparent layer over the frame that turns drag/pinch/scroll into PTZ velocity. It sits above the
    video but below the chrome (which follows it in the DOM), so the dock + top-bar buttons still win
@@ -1413,4 +1417,456 @@ button.tile {
     animation: none !important;
     transition: none !important;
   }
+}
+
+/* ============================================================================
+   Floating camera-control clusters (Deference v2) — glass clusters over video.
+   ============================================================================ */
+:root {
+  --cglass: rgba(13, 17, 23, 0.55);
+  --cglass-solid: rgba(13, 17, 23, 0.88);
+  --cring: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+  --cblur: blur(20px);
+  --cx-accent: #2e9bff;
+  --cx-accent-txt: #8cc8ff;
+  --cx-accent-ico: #6cbaff;
+  --cx-alarm: #ff3b30;
+  --cx-caution: #ffb84d;
+  --cx-txt: #dbe4ec;
+  --cx-muted: #9fb0c0;
+}
+.cglass {
+  background: var(--cglass);
+  backdrop-filter: var(--cblur);
+  -webkit-backdrop-filter: var(--cblur);
+  box-shadow: var(--cring);
+}
+
+/* --- top bar --- */
+.ctop {
+  position: absolute;
+  top: 20px;
+  left: 24px;
+  right: 24px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  z-index: 6;
+}
+.ctop--phone {
+  top: 14px;
+  left: 14px;
+  right: 14px;
+  align-items: center;
+}
+.ctop__spacer {
+  flex: 1;
+}
+.ctop__id {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.ctop__back {
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(13, 17, 23, 0.5);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  color: var(--cx-txt);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.ctop__name {
+  font-size: 16px;
+  font-weight: 600;
+  color: #e8edf2;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.6);
+}
+.livechip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 700;
+  background: rgba(120, 134, 150, 0.28);
+  color: #cfd8e0;
+}
+.livechip--on {
+  background: rgba(255, 59, 48, 0.92);
+  color: #fff;
+}
+.livechip__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.cvision {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  transform: translateX(-50%);
+}
+
+/* --- glass chip (vision / presets / stream triggers) --- */
+.cchip {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 14px;
+  border: 0;
+  border-radius: 14px;
+  background: var(--cglass);
+  backdrop-filter: var(--cblur);
+  -webkit-backdrop-filter: var(--cblur);
+  box-shadow: var(--cring);
+  font-size: 14px;
+  color: var(--cx-txt);
+  cursor: pointer;
+}
+.cchip--strong {
+  font-weight: 600;
+  font-size: 13px;
+}
+.cchip--mono {
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 12px;
+  color: #aab9c8;
+  gap: 6px;
+  padding: 6px 10px;
+}
+.cchip__icon {
+  display: flex;
+}
+.cchip__strong {
+  font-weight: 600;
+}
+.cchip__muted {
+  font-size: 12px;
+  color: #8593a1;
+}
+.cchip__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+.menu__caret {
+  display: flex;
+  transition: transform 0.16s ease;
+}
+.menu__caret--open {
+  transform: rotate(180deg);
+}
+
+/* --- popover menu --- */
+.menu {
+  position: relative;
+}
+.menu__pop {
+  position: absolute;
+  top: calc(100% + 10px);
+  min-width: 224px;
+  border-radius: 16px;
+  background: var(--cglass-solid);
+  backdrop-filter: blur(26px);
+  -webkit-backdrop-filter: blur(26px);
+  box-shadow:
+    var(--cring),
+    0 18px 48px rgba(0, 0, 0, 0.55);
+  padding: 8px;
+  z-index: 40;
+}
+.menu__pop--left {
+  left: 0;
+}
+.menu__pop--right {
+  right: 0;
+}
+.menu__pop--center {
+  left: 50%;
+  transform: translateX(-50%);
+}
+.menu__pop--up {
+  top: auto;
+  bottom: calc(100% + 10px);
+}
+.menu__title {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: #7d8c9b;
+  text-transform: uppercase;
+  padding: 6px 10px 8px;
+}
+.menu__row {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  padding: 9px 10px;
+  border-radius: 11px;
+  background: transparent;
+  color: var(--cx-txt);
+  cursor: pointer;
+}
+.menu__row:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.06);
+}
+.menu__row--active {
+  background: rgba(46, 155, 255, 0.14);
+}
+.menu__row:disabled {
+  color: #6b7886;
+  cursor: default;
+}
+.menu__rowmain {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.menu__label {
+  font-size: 13.5px;
+}
+.menu__row--active .menu__label {
+  color: var(--cx-accent-txt);
+}
+.menu__sub {
+  font-size: 10.5px;
+  color: #8593a1;
+  margin-top: 1px;
+}
+.menu__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+}
+.menu__check {
+  color: var(--cx-accent-txt);
+  flex: none;
+}
+.menu__sep {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.08);
+  margin: 6px 2px;
+}
+.toggle {
+  width: 34px;
+  height: 20px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.14);
+  position: relative;
+  flex: none;
+}
+.toggle::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #dbe4ec;
+  transition: transform 0.16s ease;
+}
+.toggle--on {
+  background: rgba(46, 155, 255, 0.5);
+}
+.toggle--on::after {
+  transform: translateX(14px);
+  background: #fff;
+}
+
+/* --- bottom-center: presets over aim group --- */
+.ccenter {
+  position: absolute;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  z-index: 6;
+}
+.aim {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.aim--off {
+  opacity: 0.5;
+}
+.aim__housing {
+  padding: 8px;
+  border-radius: 50%;
+  background: rgba(13, 17, 23, 0.5);
+  backdrop-filter: var(--cblur);
+  -webkit-backdrop-filter: var(--cblur);
+  box-shadow: var(--cring);
+}
+.aim--off .aim__housing {
+  pointer-events: none;
+}
+.stopbtn {
+  width: 48px;
+  height: 48px;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 59, 48, 0.2);
+  box-shadow: inset 0 0 0 1.5px rgba(255, 59, 48, 0.55);
+  color: #ff7a72;
+  font-size: 10px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.zoompill {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 15px;
+  box-shadow: var(--cring);
+  overflow: hidden;
+}
+.zoompill__btn {
+  width: 46px;
+  height: 38px;
+  border: 0;
+  background: transparent;
+  color: var(--cx-txt);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.zoompill__btn:disabled {
+  color: #5f6c7a;
+  cursor: default;
+}
+.zoompill__read {
+  font-size: 10px;
+  color: var(--cx-muted);
+  padding: 3px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  width: 100%;
+  text-align: center;
+}
+
+/* --- capture pod (bottom-right) + capability rail (bottom-left) --- */
+.ccapture {
+  position: absolute;
+  right: 24px;
+  bottom: 24px;
+  z-index: 6;
+}
+.ccap {
+  position: absolute;
+  left: 24px;
+  bottom: 24px;
+  z-index: 6;
+}
+.pod,
+.rail {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  border-radius: 18px;
+  background: var(--cglass);
+  backdrop-filter: var(--cblur);
+  -webkit-backdrop-filter: var(--cblur);
+  box-shadow: var(--cring);
+}
+.pod__btn,
+.rail__btn {
+  width: 50px;
+  height: 50px;
+  border: 0;
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--cx-txt);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.pod__btn--rec {
+  background: rgba(255, 59, 48, 0.2);
+  box-shadow: inset 0 0 0 1px rgba(255, 59, 48, 0.5);
+  color: #ff7a72;
+}
+.rail__btn--on {
+  background: rgba(46, 155, 255, 0.2);
+  box-shadow: inset 0 0 0 1px rgba(46, 155, 255, 0.42);
+  color: var(--cx-accent-txt);
+}
+
+/* --- honesty notices sit by the cluster they explain --- */
+.cluster__notes,
+.cbottom__notes {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+/* --- phone bottom stack --- */
+.cbottom--phone {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  z-index: 6;
+}
+.cbottom__presets {
+  display: flex;
+  justify-content: center;
+}
+.cbottom__row {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 8px;
+}
+.morebtn {
+  width: 52px;
+  height: 52px;
+  border: 0;
+  border-radius: 16px;
+  background: var(--cglass);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow: var(--cring);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  color: var(--cx-txt);
+  cursor: pointer;
+}
+.morebtn span {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+/* Night-Red: flatten glass blur/translucency per the engineering-mode rules. */
+[data-theme='night'] :is(.cchip, .menu__pop, .pod, .rail, .aim__housing, .morebtn, .ctop__back) {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
