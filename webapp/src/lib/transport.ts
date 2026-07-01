@@ -46,6 +46,21 @@ export function transportsForVariant(useSub: boolean, recommended: TTransport[])
   return useSub ? H264_TRANSPORTS : recommended;
 }
 
+/** How many times to retry climbing back up to the preferred (low-latency) rung before giving up. */
+export const MAX_UPGRADE_ATTEMPTS = 3;
+
+/**
+ * The transport walk only ever falls DOWN (webrtc→hls→mjpeg), so a transient WebRTC miss at load — or a
+ * go2rtc restart — would strand a feed on the 1 fps MJPEG floor forever. This is the backoff for
+ * periodically re-attempting the preferred rung: growing delays so a healthy camera climbs back to
+ * WebRTC quickly, then `null` after MAX_UPGRADE_ATTEMPTS so a genuinely WebRTC-broken camera settles on
+ * MJPEG instead of blipping the feed every minute. Attempts reset once the top rung holds.
+ */
+export function upgradeDelayMs(attempts: number): number | null {
+  if (attempts >= MAX_UPGRADE_ATTEMPTS) return null;
+  return [8000, 20000, 45000][attempts];
+}
+
 /** A progress sample for the stall watchdog: the feed's playback `time` and when we last saw it grow. */
 export interface IStallSample {
   time: number;

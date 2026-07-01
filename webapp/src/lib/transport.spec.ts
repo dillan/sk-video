@@ -8,8 +8,24 @@ import {
   transportsForVariant,
   codecLabel,
   trackStall,
+  upgradeDelayMs,
   H264_TRANSPORTS,
 } from './transport';
+
+describe('upgradeDelayMs (recover up to the low-latency rung, with backoff then give up)', () => {
+  it('backs off on each failed attempt', () => {
+    const a = upgradeDelayMs(0);
+    const b = upgradeDelayMs(1);
+    const c = upgradeDelayMs(2);
+    expect(a).not.toBeNull();
+    expect(b!).toBeGreaterThan(a!);
+    expect(c!).toBeGreaterThan(b!);
+  });
+  it('gives up (returns null) once the attempt budget is spent, so a webrtc-broken camera stops flapping', () => {
+    expect(upgradeDelayMs(3)).toBeNull();
+    expect(upgradeDelayMs(10)).toBeNull();
+  });
+});
 
 describe('transport walk', () => {
   it('picks the first recommended rung (and defaults to mjpeg when empty)', () => {
