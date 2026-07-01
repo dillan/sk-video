@@ -113,16 +113,43 @@ describe('CameraControls', () => {
     expect(screen.getByRole('button', { name: 'Two-way audio' })).toBeTruthy();
   });
 
-  it('does not invent spotlight/alarm controls (no capability flag or endpoint backs them)', () => {
+  it('shows spotlight/alarm only when the camera reports the aux capability', () => {
     mockApi();
-    render(
-      <CameraControls
-        {...base}
-        camera={camera({ ptz: true, audio: true, audioBackchannel: true })}
-      />,
+    const { rerender } = render(
+      <CameraControls {...base} camera={camera({ ptz: true, audio: true })} />,
     );
-    expect(screen.queryByRole('button', { name: /Spotlight/i })).toBeNull();
-    expect(screen.queryByRole('button', { name: /Alarm/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Spotlight' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Alarm' })).toBeNull();
+    rerender(
+      <CameraControls {...base} camera={camera({ ptz: true, spotlight: true, alarm: true })} />,
+    );
+    expect(screen.getByRole('button', { name: 'Spotlight' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Alarm' })).toBeTruthy();
+  });
+
+  it('toggles the spotlight aux command', async () => {
+    const fetchMock = mockApi();
+    render(<CameraControls {...base} camera={camera({ ptz: true, spotlight: true })} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Spotlight' }));
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(
+        ([u, i]) => String(u).includes('/spotlight') && i?.method === 'POST',
+      );
+      expect(JSON.parse((call![1] as RequestInit).body as string)).toMatchObject({ on: true });
+    });
+  });
+
+  it('confirms before sounding the audible alarm', async () => {
+    const fetchMock = mockApi();
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    render(<CameraControls {...base} camera={camera({ ptz: true, alarm: true })} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Alarm' }));
+    expect(confirm).toHaveBeenCalled();
+    // Declined → no alarm command sent.
+    await Promise.resolve();
+    expect(
+      fetchMock.mock.calls.some(([u, i]) => String(u).includes('/alarm') && i?.method === 'POST'),
+    ).toBe(false);
   });
 
   it('disables the aim + zoom on a still-refresh feed and explains it', () => {

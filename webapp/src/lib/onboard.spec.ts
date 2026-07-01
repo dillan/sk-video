@@ -69,8 +69,20 @@ describe('draftFromIntrospect', () => {
       audio: true,
       audioBackchannel: true,
       substreams: false,
+      spotlight: false,
+      alarm: false,
     });
     expect(d.media).toBeUndefined(); // this fixture carries no codec/substream
+  });
+
+  it('derives spotlight/alarm from advertised aux commands and stores the raw tokens', () => {
+    const d = draftFromIntrospect(
+      { ...result, spotlight: true, alarm: true, auxCommands: ['tt:WhiteLight', 'tt:Siren'] },
+      '192.168.1.100',
+    );
+    expect(d.capabilities.spotlight).toBe(true);
+    expect(d.capabilities.alarm).toBe(true);
+    expect(d.capabilities.auxCommands).toEqual(['tt:WhiteLight', 'tt:Siren']);
   });
   it('falls back to the host when make/model are absent', () => {
     expect(
@@ -124,6 +136,8 @@ describe('toResourceBody', () => {
         audio: true,
         audioBackchannel: true,
         substreams: false,
+        spotlight: false,
+        alarm: false,
       },
       role: 'security',
       placement: { mount: 'mast', bearingRelativeDeg: 90 },

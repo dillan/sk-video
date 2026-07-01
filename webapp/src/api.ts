@@ -116,6 +116,9 @@ export interface ICamera {
     audio?: boolean;
     audioBackchannel?: boolean;
     substreams?: boolean;
+    spotlight?: boolean;
+    alarm?: boolean;
+    auxCommands?: string[];
   };
   media?: { codec?: string; substreamPath?: string; projection?: string };
 }
@@ -246,6 +249,12 @@ export const ptzNudge = (
 
 export const ptzStop = (id: string): Promise<Response> =>
   send(`${cam(id)}/ptz/stop`, { method: 'POST' }, 'ptz stop');
+
+/** Toggle an ONVIF auxiliary fixture — a white-light spotlight or an audible alarm/siren. */
+export const setSpotlight = (id: string, on: boolean): Promise<Response> =>
+  send(`${cam(id)}/spotlight`, { method: 'POST', body: JSON.stringify({ on }) }, 'spotlight');
+export const setAlarm = (id: string, on: boolean): Promise<Response> =>
+  send(`${cam(id)}/alarm`, { method: 'POST', body: JSON.stringify({ on }) }, 'alarm');
 
 export interface IPtzPreset {
   token: string;
@@ -408,6 +417,9 @@ export interface IIntrospectResult {
   imagingControls: string[];
   audio: boolean;
   audioBackchannel: boolean;
+  spotlight?: boolean;
+  alarm?: boolean;
+  auxCommands?: string[];
 }
 
 export interface IIntrospectInput {

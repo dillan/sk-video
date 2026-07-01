@@ -8,6 +8,8 @@ import {
   captureSnapshot,
   setRecording,
   fetchPtzPosition,
+  setSpotlight,
+  setAlarm,
   type ICameraEntry,
   type IPtzPreset,
   type TImagingPreset,
@@ -78,6 +80,9 @@ const ICON = {
   record: 'M5 11h14v9H5z|M8 11V8a4 4 0 018 0v3',
   speaker: 'M4 9v6h4l5 4V5L8 9zM16 8a5 5 0 010 8',
   mic: 'M12 3a3 3 0 013 3v5a3 3 0 01-6 0V6a3 3 0 013-3z|M5 11a7 7 0 0014 0M12 18v3',
+  spotlight:
+    'M12 3a6 6 0 00-4 10.5c.6.5 1 1.4 1 2.5h6c0-1.1.4-2 1-2.5A6 6 0 0012 3z|M9 20h6M10 22.5h4',
+  alarm: 'M18 8a6 6 0 00-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 01-3.4 0',
 };
 
 export function CameraControls(props: Props) {
@@ -87,8 +92,33 @@ export function CameraControls(props: Props) {
   const ptz = camera.capabilities?.ptz === true;
   const hasAudio = camera.capabilities?.audio === true;
   const hasBackchannel = camera.capabilities?.audioBackchannel === true;
+  const hasSpotlight = camera.capabilities?.spotlight === true;
+  const hasAlarm = camera.capabilities?.alarm === true;
   const phone = formFactor === 'phone';
   const talk = useTwoWayTalk(cameraId, flash);
+
+  // ONVIF aux fixtures (spotlight / alarm). ONVIF has no reliable read-back, so state is optimistic:
+  // reflect the requested state, and roll back + report if the command fails. The alarm is audible, so
+  // turning it on takes a confirm.
+  const [spotlightOn, setSpotlightOn] = useState(false);
+  const toggleSpotlight = (): void => {
+    const next = !spotlightOn;
+    setSpotlightOn(next);
+    void setSpotlight(cameraId, next).catch((err: unknown) => {
+      setSpotlightOn(!next);
+      flash(actionMessage(err, next ? 'turn on the spotlight' : 'turn off the spotlight'));
+    });
+  };
+  const [alarmOn, setAlarmOn] = useState(false);
+  const toggleAlarm = (): void => {
+    const next = !alarmOn;
+    if (next && !window.confirm('Sound this camera’s alarm? It plays an audible siren.')) return;
+    setAlarmOn(next);
+    void setAlarm(cameraId, next).catch((err: unknown) => {
+      setAlarmOn(!next);
+      flash(actionMessage(err, next ? 'sound the alarm' : 'stop the alarm'));
+    });
+  };
 
   // --- Vision (imaging presets) ---
   const [vision, setVision] = useState<TImagingPreset>('auto');
@@ -251,6 +281,24 @@ export function CameraControls(props: Props) {
       active: talk.talking,
       busy: talk.connecting,
       onToggle: talk.toggle,
+    });
+  }
+  if (hasSpotlight) {
+    capabilities.push({
+      key: 'spotlight',
+      label: 'Spotlight',
+      icon: ICON.spotlight,
+      active: spotlightOn,
+      onToggle: toggleSpotlight,
+    });
+  }
+  if (hasAlarm) {
+    capabilities.push({
+      key: 'alarm',
+      label: 'Alarm',
+      icon: ICON.alarm,
+      active: alarmOn,
+      onToggle: toggleAlarm,
     });
   }
 

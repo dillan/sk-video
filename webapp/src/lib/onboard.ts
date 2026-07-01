@@ -82,6 +82,9 @@ export interface ICameraDraft {
     audio: boolean;
     audioBackchannel: boolean;
     substreams: boolean;
+    spotlight?: boolean;
+    alarm?: boolean;
+    auxCommands?: string[];
   };
   /** Main-stream codec + the H.264 substream path captured by introspection (drives live routing). */
   media?: { codec?: string; substreamPath?: string };
@@ -112,6 +115,9 @@ export function draftFromIntrospect(r: IIntrospectResult, host: string): ICamera
       audio: r.audio === true,
       audioBackchannel: r.audioBackchannel === true,
       substreams: hasSub,
+      spotlight: r.spotlight === true,
+      alarm: r.alarm === true,
+      ...(r.auxCommands && r.auxCommands.length ? { auxCommands: r.auxCommands } : {}),
     },
   };
   if (media.codec || media.substreamPath) {
