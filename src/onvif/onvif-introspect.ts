@@ -1,5 +1,6 @@
 import { createOnvifConnect, type IOnvifTarget } from './onvif-connect';
 import { OnvifPtzController, type OnvifConnect, type IDetectedStream } from './onvif-controller';
+import { auxCapabilities } from './aux-commands';
 
 /**
  * Introspects a discovered ONVIF camera so the add-camera form arrives pre-filled instead of asking
@@ -56,6 +57,12 @@ export interface IIntrospectResult {
   audio: boolean;
   /** The camera reports an audio output (speaker), so go2rtc native two-way audio (A4) is feasible. */
   audioBackchannel: boolean;
+  /** A white-light/spotlight aux command was advertised (drives capabilities.spotlight). */
+  spotlight: boolean;
+  /** A siren/alarm aux command was advertised (drives capabilities.alarm). */
+  alarm: boolean;
+  /** The raw auxiliary-command tokens advertised, stored so the control routes can resolve On/Off data. */
+  auxCommands: string[];
 }
 
 export interface IIntrospectDeps {
@@ -92,6 +99,10 @@ export async function introspectOnvifCamera(
     // A speaker (audio output) is what makes go2rtc's native two-way audio backchannel feasible, so the
     // /talk route gates on this capability (set server-side from the ONVIF probe, never client-trusted).
     audioBackchannel: caps.audioOutput,
+    // Spotlight / alarm are derived from the advertised ONVIF auxiliary commands (no standard capability
+    // exists for them). The raw tokens ride along so the control routes can build the On/Off aux data.
+    ...auxCapabilities(caps.auxCommands),
+    auxCommands: caps.auxCommands,
   };
   const info = caps.deviceInformation;
   if (info?.manufacturer) {

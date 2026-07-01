@@ -32,6 +32,7 @@ import { fetchStreamHealth } from './gateway/stream-health';
 import { PtzManager } from './onvif/ptz-manager';
 import { registerPtzRoutes } from './onvif/ptz-routes';
 import { registerImagingRoutes } from './onvif/imaging-routes';
+import { registerAuxRoutes } from './onvif/aux-routes';
 import { registerCalibrationRoute } from './onvif/calibration-routes';
 import { ImagingPresetApplier } from './onvif/imaging-apply';
 import { isAfterDusk } from './safety/dusk';
@@ -1126,6 +1127,21 @@ export = function (app: ServerAPI): Plugin {
 
       // ONVIF PTZ control.
       registerPtzRoutes(router, () => ptz, unauthorized);
+
+      // ONVIF auxiliary-command controls (spotlight / alarm), capability-gated on the tokens the camera
+      // advertised at onboarding. Untested on real hardware — implemented to spec, validated by tests.
+      registerAuxRoutes(
+        router,
+        {
+          ready: () => cameras !== null,
+          getPtz: () => ptz,
+          getAuxCommands: (id: string) => {
+            const camera = cameras?.get(id);
+            return camera ? (camera.capabilities?.auxCommands ?? []) : null;
+          },
+        },
+        unauthorized,
+      );
 
       // ONVIF imaging presets (Day/Night/Fog/Glare/Auto), capability-gated + relative to current.
       registerImagingRoutes(

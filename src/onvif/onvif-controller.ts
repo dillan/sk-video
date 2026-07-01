@@ -5,6 +5,7 @@ import {
   type IPtzVelocity,
   type IPtzPosition,
 } from './ptz-command';
+import { auxTokensFromNodes, type IPtzNodeAux } from './aux-commands';
 
 /** PTZ status in ONVIF normalized space. */
 export interface IPtzStatus {
@@ -78,6 +79,8 @@ export interface IDetectedCapabilities {
   imagingControls: string[];
   /** The camera has an audio output (a speaker) — i.e. two-way audio is feasible. */
   audioOutput: boolean;
+  /** Auxiliary-command tokens the camera advertises (drives the spotlight / alarm controls). */
+  auxCommands: string[];
 }
 
 type Cb = (err?: Error | null) => void;
@@ -113,6 +116,8 @@ export interface IOnvifCam {
   ): void;
   getDeviceInformation(cb: (err: Error | null, info?: IDeviceInformation) => void): void;
   getAudioOutputs(cb: (err: Error | null, outputs?: unknown[]) => void): void;
+  getNodes(cb: (err: Error | null, nodes?: Record<string, IPtzNodeAux>) => void): void;
+  sendAuxiliaryCommand(options: { data: string }, cb: Cb): void;
 }
 
 /** Connects to (or returns a connected) ONVIF camera. Injected so the controller is unit-testable. */
@@ -311,20 +316,43 @@ export class OnvifPtzController {
     });
   }
 
+  /** The auxiliary-command tokens the camera advertises on its PTZ nodes (spotlight / alarm / wiper …). */
+  private async getAuxCommands(): Promise<string[]> {
+    const cam = await this.connect();
+    const nodes = await new Promise<Record<string, IPtzNodeAux>>((resolve, reject) => {
+      cam.getNodes((err, n) => (err ? reject(err) : resolve(n ?? {})));
+    });
+    return auxTokensFromNodes(nodes);
+  }
+
+  /**
+   * Send an ONVIF auxiliary command (e.g. `tt:WhiteLight|On`) to toggle a spotlight/alarm-style fixture.
+   * The command data is resolved from the camera's advertised tokens by the caller — this is best-effort
+   * and vendor-quirky (a camera may ignore an unsupported command).
+   */
+  async sendAux(data: string): Promise<void> {
+    const cam = await this.connect();
+    await new Promise<void>((resolve, reject) => {
+      cam.sendAuxiliaryCommand({ data }, (err) => (err ? reject(err) : resolve()));
+    });
+  }
+
   /**
    * Probe what this specific camera actually supports. Each optional feature is attempted and any
    * error is treated as "unsupported" — capabilities are detected, never assumed.
    */
   async probeCapabilities(): Promise<IDetectedCapabilities> {
-    const [device, streamUri, snapshotUri, imaging, status, audio, streams] = await Promise.all([
-      this.getDeviceInformation().catch(() => null),
-      this.getStreamUri().catch(() => null),
-      this.getSnapshotUri().catch(() => null),
-      this.getImaging().catch(() => null),
-      this.getStatus().catch(() => null),
-      this.getAudioOutputs().catch(() => null),
-      this.detectStreams().catch(() => [] as IDetectedStream[]),
-    ]);
+    const [device, streamUri, snapshotUri, imaging, status, audio, streams, auxCommands] =
+      await Promise.all([
+        this.getDeviceInformation().catch(() => null),
+        this.getStreamUri().catch(() => null),
+        this.getSnapshotUri().catch(() => null),
+        this.getImaging().catch(() => null),
+        this.getStatus().catch(() => null),
+        this.getAudioOutputs().catch(() => null),
+        this.detectStreams().catch(() => [] as IDetectedStream[]),
+        this.getAuxCommands().catch(() => [] as string[]),
+      ]);
     return {
       deviceInformation: device,
       streamUri: streamUri || null,
@@ -334,6 +362,7 @@ export class OnvifPtzController {
       imaging: imaging !== null,
       imagingControls: imaging ? imagingControlsOf(imaging) : [],
       audioOutput: Array.isArray(audio) && audio.length > 0,
+      auxCommands,
     };
   }
 

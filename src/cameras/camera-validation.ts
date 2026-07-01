@@ -97,7 +97,13 @@ export interface ICameraCapabilities {
   audio?: boolean;
   audioBackchannel?: boolean;
   substreams?: boolean;
+  /** A white-light/spotlight ONVIF auxiliary command was detected. */
+  spotlight?: boolean;
+  /** A siren/alarm ONVIF auxiliary command was detected. */
+  alarm?: boolean;
   imaging?: TImagingControl[];
+  /** Raw ONVIF auxiliary-command tokens the camera advertised (resolved to On/Off by the control routes). */
+  auxCommands?: string[];
 }
 
 export interface ICameraMedia {
@@ -171,8 +177,16 @@ const ALLOWED_TOP_KEYS = new Set([
 ]);
 const ALLOWED_SOURCE_KEYS = new Set(['scheme', 'host', 'port', 'path']);
 const PLACEMENT_KEYS = new Set(['mount', 'bearingRelativeDeg', 'heightM']);
-const CAPABILITY_BOOLS = ['ptz', 'absolutePtz', 'audio', 'audioBackchannel', 'substreams'] as const;
-const CAPABILITY_KEYS = new Set<string>([...CAPABILITY_BOOLS, 'imaging']);
+const CAPABILITY_BOOLS = [
+  'ptz',
+  'absolutePtz',
+  'audio',
+  'audioBackchannel',
+  'substreams',
+  'spotlight',
+  'alarm',
+] as const;
+const CAPABILITY_KEYS = new Set<string>([...CAPABILITY_BOOLS, 'imaging', 'auxCommands']);
 const MEDIA_KEYS = new Set(['codec', 'profileToken', 'substreamPath', 'projection']);
 const CALIBRATION_KEYS = new Set(['pan', 'tilt']);
 const AXIS_KEYS = new Set(['offset', 'scalePerDeg']);
@@ -267,6 +281,13 @@ function validateCapabilities(input: unknown, errors: string[]): ICameraCapabili
       out.imaging = o.imaging as TImagingControl[];
     } else {
       errors.push('capabilities.imaging must be a list of supported controls');
+    }
+  }
+  if (o.auxCommands !== undefined) {
+    if (Array.isArray(o.auxCommands) && o.auxCommands.every((c) => typeof c === 'string')) {
+      out.auxCommands = o.auxCommands as string[];
+    } else {
+      errors.push('capabilities.auxCommands must be a list of strings');
     }
   }
   return out;
