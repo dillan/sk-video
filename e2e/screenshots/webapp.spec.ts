@@ -106,14 +106,22 @@ test('webapp: Live Wall', async ({ page }) => {
   await page.goto(`${APP}#/live`);
   await expect(page.getByRole('heading', { name: 'Live' })).toBeVisible();
   await expect(page.getByText('Foredeck')).toBeVisible();
-  // Wait for a tile to reach a live frame (capture-all.sh advertises a reachable WebRTC candidate, so
-  // the walk lands on WebRTC; without it, it falls to HLS/MJPEG — either way a frame flows).
+  // Wait for (nearly) every tile to reach a live frame so the happy-path shot has no "Connecting…"
+  // stragglers. capture-all.sh advertises a reachable WebRTC candidate, so the walk lands on WebRTC;
+  // without it the tiles fall to HLS/MJPEG — either way a frame flows. We poll the live-chip count up
+  // to DEMO.length and settle for the last tile, with a hard cap so a genuinely dead source can't hang.
   await page
     .locator('.chip--live')
     .first()
     .waitFor({ timeout: 40_000 })
     .catch(() => undefined);
-  await page.waitForTimeout(2500); // let the remaining tiles catch up
+  // Best-effort: wait until all tiles are live, but never fail the capture if one source stays down.
+  await page
+    .waitForFunction((n) => document.querySelectorAll('.chip--live').length >= n, DEMO.length, {
+      timeout: 40_000,
+    })
+    .catch(() => undefined);
+  await page.waitForTimeout(1500); // let the last frame paint
   await shot(page, 'app-live-wall');
 });
 
