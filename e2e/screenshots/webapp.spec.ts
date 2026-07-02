@@ -13,26 +13,48 @@ import { shot } from './kip-harness';
 
 const APP = '/plugins/sk-video/app/';
 const CAMERAS = '/signalk/v2/api/resources/cameras';
-const DEMO = [
-  ['foredeck', 'Foredeck'],
-  ['cockpit', 'Cockpit'],
-  ['engine-room', 'Engine Room'],
-  ['masthead', 'Masthead'],
-] as const;
 
-// Realistic capabilities for the "hero" camera so Camera Focus renders the full floating-cluster
-// control set (joystick pad + zoom + STOP, vision presets, the Listen / two-way-audio rail, capture pod)
-// and the Cameras list shows capability chips. A Reolink-class PTZ dome — no spotlight/alarm (rare + not
-// something to imply on a demo camera). The others stay plain, so the list honestly shows "no chips" too.
-const HERO_CAPS = {
-  ptz: true,
-  absolutePtz: true,
-  audio: true,
-  audioBackchannel: true,
-  imaging: ['irCut', 'brightness'],
-} as const;
+// One demo camera per view, pointed at its matching MediaMTX still-image path (see e2e/stills/), with a
+// realistic mount/role/bearing so the Live Wall reads as one vessel. Foredeck is the "hero" with a full
+// capability set (so Camera Focus shows the whole floating-cluster control set + the Cameras list shows
+// chips); a couple of others carry lighter caps and the rest stay plain (honest "no chips" rows).
+const DEMO: Array<{
+  id: string;
+  name: string;
+  mount: string;
+  bearing?: number;
+  role: string;
+  caps?: Record<string, unknown>;
+}> = [
+  {
+    id: 'foredeck',
+    name: 'Foredeck',
+    mount: 'mast',
+    bearing: 0,
+    role: 'navigation',
+    caps: {
+      ptz: true,
+      absolutePtz: true,
+      audio: true,
+      audioBackchannel: true,
+      imaging: ['irCut', 'brightness'],
+    },
+  },
+  { id: 'stern', name: 'Stern', mount: 'mast', bearing: 180, role: 'cockpit' },
+  {
+    id: 'bow',
+    name: 'Bow',
+    mount: 'bow',
+    bearing: 0,
+    role: 'docking',
+    caps: { ptz: true, absolutePtz: true },
+  },
+  { id: 'port', name: 'Port', mount: 'port', bearing: 270, role: 'general' },
+  { id: 'starboard', name: 'Starboard', mount: 'starboard', bearing: 90, role: 'general' },
+  { id: 'engine-room', name: 'Engine Room', mount: 'engine', role: 'engine' },
+];
 
-/** Reset to the four named demo cameras (all pointing at the MediaMTX test stream). */
+/** Reset to the demo cameras, each pointed at its own MediaMTX still-image path. */
 async function resetCameras(request: APIRequestContext) {
   const list = await request
     .get(CAMERAS)
@@ -41,20 +63,21 @@ async function resetCameras(request: APIRequestContext) {
   for (const id of Object.keys((list as Record<string, unknown>) ?? {})) {
     await request.delete(`${CAMERAS}/${id}`).catch(() => undefined);
   }
-  for (const [id, name] of DEMO) {
+  for (const cam of DEMO) {
     await request
-      .put(`${CAMERAS}/${id}`, {
+      .put(`${CAMERAS}/${cam.id}`, {
         data: {
-          name,
+          name: cam.name,
           enabled: true,
-          source: { scheme: 'rtsp', host: 'mediamtx', port: 8554, path: '/cam' },
-          ...(id === 'foredeck'
-            ? {
-                role: 'navigation',
-                placement: { mount: 'mast', bearingRelativeDeg: 0 },
-                capabilities: HERO_CAPS,
-                device: { manufacturer: 'REOLINK', model: 'RLC-823S2', firmware: 'v3.1.0.0' },
-              }
+          source: { scheme: 'rtsp', host: 'mediamtx', port: 8554, path: `/${cam.id}` },
+          role: cam.role,
+          placement: {
+            mount: cam.mount,
+            ...(cam.bearing !== undefined ? { bearingRelativeDeg: cam.bearing } : {}),
+          },
+          ...(cam.caps ? { capabilities: cam.caps } : {}),
+          ...(cam.id === 'foredeck'
+            ? { device: { manufacturer: 'REOLINK', model: 'RLC-823S2', firmware: 'v3.1.0.0' } }
             : {}),
         },
       })
@@ -65,8 +88,8 @@ async function resetCameras(request: APIRequestContext) {
 test.beforeAll(async ({ request }) => {
   await resetCameras(request);
   // Warm go2rtc for every camera so the tiles reach a live frame instead of racing the grace timer.
-  for (const [id] of DEMO) {
-    await request.get(`/plugins/sk-video/cameras/${id}/frame.jpeg`).catch(() => undefined);
+  for (const cam of DEMO) {
+    await request.get(`/plugins/sk-video/cameras/${cam.id}/frame.jpeg`).catch(() => undefined);
   }
 });
 

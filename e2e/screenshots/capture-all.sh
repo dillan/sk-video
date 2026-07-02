@@ -29,6 +29,10 @@ for arg in "$@"; do
 done
 
 echo "==> Bringing up the demo stack on :${PORT}"
+# Advertise a host-reachable WebRTC candidate so the browser completes WebRTC (the low-latency "happy
+# path") instead of falling to the still-refresh floor — otherwise the PTZ pad screenshots show the
+# "paused on a 1 fps feed" state. The e2e tests (run.sh) don't set this, so they still exercise the walk.
+export GO2RTC_CANDIDATES="${GO2RTC_CANDIDATES:-127.0.0.1:8555}"
 SIGNALK_PORT="$PORT" docker compose up -d
 
 echo "==> Waiting for Signal K + the plugin to be ready"

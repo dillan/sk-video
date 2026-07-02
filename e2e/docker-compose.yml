@@ -15,6 +15,8 @@ services:
       MTX_PROTOCOLS: tcp
     volumes:
       - ./mediamtx.yml:/mediamtx.yml:ro
+      - ./stream-still.sh:/stream-still.sh:ro
+      - ./stills:/stills:ro # per-view demo stills (foredeck.jpg, stern.jpg, …); empty is fine
     ports:
       - '8554:8554' # RTSP
       - '8888:8888' # HLS
@@ -37,8 +39,15 @@ services:
     environment:
       # Let the plugin reach the internet once to fetch the pinned go2rtc binary.
       IS_IN_DOCKER: 'true'
+      # Optional: advertise a browser-reachable WebRTC ICE candidate so the host browser can complete
+      # WebRTC through the published :8555 (go2rtc otherwise advertises only its unreachable container
+      # IP, forcing the fallback to HLS/MJPEG). The screenshot harness sets GO2RTC_CANDIDATES to get the
+      # low-latency "happy path"; left empty for the e2e tests, which exercise the fallback walk.
+      SKVIDEO_GO2RTC_CANDIDATES: ${GO2RTC_CANDIDATES:-}
     ports:
       - '${SIGNALK_PORT:-3000}:3000'
+      - '8555:8555/tcp' # go2rtc WebRTC (ICE) — reachable from the host for representative captures
+      - '8555:8555/udp'
     volumes:
       - ./signalk-config:/home/node/.signalk
       # The built plugin (with its node_modules) and the built KIP webapp, mounted read-only.

@@ -1,6 +1,9 @@
-# MediaMTX stands in for an IP camera: it serves a continuously-generated H.264 test pattern over
-# RTSP (and HLS/WebRTC). The sk-video plugin's go2rtc pulls rtsp://mediamtx:8554/cam and repackages
-# it for the browser.
+# MediaMTX stands in for IP cameras: it serves H.264 over RTSP (and HLS/WebRTC). The sk-video plugin's
+# go2rtc pulls these and repackages them for the browser.
+#
+# `cam` is the generic test pattern the e2e tests use. The named views (foredeck/stern/…) stream a
+# looping still image from ./stills/<name>.jpg when present, else a test pattern — see stream-still.sh.
+# The screenshot harness seeds one demo camera per named view so the Live Wall tells a coherent story.
 logLevel: info
 api: yes
 apiAddress: :9997
@@ -10,5 +13,23 @@ paths:
     # Generate a 1280x720 H.264 test pattern with a clock and a tone, and publish it to ourselves.
     runOnInit: >
       ffmpeg -re -f lavfi -i testsrc2=size=1280x720:rate=15 -f lavfi -i sine=frequency=500:sample_rate=48000 -c:v libx264 -preset veryfast -tune zerolatency -profile:v baseline -pix_fmt yuv420p -g 30 -c:a aac -b:a 64k -f rtsp -rtsp_transport tcp rtsp://localhost:8554/cam
+    runOnInitRestart: yes
 
+  foredeck:
+    runOnInit: sh /stream-still.sh foredeck
+    runOnInitRestart: yes
+  stern:
+    runOnInit: sh /stream-still.sh stern
+    runOnInitRestart: yes
+  bow:
+    runOnInit: sh /stream-still.sh bow
+    runOnInitRestart: yes
+  port:
+    runOnInit: sh /stream-still.sh port
+    runOnInitRestart: yes
+  starboard:
+    runOnInit: sh /stream-still.sh starboard
+    runOnInitRestart: yes
+  engine-room:
+    runOnInit: sh /stream-still.sh engine-room
     runOnInitRestart: yes

@@ -62,6 +62,16 @@ Don't re-derive these helpers in a new spec — import them. Duplicated copies a
 
 The point of `seed-demo.sh` is that the data is **the same across generation sessions**, so a refreshed screenshot differs only where the UI actually changed — not because a random camera name or a different clip showed up. It registers fixed camera names/roles, uploads a known sample clip, and injects a fixed telemetry burst (position, heading, speed, depth, wind). If you want the "video playing" hero to show real footage, point it at your own clip with `HERO_CLIP=/path/to.mp4 ./seed-demo.sh`.
 
+### Representative video: per-view still images
+
+For the app shots, the harness can stream a **still image** per camera view instead of the ffmpeg test pattern, so the Live Wall and Camera Focus show a real marine scene that comes out identical every run. A single looping still is the most stable possible "video".
+
+Drop 16:9 JPGs into [`e2e/stills/`](../../e2e/stills/) named `foredeck.jpg`, `stern.jpg`, `bow.jpg`, `port.jpg`, `starboard.jpg`, `engine-room.jpg` — `mediamtx.yml` publishes each via [`stream-still.sh`](../../e2e/stream-still.sh), which **loops the image if present, else falls back to a test pattern** (so the harness works with none present). `webapp.spec.ts` seeds one demo camera per view with a matching mount/role/bearing. [`e2e/stills/README.md`](../../e2e/stills/README.md) has AI-image prompts (Midjourney / DALL·E) that produce a consistent set — same vessel, same day.
+
+### The WebRTC "happy path"
+
+`capture-all.sh` starts the stack with `GO2RTC_CANDIDATES=127.0.0.1:8555`, which the plugin passes to go2rtc as an explicit WebRTC ICE candidate (via `SKVIDEO_GO2RTC_CANDIDATES`). Without it, go2rtc advertises only its container IP — unreachable from the host browser — so WebRTC fails and the shots show the still-refresh / "PTZ paused" state. With it (and the published `:8555`), the host browser completes WebRTC and the shots show the low-latency happy path: a live-decoded frame, the **WebRTC** stream chip, and an enabled PTZ pad. The e2e tests (`run.sh`) don't set it, so they still exercise the fallback walk.
+
 ---
 
 ## Adding a new screenshot to the docs
