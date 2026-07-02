@@ -64,6 +64,10 @@ When SK Video adds an ONVIF camera it **detects what the camera can do** and sho
 
 A plain camera that reports nothing shows no chips — SK Video never claims a capability the camera didn't report. These same chips light up the matching controls in [Camera Focus](viewing.md).
 
+<p align="center">
+  <img src="../images/app-cameras.webp" alt="The Cameras list — each camera row with capability chips and a Re-scan button" width="90%">
+</p>
+
 ## Re-scanning capabilities
 
 Each camera row has a **Re-scan** button. It reconnects to the camera with its stored login, re-detects the capabilities, and updates the camera — **without** deleting and re-adding it, so your name, mount, role, and calibration are kept. Use it when:

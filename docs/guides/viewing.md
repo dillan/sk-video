@@ -31,7 +31,7 @@ The same camera can be delivered to your browser three different ways. The SK Vi
 If your camera supports **pan / tilt / zoom** (the plugin detects this automatically when you add it), Camera Focus floats a set of glass controls over the video. The heart of it is a **joystick pad**: drag the centre knob to pan and tilt — the further you push, the faster it moves — or tap one of the four **chevrons** to nudge a step (hold to keep going). Beside it are a **zoom** pill (+ / −, with a live readout) and a red **STOP**. You can also just **drag on the video itself** to steer, pinch or scroll to zoom.
 
 <p align="center">
-  <img src="../images/ptz.webp" alt="The glass PTZ joystick pad, zoom pill, and STOP floating over a live camera" width="85%">
+  <img src="../images/app-ptz.webp" alt="The glass PTZ joystick pad, zoom pill, and STOP floating over a live camera" width="60%">
 </p>
 
 On a slow **still-refresh** feed, continuous panning is disabled on purpose — steering a 1-fps view near a dock is dangerous — and a note tells you why. If a move can't reach the camera, SK Video shows the **reason** ("can't reach the camera's ONVIF service — it may use a non-standard port", "the camera rejected the login", …) rather than a generic "try again", so you know what to fix. (A common one: a camera added by its RTSP address whose ONVIF service is on a different port — SK Video now probes the common ONVIF ports automatically, so this usually just works.)

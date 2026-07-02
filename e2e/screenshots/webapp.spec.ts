@@ -20,6 +20,18 @@ const DEMO = [
   ['masthead', 'Masthead'],
 ] as const;
 
+// Realistic capabilities for the "hero" camera so Camera Focus renders the full floating-cluster
+// control set (joystick pad + zoom + STOP, vision presets, the Listen / two-way-audio rail, capture pod)
+// and the Cameras list shows capability chips. A Reolink-class PTZ dome — no spotlight/alarm (rare + not
+// something to imply on a demo camera). The others stay plain, so the list honestly shows "no chips" too.
+const HERO_CAPS = {
+  ptz: true,
+  absolutePtz: true,
+  audio: true,
+  audioBackchannel: true,
+  imaging: ['irCut', 'brightness'],
+} as const;
+
 /** Reset to the four named demo cameras (all pointing at the MediaMTX test stream). */
 async function resetCameras(request: APIRequestContext) {
   const list = await request
@@ -36,6 +48,14 @@ async function resetCameras(request: APIRequestContext) {
           name,
           enabled: true,
           source: { scheme: 'rtsp', host: 'mediamtx', port: 8554, path: '/cam' },
+          ...(id === 'foredeck'
+            ? {
+                role: 'navigation',
+                placement: { mount: 'mast', bearingRelativeDeg: 0 },
+                capabilities: HERO_CAPS,
+                device: { manufacturer: 'REOLINK', model: 'RLC-823S2', firmware: 'v3.1.0.0' },
+              }
+            : {}),
         },
       })
       .catch(() => undefined);
@@ -88,6 +108,17 @@ test('webapp: Camera Focus', async ({ page }) => {
   await page.mouse.move(700, 360); // surface the auto-fading control dock
   await page.waitForTimeout(500);
   await shot(page, 'app-camera-focus');
+  // A focused crop of the aim cluster: the glass PTZ joystick pad, zoom pill, and STOP.
+  await shot(page, 'app-ptz', '.ccenter');
+});
+
+test('webapp: Cameras management', async ({ page }) => {
+  await page.goto(`${APP}#/cameras`);
+  await expect(page.getByRole('heading', { name: 'Cameras' })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText('Foredeck')).toBeVisible();
+  // Let the capability chips + credential presence resolve so the row is complete.
+  await page.waitForTimeout(1500);
+  await shot(page, 'app-cameras');
 });
 
 test('webapp: Recordings DVR (scrubbed)', async ({ page, request }) => {
