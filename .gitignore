@@ -9,3 +9,7 @@ dist/
 coverage/
 # Plugin runtime data (go2rtc binary, config, uploads) lives in the SK data dir, never the repo.
 data/
+# Secrets — API keys for local tooling (e.g. the OpenAI image generator). Never commit these.
+.env
+*.env
+!*.env.example

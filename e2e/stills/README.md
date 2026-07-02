@@ -27,6 +27,17 @@ These are **fixtures, not code** — keep them small (a 1080p JPG at ~85% qualit
 
 The goal: six photorealistic frames that look like **raw output from a fixed wide-angle marine deck camera** — same vessel, same trim, same day — with **no** text, timestamp, watermark, logo, or UI overlay of any kind.
 
+### Automated (OpenAI API)
+
+If you have an OpenAI key, [`generate.sh`](generate.sh) produces all six directly from the prompts below:
+
+```sh
+cp .env.example .env      # then paste your key into .env (gitignored, never committed)
+./generate.sh             # writes foredeck.jpg first, then the other five from it as a reference
+```
+
+It generates `foredeck` first and passes it as a **reference image** to the other five (OpenAI's image-edits endpoint) so the set stays one vessel on one afternoon — the same consistency trick as Midjourney's `--cref`, done automatically. Uses `gpt-image-1` at `1536x1024` (a few cents per run; override via `.env`). The manual Midjourney/DALL·E route below is equivalent if you prefer a different generator.
+
 ### Consistency first (read this before generating)
 
 The six frames must read as **one boat on one afternoon**. Two ways to hold that:
