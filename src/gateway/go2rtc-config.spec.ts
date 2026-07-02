@@ -15,6 +15,20 @@ describe('buildGo2rtcConfig', () => {
     expect((cfg.api as { listen: string }).listen).toBe('127.0.0.1:1984');
     expect((cfg.rtsp as { listen: string }).listen).toBe('127.0.0.1:8554');
     expect((cfg.webrtc as { listen: string }).listen).toBe(':8555'); // routable for ICE
+    expect(cfg.webrtc).not.toHaveProperty('candidates'); // auto-detect by default
+  });
+
+  it('advertises explicit WebRTC candidates when given (NAT / container / multi-homed hosts)', () => {
+    const cfg = buildGo2rtcConfig({
+      cameras: {},
+      credentials: {},
+      webrtcCandidates: ['127.0.0.1:8555', ' ', 'stun:8555'],
+    });
+    // Blanks are dropped; the rest are advertised as ICE host candidates.
+    expect((cfg.webrtc as { candidates: string[] }).candidates).toEqual([
+      '127.0.0.1:8555',
+      'stun:8555',
+    ]);
   });
 
   it('maps enabled cameras to streams keyed by id, with embedded credentials', () => {

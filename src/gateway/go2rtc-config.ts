@@ -16,6 +16,12 @@ export interface IGo2rtcConfigInput {
   cameras: Record<string, ICamera>;
   credentials: Record<string, ICameraCredentials>;
   ports?: IGo2rtcPorts;
+  /**
+   * Explicit WebRTC ICE host candidates to advertise (`ip:port`), for hosts where go2rtc can't
+   * auto-detect a browser-reachable address — e.g. behind NAT, on a multi-homed host, or inside a
+   * container whose own interface IP the browser can't reach. Left empty by default (auto-detect).
+   */
+  webrtcCandidates?: string[];
 }
 
 /**
@@ -48,10 +54,14 @@ export function buildGo2rtcConfig(input: IGo2rtcConfigInput): Record<string, unk
     }
   }
 
+  const candidates = (input.webrtcCandidates ?? []).filter((c) => c.trim().length > 0);
   return {
     api: { listen: `127.0.0.1:${ports.api}` },
     rtsp: { listen: `127.0.0.1:${ports.rtsp}` },
-    webrtc: { listen: `:${ports.webrtc}` },
+    webrtc: {
+      listen: `:${ports.webrtc}`,
+      ...(candidates.length ? { candidates } : {}),
+    },
     log: { level: 'warn' },
     streams,
   };

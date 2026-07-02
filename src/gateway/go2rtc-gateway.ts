@@ -22,6 +22,8 @@ export interface IGo2rtcGatewayOptions {
   binary: IBinaryProvider;
   process: IProcessController;
   ports?: IGo2rtcPorts;
+  /** Explicit WebRTC ICE host candidates to advertise (see IGo2rtcConfigInput.webrtcCandidates). */
+  webrtcCandidates?: string[];
   /** Injectable config writer for testing. */
   writeConfig?: (path: string, config: Record<string, unknown>) => void;
   /** Injectable config remover for testing. */
@@ -64,7 +66,12 @@ export class Go2rtcGateway {
       return;
     }
 
-    const config = buildGo2rtcConfig({ cameras, credentials, ports: this.opts.ports });
+    const config = buildGo2rtcConfig({
+      cameras,
+      credentials,
+      ports: this.opts.ports,
+      webrtcCandidates: this.opts.webrtcCandidates,
+    });
     this.write(config);
 
     const binaryPath = await this.opts.binary.ensure();

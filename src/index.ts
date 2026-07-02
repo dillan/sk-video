@@ -390,6 +390,13 @@ export = function (app: ServerAPI): Plugin {
               ),
             onHealthy: () => app.setPluginStatus(readyStatus()),
           }),
+          // Optional explicit WebRTC ICE host candidates (`ip:port,ip:port`) for hosts where go2rtc
+          // can't auto-detect a browser-reachable address (NAT / multi-homed / containerized). Off
+          // unless set; the e2e screenshot harness uses it to make WebRTC reachable from the host.
+          webrtcCandidates: (process.env.SKVIDEO_GO2RTC_CANDIDATES ?? '')
+            .split(',')
+            .map((c) => c.trim())
+            .filter(Boolean),
         });
         ptz = new PtzManager({
           getCamera: (id) => cameras?.get(id) ?? null,
