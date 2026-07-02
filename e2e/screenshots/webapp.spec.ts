@@ -106,8 +106,8 @@ test('webapp: Live Wall', async ({ page }) => {
   await page.goto(`${APP}#/live`);
   await expect(page.getByRole('heading', { name: 'Live' })).toBeVisible();
   await expect(page.getByText('Foredeck')).toBeVisible();
-  // Wait for the transport walk to land on a decodable rung so tiles show a real frame + the Live chip
-  // (WebRTC's media port isn't published here, so it walks to HLS/MJPEG — which still flows a frame).
+  // Wait for a tile to reach a live frame (capture-all.sh advertises a reachable WebRTC candidate, so
+  // the walk lands on WebRTC; without it, it falls to HLS/MJPEG — either way a frame flows).
   await page
     .locator('.chip--live')
     .first()
@@ -120,15 +120,15 @@ test('webapp: Live Wall', async ({ page }) => {
 test('webapp: Camera Focus', async ({ page }) => {
   await page.goto(`${APP}#/live/foredeck`);
   await expect(page.locator('.player')).toBeVisible();
-  // Wait for the transport walk to land on a decodable rung (WebRTC's media port isn't published
-  // here, so it falls to HLS/MJPEG) so the frame isn't black; then nudge the chrome back into view.
+  // Wait for a live frame so it isn't black. With the harness's WebRTC candidate the walk lands on
+  // WebRTC (low-latency, enabled PTZ pad); otherwise it falls to HLS/MJPEG (still-refresh, paused pad).
   await page
     .locator('.chip--live')
     .first()
     .waitFor({ timeout: 30_000 })
     .catch(() => undefined);
   await page.waitForTimeout(2000);
-  await page.mouse.move(700, 360); // surface the auto-fading control dock
+  await page.mouse.move(700, 360); // surface the auto-fading control clusters
   await page.waitForTimeout(500);
   await shot(page, 'app-camera-focus');
   // A focused crop of the aim cluster: the glass PTZ joystick pad, zoom pill, and STOP.
