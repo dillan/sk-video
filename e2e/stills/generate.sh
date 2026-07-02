@@ -43,14 +43,19 @@ the same late-morning light on cobalt water with a gentle starboard heel. No tex
 watermark, no logo, no overlay, no readable lettering anywhere. 16:9. New camera position and view:"
 
 # --- Per-shot prompts (the "This shot:" paragraphs from README.md) --------------------------------
-SHOT_foredeck="This shot: mounted high on the mast looking forward and slightly down along the \
-centreline. In frame: the coachroof and a flush forward hatch, side decks with the teak toe rail \
-running to a stainless bow pulpit and anchor roller at the far end, a furled headsail on the \
-forestay, deck cleats and a low winch; open cobalt water and the high horizon beyond the bow. No people."
+SHOT_foredeck="This shot: mounted at the very top of the mast (masthead), looking straight down and \
+forward along the centreline — a high overhead bird's-eye view with the whole foredeck spread out far \
+below and the aluminum mast foreshortening down toward the camera. In frame from above: the coachroof \
+and a flush forward hatch, the side decks and teak toe rail converging toward the stainless bow \
+pulpit and anchor roller at the far bow, a furled headsail on the forestay, deck cleats and a low \
+winch; open cobalt water wrapping around the hull and the horizon high in the frame. Steep downward \
+angle, deck seen mostly in plan. No people."
 
-SHOT_stern="mounted high on the mast looking aft and down. In frame: the coachroof, the navy dodger \
-and bimini, the cockpit with a stainless wheel and binnacle, cockpit coamings and winches, the boom \
-edge across the top of frame, the backstay, and the wake trailing astern to the horizon. No people."
+SHOT_stern="mounted at the very top of the mast (masthead) looking straight down and aft — a high \
+overhead bird's-eye view. Far below in frame: the coachroof, the navy dodger and bimini seen from \
+above, the cockpit with a stainless wheel and binnacle, coamings and winches, the boom foreshortening \
+away beneath the camera, the backstay, and the wake trailing astern to the horizon. Steep downward \
+angle, cockpit seen mostly in plan. No people."
 
 SHOT_bow="mounted on the bow pulpit looking dead ahead. Lower foreground filled by the stainless \
 pulpit rails and anchor roller and the tip of the furled headsail; the rest is open cobalt water, \
@@ -66,10 +71,15 @@ Same side-deck, teak toe rail, stanchions and lifelines in the near foreground; 
 headland on the horizon, seen from the opposite side. Because the boat heels to starboard, the \
 starboard rail sits lower, closer to the passing water and a little spray. No people."
 
-SHOT_engine="a tidy sailboat engine compartment lit by a cool LED work light — a compact marine \
-diesel (beige/cream block) with belts and a black alternator, coolant header tank, twin fuel \
-filters, a stainless exhaust elbow, neatly loomed wiring, cream sound-insulation foam on the hatch \
-walls, a clean bilge below. Photorealistic, raw camera frame, no text/labels/overlays. 16:9."
+# Interior shot — NOT prepended with the (exterior) bible, or the model renders the whole boat under
+# sail instead of the engine bay. Self-contained, and explicitly excludes the outdoor scene.
+SHOT_engine="Photorealistic raw frame from a fixed wide-angle camera inside a sailboat's below-deck \
+engine compartment — an enclosed interior space, no sky, no sea, no sails, no horizon, no exterior. \
+A compact marine diesel engine (beige/cream painted block) fills the frame, with a ribbed drive belt \
+and a black alternator, a coolant header tank, twin spin-on fuel filters, a stainless exhaust elbow, \
+neatly loomed wiring, and cream sound-insulation foam lining the hatch walls; a clean bilge below, \
+lit by a cool white LED work light. Deep depth of field, faint sensor noise. No text, no timestamp, \
+no watermark, no logo, no overlay, no readable lettering. 16:9."
 
 # --- Helpers --------------------------------------------------------------------------------------
 decode_to() { # decode_to <out.jpg>  (reads b64 on stdin; python3 avoids BSD/GNU base64 -d/-D drift)
@@ -84,10 +94,18 @@ api_err() { # api_err <response.json> — print the API error message (never con
 
 RESP="$(mktemp)"; trap 'rm -f "$RESP"' EXIT
 
-generate_first() { # generate_first <name> <prompt>
+generate_first() { # generate_first <name> <prompt>  — prepends the (exterior) vessel bible
+  generate_prompt "$1" "${BIBLE} $2"
+}
+
+generate_standalone() { # generate_standalone <name> <full-prompt>  — no bible (interiors)
+  generate_prompt "$1" "$2"
+}
+
+generate_prompt() { # generate_prompt <name> <full-prompt>
   local name="$1" prompt="$2"
   echo "==> ${name} (generations)"
-  jq -n --arg m "$MODEL" --arg p "${BIBLE} ${prompt}" --arg s "$SIZE" --arg q "$QUALITY" \
+  jq -n --arg m "$MODEL" --arg p "$prompt" --arg s "$SIZE" --arg q "$QUALITY" \
     '{model:$m, prompt:$p, size:$s, quality:$q, output_format:"jpeg", n:1}' \
   | curl -sS https://api.openai.com/v1/images/generations \
       -H "Authorization: Bearer ${OPENAI_API_KEY}" -H "Content-Type: application/json" \
@@ -116,8 +134,8 @@ generate_from_ref stern       foredeck.jpg "$SHOT_stern"
 generate_from_ref bow         foredeck.jpg "$SHOT_bow"
 generate_from_ref port        foredeck.jpg "$SHOT_port"
 generate_from_ref starboard   foredeck.jpg "$SHOT_starboard"
-# The engine room is an interior — the deck reference would fight it, so generate it standalone.
-generate_first    engine-room "$SHOT_engine"
+# The engine room is an interior — the deck reference/bible would fight it, so generate it standalone.
+generate_standalone engine-room "$SHOT_engine"
 
 echo "==> Done. Six stills written to $(pwd)."
 echo "    Next: cd ../screenshots && ./capture-all.sh --admin --copy"

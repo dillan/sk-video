@@ -8,14 +8,14 @@ The screenshot harness can stream a **still image** per camera view instead of t
 
 Drop your generated images here as **JPG**, 16:9, 1080p or 4K, with these exact names:
 
-| File              | Camera      | Mount · aim                                        |
-| ----------------- | ----------- | -------------------------------------------------- |
-| `foredeck.jpg`    | Foredeck    | mast, looking **forward & down** over the foredeck |
-| `stern.jpg`       | Stern       | mast, looking **aft & down** over the cockpit      |
-| `bow.jpg`         | Bow         | bow pulpit, looking **forward** over the water     |
-| `port.jpg`        | Port        | port rail, looking **abeam to port**               |
-| `starboard.jpg`   | Starboard   | starboard rail, looking **abeam to starboard**     |
-| `engine-room.jpg` | Engine Room | engine bay (interior)                              |
+| File | Camera | Mount · aim |
+| --- | --- | --- |
+| `foredeck.jpg` | Foredeck | **masthead** (top of mast), looking **down & forward** |
+| `stern.jpg` | Stern | **masthead** (top of mast), looking **down & aft** over cockpit |
+| `bow.jpg` | Bow | **bow rail / pulpit**, looking **forward** (pulpit + anchor in view) |
+| `port.jpg` | Port | port rail, looking **abeam to port** |
+| `starboard.jpg` | Starboard | starboard rail, looking **abeam to starboard** |
+| `engine-room.jpg` | Engine Room | engine bay (interior) |
 
 Then regenerate: `cd ../screenshots && ./capture-all.sh --admin --copy`.
 
@@ -53,15 +53,15 @@ Whichever you use, request **no people** (or one crew member only where noted), 
 
 ### The six shots
 
-**1 — `foredeck.jpg` (mast → forward & down over the foredeck)**
+**1 — `foredeck.jpg` (masthead → down & forward over the foredeck)**
 
-> This shot: mounted high on the mast looking forward and slightly down along the centreline. In frame: the coachroof and a flush forward hatch, side decks with the teak toe rail running to a **stainless bow pulpit** and anchor roller at the far end, a **furled headsail** on the forestay, deck cleats and a low winch; open cobalt water and the high horizon beyond the bow. No people. `--ar 16:9 --style raw --v 6`
+> This shot: mounted at the very top of the mast (masthead), looking straight down and forward along the centreline — a high overhead bird's-eye view with the whole foredeck spread out far below and the aluminum mast foreshortening down toward the camera. In frame from above: the coachroof and a flush forward hatch, side decks and the teak toe rail converging toward the **stainless bow pulpit** and anchor roller at the far bow, a **furled headsail** on the forestay, deck cleats and a low winch; open cobalt water wrapping around the hull and the horizon high in the frame. Steep downward angle, deck seen mostly in plan. No people. `--ar 16:9 --style raw --v 6`
 
-**2 — `stern.jpg` (mast → aft & down over the cockpit)**
+**2 — `stern.jpg` (masthead → down & aft over the cockpit)**
 
-> This shot: mounted high on the mast looking aft and down. In frame: the coachroof, the **navy dodger and bimini**, the cockpit with a **stainless wheel and binnacle**, cockpit coamings and winches, the boom edge across the top of frame, the backstay, and the **wake trailing astern** to the horizon. Optionally one crew member at the helm, seen from above, no readable clothing logos. `--ar 16:9 --style raw --v 6`
+> This shot: mounted at the very top of the mast (masthead) looking straight down and aft — a high overhead bird's-eye view. Far below in frame: the coachroof, the **navy dodger and bimini** seen from above, the cockpit with a **stainless wheel and binnacle**, coamings and winches, the boom foreshortening away beneath the camera, the backstay, and the **wake trailing astern** to the horizon. Steep downward angle, cockpit seen mostly in plan. No people. `--ar 16:9 --style raw --v 6`
 
-**3 — `bow.jpg` (bow pulpit → forward over the water)**
+**3 — `bow.jpg` (bow rail / pulpit → forward over the water)**
 
 > This shot: mounted on the bow pulpit looking dead ahead. Lower foreground filled by the **stainless pulpit rails and anchor roller** and the tip of the furled headsail; the rest is open cobalt water, the **bow wave and light spray** at the waterline, whitecaps, and a big sky with soft cumulus. No people. `--ar 16:9 --style raw --v 6`
 
