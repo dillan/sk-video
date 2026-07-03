@@ -25,9 +25,12 @@ jobs:
           node-version: 20
           cache: npm
 
-      # Build the plugin: the stack mounts this repo (with node_modules + dist) into Signal K.
+      # Build the plugin AND the web app: the stack mounts this repo (with node_modules + dist +
+      # public) into Signal K, and the webapp-ui suite drives the console served from public/.
       - run: npm ci
       - run: npm run build
+      - run: npm --prefix webapp ci
+      - run: npm run build:webapp
 
       # The container's node user (uid 1000) must be able to write the mounted config dir.
       - name: Make the Signal K config dir writable in-container
