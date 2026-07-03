@@ -113,6 +113,29 @@ describe('App shell', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: 'Add a camera' })).toBeTruthy());
   });
 
+  it('keeps the telemetry strip persistent on every screen (a shell concern, not a page header)', async () => {
+    mockApi({
+      mob: {
+        active: true,
+        targetSource: 'datum',
+        aimedCameras: 1,
+        capableCameras: 1,
+        aimedCameraIds: ['bow'],
+        armedAt: Date.UTC(2026, 0, 1, 12, 0),
+        lastReaimAt: null,
+      },
+    });
+    render(<App />);
+    // On the Live landing…
+    await waitFor(() => expect(screen.getByRole('status')).toBeTruthy());
+    expect(screen.getByText('MOB ACTIVE')).toBeTruthy();
+    // …and still there after navigating away (with the armed-at stamp riding along).
+    fireEvent.click(screen.getAllByRole('button', { name: 'Cameras' })[0]);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Add a camera' })).toBeTruthy());
+    expect(screen.getByRole('status')).toBeTruthy();
+    expect(screen.getByText('MOB ACTIVE')).toBeTruthy();
+  });
+
   it('shows the in-app sign-in form on a secured server when not authenticated', async () => {
     mockApi({ session: { securityEnabled: true, authenticated: false, pluginVersion: '1' } });
     render(<App />);

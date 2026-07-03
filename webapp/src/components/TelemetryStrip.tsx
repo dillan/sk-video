@@ -1,5 +1,6 @@
 import type { IMobStatus } from '../api';
 import { type IVesselState, formatLatLon, formatBearing } from '../lib/format';
+import type { TStreamState } from '../lib/sk-stream';
 
 interface Props {
   vessel: IVesselState | null;
@@ -8,14 +9,29 @@ interface Props {
   recordingCount?: number;
   /** Hardware-tier label (e.g. "Pi 4") for the right-edge badge. */
   tierLabel?: string;
+  /** Delta-stream link state; anything but live shows a stamped reconnecting chip. */
+  link?: TStreamState;
+  /** Epoch ms of the last successful sync — the honest "as of" stamp while reconnecting. */
+  lastSyncAt?: number | null;
 }
+
+/** HH:MM:SS for the as-of / armed-at stamps. */
+const clock = (ms: number): string => new Date(ms).toLocaleTimeString([], { hour12: false });
 
 /**
  * The glanceable helm status strip: GPS fix, position, heading, SOG, the active-record count, and the
- * hardware tier — plus the MOB state when armed. Honest about missing data: no fix shows an amber
- * "No GPS fix", and heading/SOG are omitted when unknown rather than shown as zero.
+ * hardware tier — plus the MOB state when armed (stamped with when it was armed). Honest about missing
+ * data: no fix shows an amber "No GPS fix", heading/SOG are omitted when unknown rather than shown as
+ * zero, and a dropped delta stream shows "reconnecting · as of HH:MM:SS" instead of silently going stale.
  */
-export function TelemetryStrip({ vessel, mob, recordingCount = 0, tierLabel }: Props) {
+export function TelemetryStrip({
+  vessel,
+  mob,
+  recordingCount = 0,
+  tierLabel,
+  link,
+  lastSyncAt,
+}: Props) {
   return (
     <div className="telemetry" role="status" aria-label="Vessel telemetry">
       {vessel?.hasFix ? (
@@ -52,7 +68,17 @@ export function TelemetryStrip({ vessel, mob, recordingCount = 0, tierLabel }: P
         </span>
       )}
       {tierLabel && <span className="chip chip--neutral mono telemetry__tier">{tierLabel}</span>}
-      {mob?.active && <span className="chip chip--live">MOB ACTIVE</span>}
+      {link === 'reconnecting' && (
+        <span className="chip chip--caution">
+          reconnecting{typeof lastSyncAt === 'number' ? ` · as of ${clock(lastSyncAt)}` : ''}
+        </span>
+      )}
+      {mob?.active && (
+        <span className="chip chip--live">
+          MOB ACTIVE
+          {typeof mob.armedAt === 'number' && <span className="mono"> · {clock(mob.armedAt)}</span>}
+        </span>
+      )}
     </div>
   );
 }

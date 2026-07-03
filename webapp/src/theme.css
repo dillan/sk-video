@@ -307,6 +307,57 @@ body {
   display: none;
 }
 
+/* ---- Shell strip + safety escalation ---- */
+/* The persistent status strip pinned above every screen (the shell owns it, not a page header). */
+.shellstrip {
+  display: flex;
+  justify-content: flex-end;
+  padding: 2px 0 8px;
+  min-height: 22px;
+}
+/* The reserved escalation surface: a full-bleed pulsing banner per live alarm — never a toast. */
+.alerts__banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  margin-bottom: 10px;
+  border-radius: 10px;
+  background: #1a0000;
+  border: 1px solid var(--status-live);
+  color: var(--text-primary);
+}
+.alerts__pulse {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--status-live);
+  animation: safetyPulse 1s infinite;
+}
+.alerts__msg {
+  flex: 1;
+  font-weight: 600;
+}
+.alerts__ack {
+  flex: none;
+}
+.alerts__quiet {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .alerts__pulse {
+    animation: none;
+  }
+}
+/* Night-Red: the escalation surface stays red-on-black but drops the glow (dark adaptation). */
+[data-theme='night'] .alerts__banner {
+  box-shadow: none;
+}
+
 /* ---- Telemetry status strip ---- */
 .telemetry {
   display: flex;

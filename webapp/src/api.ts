@@ -388,6 +388,13 @@ export const markIncident = (
 export const slewToCue = (id: string): Promise<Response> =>
   send(`${cam(id)}/slew-to-cue`, { method: 'POST' }, 'slew');
 
+/**
+ * Acknowledge a plugin notification SHARED-STATE: the plugin writes the ack back to Signal K
+ * notification state, so silencing an alarm here silences it on every client.
+ */
+export const ackNotification = (key: string): Promise<Response> =>
+  send('/notifications/ack', { method: 'POST', body: JSON.stringify({ key }) }, 'acknowledge');
+
 // ---- PTZ position + calibration (for the calibration wizard) ----
 
 export interface IPtzPosition {

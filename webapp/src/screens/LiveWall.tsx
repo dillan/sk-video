@@ -1,15 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import {
-  fetchCamerasProjection,
-  fetchVesselSelf,
-  fetchStatus,
-  fetchRecordingTimeline,
-  type IProjectedCamera,
-  type IMobStatus,
-} from '../api';
-import { parseVesselState, type IVesselState } from '../lib/format';
+import { fetchCamerasProjection, type IProjectedCamera } from '../api';
 import { summarizeCategories, type TileCategory } from '../lib/camera';
-import { TelemetryStrip } from '../components/TelemetryStrip';
 import { CameraTile } from '../components/CameraTile';
 
 type Cams =
@@ -22,18 +13,10 @@ type Cams =
  * tile. One aggregate projection request carries definitions + per-camera health (went-dark /
  * never-seen) + the server transport walk, so the wall never fans out N health + N transport reads
  * over a marina link. Each enabled tile plays its low-res H.264 sub-stream (substream-in-grid).
+ * Vessel telemetry / MOB / safety alerts live on the shell's persistent strip, not here.
  */
-export function LiveWall({
-  mob,
-  onOpenCamera,
-}: {
-  mob: IMobStatus | null;
-  onOpenCamera: (id: string) => void;
-}) {
+export function LiveWall({ onOpenCamera }: { onOpenCamera: (id: string) => void }) {
   const [cams, setCams] = useState<Cams>({ state: 'loading' });
-  const [vessel, setVessel] = useState<IVesselState | null>(null);
-  const [tier, setTier] = useState<string | undefined>();
-  const [recording, setRecording] = useState(0);
   const [states, setStates] = useState<Record<string, TileCategory>>({});
   const onState = useCallback(
     (id: string, category: TileCategory) =>
@@ -49,15 +32,6 @@ export function LiveWall({
         if (ctrl.signal.aborted) return;
         setCams({ state: 'error', message: err instanceof Error ? err.message : 'unreachable' });
       });
-    fetchVesselSelf(ctrl.signal)
-      .then((raw) => setVessel(parseVesselState(raw)))
-      .catch(() => setVessel({ hasFix: false }));
-    fetchStatus(ctrl.signal)
-      .then((s) => setTier(s.hardware?.label ?? s.hardware?.tier))
-      .catch(() => undefined);
-    fetchRecordingTimeline(ctrl.signal)
-      .then((t) => setRecording(t.cameras.filter((c) => c.recording).length))
-      .catch(() => undefined);
     return () => ctrl.abort();
   }, []);
 
@@ -77,8 +51,6 @@ export function LiveWall({
           <h1>Live</h1>
           <div className="page-head__sub">{count}</div>
         </div>
-        <div className="page-head__spacer" />
-        <TelemetryStrip vessel={vessel} mob={mob} recordingCount={recording} tierLabel={tier} />
       </header>
 
       {cams.state === 'loading' && (
