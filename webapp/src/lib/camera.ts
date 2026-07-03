@@ -1,5 +1,5 @@
-import type { ICamera, TTransport } from '../api';
-import { formatBearing } from './format';
+import type { ICamera, IStreamHealth, TTransport } from '../api';
+import { formatBearing, formatClock } from './format';
 
 /**
  * Pure camera-tile derivations for the Live Wall. An enabled tile plays its sub-stream and labels the
@@ -100,6 +100,33 @@ export function tileStatus(c: ICamera, active: boolean, signalLost: boolean): IT
     return { label: 'No signal', tone: 'caution', live: false, dim: false };
   }
   return { label: 'Connecting…', tone: 'neutral', live: false, dim: false };
+}
+
+export interface IHealthPresence {
+  label: string;
+  tone: 'live' | 'neutral' | 'caution';
+}
+
+/**
+ * The server-tracked presence tri-state for diagnostics: producing now, went dark (was live, with
+ * when), or never seen producing since the server started tracking. go2rtc connects lazily, so
+ * "never seen" usually means idle-with-no-viewer, not a fault — the copy stays neutral. An older
+ * server without last-good tracking falls back to the plain idle label.
+ */
+export function healthPresence(h: IStreamHealth): IHealthPresence {
+  if (h.online) {
+    return { label: 'producing', tone: 'live' };
+  }
+  if (typeof h.lastGoodAt === 'number') {
+    return { label: `went dark — last seen live ${formatClock(h.lastGoodAt)}`, tone: 'caution' };
+  }
+  if (h.lastGoodAt === null && typeof h.trackedSince === 'number') {
+    return {
+      label: `idle — never seen producing since ${formatClock(h.trackedSince)}`,
+      tone: 'neutral',
+    };
+  }
+  return { label: 'idle — no active producer', tone: 'neutral' };
 }
 
 /** A tile's coarse state for the Live Wall header tally. */

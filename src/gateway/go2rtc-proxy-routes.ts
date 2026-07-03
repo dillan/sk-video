@@ -3,6 +3,7 @@ import { go2rtcApiUrl, go2rtcVariantUrl, go2rtcHlsUrl } from './go2rtc-proxy';
 import { fetchStreamHealth } from './stream-health';
 import { transportHints } from './transport-hints';
 import { scrubSdpCandidates, isLocalClientAddress } from './sdp-scrub';
+import type { ILastGood } from './last-good';
 import type { AuthGate } from '../security/request-auth';
 
 export interface IProxyContext {
@@ -25,6 +26,10 @@ export interface IProxyContext {
    * always survive ICE scrubbing because the operator asserted they are reachable.
    */
   allowedCandidateHosts?: () => readonly string[];
+  /** Stamp a health observation so went-dark vs never-seen stays distinguishable. */
+  noteHealth?: (id: string, online: boolean) => void;
+  /** Read the camera's last-good state, merged into the health DTO. */
+  lastGood?: (id: string) => ILastGood;
   fetchImpl?: typeof fetch;
 }
 
@@ -187,7 +192,8 @@ export function registerProxyRoutes(router: IRouter, ctx: IProxyContext): void {
         cameraId: id,
         fetchImpl: doFetch,
       });
-      res.json(health);
+      ctx.noteHealth?.(id, health.online);
+      res.json({ ...health, ...(ctx.lastGood ? ctx.lastGood(id) : {}) });
     } catch {
       res.status(502).json({ error: 'gateway unavailable' });
     }
@@ -206,6 +212,7 @@ export function registerProxyRoutes(router: IRouter, ctx: IProxyContext): void {
         cameraId: id,
         fetchImpl: doFetch,
       });
+      ctx.noteHealth?.(id, health.online);
       res.json(transportHints(health));
     } catch {
       res.status(502).json({ error: 'gateway unavailable' });

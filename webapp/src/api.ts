@@ -168,6 +168,10 @@ export interface IStreamHealth {
   consumers: number;
   codecs: string[];
   sources: string[];
+  /** Epoch ms the camera last had an active producer; null = never since `trackedSince`. */
+  lastGoodAt?: number | null;
+  /** Epoch ms the server began tracking (plugin start) — the honest horizon for "never seen". */
+  trackedSince?: number;
 }
 export interface ITransportHints {
   recommended: TTransport[];

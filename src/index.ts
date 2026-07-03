@@ -28,6 +28,7 @@ import { Go2rtcProcess } from './gateway/go2rtc-process';
 import { Go2rtcGateway } from './gateway/go2rtc-gateway';
 import { registerProxyRoutes } from './gateway/go2rtc-proxy-routes';
 import { candidateHost } from './gateway/sdp-scrub';
+import { LastGoodTracker } from './gateway/last-good';
 import { StreamWatchdog } from './gateway/stream-watchdog';
 import { fetchStreamHealth } from './gateway/stream-health';
 import { PtzManager } from './onvif/ptz-manager';
@@ -203,6 +204,8 @@ export = function (app: ServerAPI): Plugin {
   let watchUnsub: (() => void) | null = null;
   let watchdog: StreamWatchdog | null = null;
   let watchdogTimer: ReturnType<typeof setInterval> | null = null;
+  // Went-dark vs never-seen: every health read stamps this, the health DTO carries it.
+  const lastGood = new LastGoodTracker();
   let frigateClient: FrigateClient | null = null;
   let frigateMqtt: IMqttConnection | null = null;
   let frigateClips: AssetStore | null = null;
@@ -754,8 +757,14 @@ export = function (app: ServerAPI): Plugin {
             Object.entries(cameras?.list() ?? {})
               .filter(([, camera]) => camera.enabled && camera.safetyCritical === true)
               .map(([id]) => id),
-          fetchHealth: (id) =>
-            fetchStreamHealth({ apiPort: gateway?.apiPort ?? 1984, cameraId: id }),
+          fetchHealth: async (id) => {
+            const health = await fetchStreamHealth({
+              apiPort: gateway?.apiPort ?? 1984,
+              cameraId: id,
+            });
+            lastGood.note(id, health.online); // watchdog polls double as last-good observations
+            return health;
+          },
           raiseNotification: (id) =>
             void skBridge.raiseNotification(`camera.${id}.offline`, {
               state: 'alarm',
@@ -910,6 +919,7 @@ export = function (app: ServerAPI): Plugin {
               // orphaned secret behind (and a later camera reusing the id can't inherit it).
               credentials?.delete(id);
               ptz?.invalidate(id);
+              lastGood.forget(id); // a re-added id must not inherit a stale last-seen
               scheduleSync();
             },
           },
@@ -1175,6 +1185,8 @@ export = function (app: ServerAPI): Plugin {
             .map((c) => c.trim())
             .filter(Boolean)
             .map(candidateHost),
+        noteHealth: (id, online) => lastGood.note(id, online),
+        lastGood: (id) => lastGood.get(id),
       });
 
       // Read-only role/placement layout hints for the widget to auto-arrange feeds by area.

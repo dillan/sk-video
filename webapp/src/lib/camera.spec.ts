@@ -5,6 +5,7 @@ import {
   tileCategory,
   summarizeCategories,
   capabilityBadges,
+  healthPresence,
 } from './camera';
 import type { ICamera } from '../api';
 
@@ -105,5 +106,38 @@ describe('tileStatus', () => {
   });
   it('prefers Live over a lost-signal flag (a late frame wins)', () => {
     expect(tileStatus(base, true, true).label).toBe('Live');
+  });
+});
+
+describe('healthPresence', () => {
+  const dark = {
+    online: false,
+    producers: 0,
+    consumers: 0,
+    codecs: [],
+    sources: [],
+  };
+
+  it('is live while producing', () => {
+    expect(healthPresence({ ...dark, online: true })).toEqual({
+      label: 'producing',
+      tone: 'live',
+    });
+  });
+
+  it('flags went-dark with the last-seen time (caution)', () => {
+    const v = healthPresence({ ...dark, lastGoodAt: Date.UTC(2026, 0, 1, 12, 0), trackedSince: 1 });
+    expect(v.tone).toBe('caution');
+    expect(v.label).toMatch(/^went dark — last seen live /);
+  });
+
+  it('keeps never-seen neutral, scoped to the tracking horizon (lazy connect is normal)', () => {
+    const v = healthPresence({ ...dark, lastGoodAt: null, trackedSince: Date.UTC(2026, 0, 1) });
+    expect(v.tone).toBe('neutral');
+    expect(v.label).toMatch(/^idle — never seen producing since /);
+  });
+
+  it('falls back to the plain idle label against an older server without the tracker', () => {
+    expect(healthPresence(dark)).toEqual({ label: 'idle — no active producer', tone: 'neutral' });
   });
 });

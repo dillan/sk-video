@@ -41,4 +41,32 @@ describe('CameraHealth', () => {
     await waitFor(() => expect(screen.getByText(/idle — no active producer/)).toBeTruthy());
     expect(screen.queryByText(/HEVC/)).toBeNull();
   });
+
+  it('distinguishes went-dark (last seen live) from never-seen using the server tracker', async () => {
+    mockApi({
+      online: false,
+      producers: 0,
+      consumers: 0,
+      codecs: [],
+      sources: [],
+      lastGoodAt: Date.UTC(2026, 0, 1, 12, 0),
+      trackedSince: Date.UTC(2026, 0, 1, 8, 0),
+    });
+    render(<CameraHealth id="reolink" name="Foredeck" onBack={() => undefined} />);
+    await waitFor(() => expect(screen.getByText(/went dark — last seen live/)).toBeTruthy());
+  });
+
+  it('scopes never-seen to the tracking horizon instead of claiming the camera is broken', async () => {
+    mockApi({
+      online: false,
+      producers: 0,
+      consumers: 0,
+      codecs: [],
+      sources: [],
+      lastGoodAt: null,
+      trackedSince: Date.UTC(2026, 0, 1, 8, 0),
+    });
+    render(<CameraHealth id="reolink" name="Foredeck" onBack={() => undefined} />);
+    await waitFor(() => expect(screen.getByText(/never seen producing since/)).toBeTruthy());
+  });
 });

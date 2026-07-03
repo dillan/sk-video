@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { fetchHealth, fetchTransport, type IStreamHealth, type ITransportHints } from '../api';
 import { transportLabel, isHevc } from '../lib/transport';
+import { healthPresence } from '../lib/camera';
 
 /**
  * Per-camera diagnostics: is go2rtc producing, what codec did it negotiate, and the transport walk.
@@ -55,13 +56,19 @@ export function CameraHealth({
           <div className="diag__row">
             <span className="muted">Stream</span>
             <span>
-              {health.online ? (
-                <span className="chip chip--neutral">
-                  <span className="dot dot--online" /> producing
-                </span>
-              ) : (
-                <span className="chip chip--neutral">idle — no active producer</span>
-              )}
+              {(() => {
+                const presence = healthPresence(health);
+                return (
+                  <span
+                    className={
+                      presence.tone === 'caution' ? 'chip chip--caution' : 'chip chip--neutral'
+                    }
+                  >
+                    {presence.tone === 'live' && <span className="dot dot--online" />}{' '}
+                    {presence.label}
+                  </span>
+                );
+              })()}
             </span>
           </div>
           <div className="diag__row">
