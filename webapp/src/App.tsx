@@ -57,6 +57,10 @@ export function App() {
   const [recording, setRecording] = useState(0);
   const [theme, setTheme] = useState<Theme>(() => loadTheme());
   const [density, setDensity] = useState<Density>(() => loadDensity());
+  // True once /session reports a pluginVersion different from the one this shell first saw — the
+  // served bundle has moved on and only a reload picks it up.
+  const [staleShell, setStaleShell] = useState(false);
+  const firstVersion = useRef<string | null>(null);
   const mobRef = useRef<IMobStatus | null>(null);
   mobRef.current = mob;
 
@@ -80,7 +84,10 @@ export function App() {
     const ctrl = new AbortController();
     // Best-effort: a failed probe just leaves the chip "checking…" and the strip without MOB state.
     fetchSession(ctrl.signal)
-      .then(setSession)
+      .then((s) => {
+        setSession(s);
+        firstVersion.current ??= s.pluginVersion;
+      })
       .catch(() => undefined);
     reseedMob();
     fetchVesselSelf(ctrl.signal)
@@ -102,10 +109,29 @@ export function App() {
     };
   }, [reseedMob]);
 
-  // The one delta stream for the whole shell (vessel + notifications). jsdom has no WebSocket;
-  // the strip then runs on the REST seeds alone, which the tests exercise.
+  // A long-lived tab (a helm display, a phone left open) can outlive a plugin update; on tab
+  // foreground, recheck /session and offer a reload when the served pluginVersion no longer matches
+  // the shell that's running. Non-modal on purpose — a stale shell still works, it's just old.
   useEffect(() => {
-    if (typeof WebSocket === 'undefined') return;
+    const onVisible = (): void => {
+      if (document.visibilityState !== 'visible') return;
+      fetchSession()
+        .then((s) => {
+          setSession(s);
+          firstVersion.current ??= s.pluginVersion;
+          if (s.pluginVersion !== firstVersion.current) setStaleShell(true);
+        })
+        .catch(() => undefined);
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, []);
+
+  // The one delta stream for the whole shell (vessel + notifications). Unit tests skip it (node's
+  // global WebSocket would attempt real connections under jsdom); the strip then runs on the REST
+  // seeds alone, which the tests exercise — the live stream is covered by the e2e harness.
+  useEffect(() => {
+    if (typeof WebSocket === 'undefined' || import.meta.env.MODE === 'test') return;
     const stream = new SkStream({
       url: streamUrl(window.location, SK_ROOT),
       onState: setLink,
@@ -155,6 +181,19 @@ export function App() {
           />
         </div>
         <SafetyBanner alerts={alerts} />
+        {staleShell && (
+          <div className="chip chip--info" role="status" style={{ margin: '8px 0' }}>
+            SK Video was updated — reload for the new version.
+            <button
+              type="button"
+              className="btn"
+              style={{ marginLeft: 8 }}
+              onClick={() => window.location.reload()}
+            >
+              Reload
+            </button>
+          </div>
+        )}
         {signInRequired && <SignIn onSignedIn={setSession} />}
         {route.cluster === 'live' &&
           (route.id ? (

@@ -49,6 +49,9 @@ interface Props {
   onForceTransport: (t: TTransport | null) => void;
   /** Per-device opt-in for continuous press-and-hold pan; discrete nudges are the default. */
   continuousPan: boolean;
+  /** Tier gate for the record button: `allowed: false` disables it with the reason as the tooltip
+   *  (zero recording channels is a hardware fact). Channel exhaustion stays the runtime 409. */
+  recordGate?: { allowed: boolean; reason: string };
   onBack: () => void;
   live: boolean;
   flash: (m: IMsg) => void;
@@ -102,7 +105,7 @@ export function CameraControls(props: Props) {
   const { cameraId, camera, formFactor, padSize, rung, delayed, variant, hasSub, onVariant } =
     props;
   const { mainIsHevc, onBack, live, flash, onPtzActivity, listening, onListen } = props;
-  const { forcedTransport, onForceTransport, continuousPan } = props;
+  const { forcedTransport, onForceTransport, continuousPan, recordGate } = props;
   const ptz = camera.capabilities?.ptz === true;
   const hasAudio = camera.capabilities?.audio === true;
   const hasBackchannel = camera.capabilities?.audioBackchannel === true;
@@ -466,6 +469,7 @@ export function CameraControls(props: Props) {
     </div>
   );
 
+  const recordBlocked = recordGate?.allowed === false;
   const capturePod = (
     <div className="pod">
       <button type="button" className="pod__btn" aria-label="Snapshot" onClick={snapshot}>
@@ -475,6 +479,8 @@ export function CameraControls(props: Props) {
         type="button"
         className={`pod__btn${recording ? ' pod__btn--rec' : ''}`}
         aria-label={recording ? 'Stop recording' : 'Record'}
+        disabled={recordBlocked}
+        title={recordBlocked ? recordGate?.reason : undefined}
         onClick={toggleRecord}
       >
         {svg(ICON.record, 20, 'currentColor', 2)}

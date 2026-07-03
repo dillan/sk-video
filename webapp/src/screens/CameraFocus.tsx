@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   fetchCameras,
+  fetchStatus,
   fetchTransport,
   ptzNudge,
   ptzStop,
@@ -56,6 +57,10 @@ export function CameraFocus({ cameraId, onBack }: Props) {
   // Whether the operator is listening to camera audio (unmutes the player); off by default.
   const [listening, setListening] = useState(false);
   const msgTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Tier record gate: zero recording channels is a hardware fact that no retry fixes, so the record
+  // button is disabled with the why up front. Channel exhaustion stays the server's runtime 409 —
+  // we never guess that client-side. Unknown (fetch pending/failed) leaves the button enabled.
+  const [recordGate, setRecordGate] = useState<{ allowed: boolean; reason: string } | undefined>();
   const formFactor = useFormFactor();
   const padSize = formFactor === 'phone' ? 88 : 104;
 
@@ -87,6 +92,19 @@ export function CameraFocus({ cameraId, onBack }: Props) {
       if (msgTimer.current) clearTimeout(msgTimer.current);
     };
   }, [cameraId]);
+
+  useEffect(() => {
+    const ctrl = new AbortController();
+    fetchStatus(ctrl.signal)
+      .then((s) =>
+        setRecordGate({
+          allowed: (s.hardware?.capabilities?.maxRecordingChannels ?? 1) > 0,
+          reason: 'Recording isn’t available on this hardware tier — live viewing still works.',
+        }),
+      )
+      .catch(() => undefined);
+    return () => ctrl.abort();
+  }, []);
 
   const ptz = camera?.capabilities?.ptz === true;
   const delayed = ptzDelayed(rung);
@@ -205,6 +223,7 @@ export function CameraFocus({ cameraId, onBack }: Props) {
             forcedTransport={forced}
             onForceTransport={setForced}
             continuousPan={continuousPtz}
+            recordGate={recordGate}
             onBack={onBack}
             live={active}
             flash={flash}

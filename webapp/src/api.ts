@@ -50,7 +50,12 @@ async function getJson<T>(path: string, what: string, signal?: AbortSignal): Pro
 export interface IPluginStatus {
   ready: boolean;
   cameras?: number;
-  hardware?: { tier?: string; label?: string } | null;
+  /** Tier capabilities: zero recording channels means recording can never start on this hardware. */
+  hardware?: {
+    tier?: string;
+    label?: string;
+    capabilities?: { maxRecordingChannels?: number };
+  } | null;
   /** Frigate posture: an empty detection feed must be distinguishable from "not wired". */
   frigate?: { configured: boolean; connected: boolean };
 }

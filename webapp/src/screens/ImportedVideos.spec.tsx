@@ -55,6 +55,9 @@ describe('ImportedVideos', () => {
     render(<ImportedVideos />);
     await waitFor(() => expect(screen.getByText('clip.mp4')).toBeTruthy());
     expect(screen.getByText(/1\.5 KB/)).toBeTruthy();
+    // The intro is honest about what imported clips are — no "arrives in later slices" leftovers.
+    expect(screen.getByText(/separate from the DVR recordings and incident evidence/)).toBeTruthy();
+    expect(screen.queryByText(/later slices/)).toBeNull();
   });
 
   it('shows an empty state when there are no videos', async () => {

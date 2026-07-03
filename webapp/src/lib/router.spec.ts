@@ -17,6 +17,29 @@ describe('parseRoute', () => {
   it('falls back to live for empty or unknown clusters', () => {
     expect(parseRoute('').cluster).toBe('live');
     expect(parseRoute('#/nonsense').cluster).toBe('live');
+    expect(parseRoute('#/nonsense/with/depth?q=1').cluster).toBe('live');
+  });
+
+  it('routes review tabs by id (#/review/recordings, #/review/incidents)', () => {
+    expect(parseRoute('#/review/recordings')).toEqual({ cluster: 'review', id: 'recordings' });
+    expect(parseRoute('#/review/incidents')).toEqual({ cluster: 'review', id: 'incidents' });
+  });
+
+  // The v1 deep-link contract: entity links are aliases that land on the right cluster/tab.
+  it('aliases #/recordings/:id?t= to the review recordings tab (entity id and t dropped)', () => {
+    expect(parseRoute('#/recordings/rec-42?t=1700000000000')).toEqual({
+      cluster: 'review',
+      id: 'recordings',
+    });
+    expect(parseRoute('#/recordings')).toEqual({ cluster: 'review', id: 'recordings' });
+  });
+
+  it('aliases #/incidents/:id to the review incidents tab (entity id dropped)', () => {
+    expect(parseRoute('#/incidents/inc-7')).toEqual({ cluster: 'review', id: 'incidents' });
+  });
+
+  it('lands #/cameras/:id/calibrate on the Cameras cluster (action segment ignored)', () => {
+    expect(parseRoute('#/cameras/bow/calibrate')).toEqual({ cluster: 'cameras', id: 'bow' });
   });
 });
 

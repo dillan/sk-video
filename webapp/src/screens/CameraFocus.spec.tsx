@@ -5,7 +5,12 @@ import { CameraFocus } from './CameraFocus';
 const ok = (json: unknown) => Promise.resolve({ ok: true, json: async () => json });
 
 function mockApi(
-  opts: { cameras?: Record<string, unknown>; snapshot?: unknown; snapshotOk?: boolean } = {},
+  opts: {
+    cameras?: Record<string, unknown>;
+    snapshot?: unknown;
+    snapshotOk?: boolean;
+    status?: unknown;
+  } = {},
 ) {
   vi.stubGlobal(
     'fetch',
@@ -23,6 +28,9 @@ function mockApi(
       }
       if (u.includes('/resources/cameras')) {
         return ok(opts.cameras ?? {});
+      }
+      if (u.includes('/status')) {
+        return ok(opts.status ?? { ready: true });
       }
       return ok({});
     }),
@@ -58,6 +66,36 @@ describe('CameraFocus', () => {
     await screen.findByText('Foredeck');
     fireEvent.click(screen.getByRole('button', { name: 'Snapshot' }));
     await waitFor(() => expect(screen.getByText(/Sign in to Signal K/)).toBeTruthy());
+  });
+
+  it('disables Record with the tier reason when the hardware has zero recording channels', async () => {
+    // Derived from GET /status (maxRecordingChannels 0): a hardware fact no retry fixes, so the
+    // button is disabled up front. Channel exhaustion stays the server's runtime 409.
+    mockApi({
+      cameras: { bow: { name: 'Foredeck', enabled: true } },
+      status: { ready: true, hardware: { tier: 'pi3', capabilities: { maxRecordingChannels: 0 } } },
+    });
+    render(<CameraFocus cameraId="bow" onBack={() => undefined} />);
+    await screen.findByText('Foredeck');
+    await waitFor(() => {
+      const record = screen.getByRole('button', { name: 'Record' }) as HTMLButtonElement;
+      expect(record.disabled).toBe(true);
+      expect(record.title).toContain('Recording isn’t available on this hardware tier');
+    });
+  });
+
+  it('keeps Record enabled when the tier has recording channels', async () => {
+    mockApi({
+      cameras: { bow: { name: 'Foredeck', enabled: true } },
+      status: { ready: true, hardware: { tier: 'pi4', capabilities: { maxRecordingChannels: 2 } } },
+    });
+    render(<CameraFocus cameraId="bow" onBack={() => undefined} />);
+    await screen.findByText('Foredeck');
+    await waitFor(() =>
+      expect((screen.getByRole('button', { name: 'Record' }) as HTMLButtonElement).disabled).toBe(
+        false,
+      ),
+    );
   });
 
   it('shows a not-found state for an unknown camera', async () => {

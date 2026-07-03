@@ -110,8 +110,8 @@ export function ImportedVideos() {
       {msg && <div className={`chip chip--${msg.kind}`}>{msg.text}</div>}
 
       <p className="muted">
-        Imported videos are stored separately from camera recordings and incidents, within a fixed
-        quota. Other review tools (recordings, incidents, snapshots) arrive in later slices.
+        Imported videos are files you upload yourself — kept separate from the DVR recordings and
+        incident evidence your cameras produce, and bounded by a fixed storage quota.
       </p>
 
       {err && <div className="chip chip--caution">Can’t load videos ({err})</div>}

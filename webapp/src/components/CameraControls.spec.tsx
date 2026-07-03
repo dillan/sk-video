@@ -206,6 +206,35 @@ describe('CameraControls', () => {
     );
   });
 
+  it('disables Record with the tier reason when the gate says recording is unavailable', async () => {
+    const reason = 'Recording isn’t available on this hardware tier — live viewing still works.';
+    const fetchMock = mockApi();
+    render(
+      <CameraControls {...base} camera={camera()} recordGate={{ allowed: false, reason }} />,
+    );
+    const record = screen.getByRole('button', { name: 'Record' }) as HTMLButtonElement;
+    expect(record.disabled).toBe(true);
+    expect(record.title).toBe(reason);
+    fireEvent.click(record);
+    await Promise.resolve();
+    expect(
+      fetchMock.mock.calls.some(([u, i]) => String(u).includes('/record') && i?.method === 'POST'),
+    ).toBe(false);
+  });
+
+  it('keeps Record enabled when the gate allows (and when no gate arrived)', () => {
+    mockApi();
+    const { rerender } = render(
+      <CameraControls {...base} camera={camera()} recordGate={{ allowed: true, reason: '' }} />,
+    );
+    let record = screen.getByRole('button', { name: 'Record' }) as HTMLButtonElement;
+    expect(record.disabled).toBe(false);
+    expect(record.title).toBe('');
+    rerender(<CameraControls {...base} camera={camera()} />);
+    record = screen.getByRole('button', { name: 'Record' }) as HTMLButtonElement;
+    expect(record.disabled).toBe(false);
+  });
+
   it('offers a manual transport pin in the stream menu (Auto = server walk)', async () => {
     const onForceTransport = vi.fn();
     mockApi();
