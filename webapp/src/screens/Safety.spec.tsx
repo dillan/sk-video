@@ -31,6 +31,7 @@ function mockApi(opts: {
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  vi.useRealTimers(); // a failed fake-timer test must not starve the rest of the file
 });
 
 describe('Safety / MOB console', () => {
@@ -155,5 +156,45 @@ describe('Safety / MOB console', () => {
     render(<Safety />);
     await waitFor(() => expect(screen.getByText(/Man overboard/)).toBeTruthy());
     expect(screen.queryByText(/Visual refine/)).toBeNull();
+  });
+
+  it('disarms via a held Enter/Space — the hold gesture has a keyboard equivalent', async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      const u = String(url);
+      if (u.endsWith('/mob') && init?.method === 'POST') {
+        return ok({ active: false, targetSource: 'none', aimedCameras: 0 });
+      }
+      if (u.endsWith('/mob')) {
+        return ok({
+          active: true,
+          targetSource: 'datum',
+          aimedCameras: 0,
+          capableCameras: 0,
+          aimedCameraIds: [],
+          armedAt: 1,
+          lastReaimAt: 2,
+        });
+      }
+      return ok({});
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const { act } = await import('@testing-library/react');
+    render(<Safety />);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    const hold = screen.getByRole('button', { name: 'Hold to disarm' });
+    fireEvent.keyDown(hold, { key: ' ' });
+    await act(async () => {
+      vi.advanceTimersByTime(900); // past the hold threshold
+      await Promise.resolve();
+    });
+    expect(
+      fetchMock.mock.calls.some(
+        ([u, i]) => String(u).endsWith('/mob') && (i as RequestInit)?.method === 'POST',
+      ),
+    ).toBe(true);
+    vi.useRealTimers();
   });
 });

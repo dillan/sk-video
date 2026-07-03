@@ -1199,10 +1199,12 @@ button.tile {
   padding: 0 28px;
   border: 0;
   border-radius: 18px;
-  background: var(--status-live);
+  /* Darker than --status-live on purpose: white on #ff3b30 is ~4.0:1, under the AA floor for this
+   * safety-critical control; #c71e12 gives ~5.8:1 (AAA at this large-bold size). */
+  background: #c71e12;
   color: #fff;
   font: inherit;
-  font-size: 18px;
+  font-size: 19px;
   font-weight: 800;
   cursor: pointer;
   box-shadow: 0 10px 30px rgba(255, 59, 48, 0.4);

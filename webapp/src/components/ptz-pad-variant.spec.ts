@@ -109,4 +109,19 @@ describe('<ptz-pad-variant> (glass)', () => {
     expect(style).toContain('@media (prefers-reduced-motion: reduce)');
     expect(style).toContain('@media (prefers-reduced-transparency: reduce)');
   });
+
+  it('steps from a keyboard-activated chevron (click with detail 0 — no pointer event)', () => {
+    const el = document.createElement('ptz-pad-variant');
+    document.body.appendChild(el);
+    const events: Array<{ type: string; dir?: string }> = [];
+    el.addEventListener('ptz', (e) => events.push((e as CustomEvent).detail));
+    const chev = el.shadowRoot!.querySelector('button.chev[data-dir="up"]') as HTMLButtonElement;
+    chev.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 0 }));
+    expect(events.some((d) => d.type === 'step' && d.dir === 'up')).toBe(true);
+    // A pointer-initiated click (detail 1) must NOT double-fire the step on top of pointerdown.
+    events.length = 0;
+    chev.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 }));
+    expect(events).toHaveLength(0);
+    el.remove();
+  });
 });

@@ -188,6 +188,14 @@ export function Safety({ onMobChange }: { onMobChange?: (s: IMobStatus) => void 
           onPointerDown={startHold}
           onPointerUp={cancelHold}
           onPointerLeave={cancelHold}
+          // Keyboard equivalent of the press-and-hold: hold Enter/Space for the same duration.
+          // e.repeat guards the auto-repeat keydown storm from restarting the timer each event.
+          onKeyDown={(e) => {
+            if ((e.key === 'Enter' || e.key === ' ') && !e.repeat) startHold();
+          }}
+          onKeyUp={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') cancelHold();
+          }}
           aria-label="Hold to disarm"
         >
           Hold to disarm

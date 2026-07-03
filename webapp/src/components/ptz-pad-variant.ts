@@ -288,6 +288,11 @@ class PtzPadVariant extends HTMLElement {
       btn.addEventListener('pointercancel', release);
       btn.addEventListener('lostpointercapture', release);
       btn.addEventListener('contextmenu', (e) => e.preventDefault());
+      // Keyboard equivalent: Enter/Space on a focused chevron fires a click with detail 0 (no
+      // pointerdown ever arrives), so the discrete step must also ride the keyboard click path.
+      btn.addEventListener('click', (e) => {
+        if ((e as MouseEvent).detail === 0) step();
+      });
     });
   }
 }
