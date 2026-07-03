@@ -61,7 +61,7 @@ Camera definitions are managed through the standard Signal K Resources API at `/
 | --- | --- | --- | --- |
 | `GET` | `/cameras/discover` | Scan the LAN (WS-Discovery + mDNS) for cameras. | throttled (~30 s) → `200`/`429` |
 | `POST` | `/cameras/discover/introspect` | Zero-typing onboarding: introspect an ONVIF camera (SSRF-guarded; credentials used for the probe are ephemeral). | auth required · rate-limited (20/min) |
-| `GET` | `/cameras/onboarding-hints` | Curated make/model hints (GoPro, Insta360…). | — |
+| `GET` | `/cameras/onboarding-hints` | Curated action-camera guides (GoPro, Insta360): a numbered setup walkthrough, pre-fillable sources, honest caveats — drives the wizard's guided path. | — |
 | `POST` | `/cameras/test` | Connection-test an _unsaved_ camera (ffprobe/TCP, SSRF-guarded). | auth required · rate-limited (20/min) |
 
 ## Recording, snapshots & uploads

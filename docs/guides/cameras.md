@@ -4,7 +4,7 @@ Cameras are managed in the **SK Video app** under **Cameras** (and, if you prefe
 
 ---
 
-## Three ways to add a camera
+## Four ways to add a camera
 
 In the SK Video app, go to **Cameras → Add a camera** (in KIP, set the Video widget **Source** to **Camera**). You'll see three source tabs:
 
@@ -37,7 +37,28 @@ Click **Add a camera** and fill in:
 
 If you only have a full stream URL from the camera maker, the **URL** tab accepts an `http(s)://`, `rtsp://`, or `rtmp://` link directly.
 
-### 3. Uploaded clips
+### 3. Action cameras (GoPro / Insta360) — guided setup
+
+Action cameras don't announce themselves on the network (no ONVIF, and they usually run their own WiFi), so **Scan can't find them**. Pick **Action camera (GoPro / Insta360)** in the wizard instead — it walks you through each device step by step, pre-fills what it can, and lets you **test the stream before saving**. Treat them as _temporary_ sources, not a permanent marine install: their live modes are lower-resolution, need external power, and reconnect unreliably.
+
+**Insta360 (X3 / X4 / X5) — the camera serves a stream you pull:**
+
+1. Power the camera and turn on its WiFi — the camera hosts its own access point.
+2. Join the **Signal K server's machine** to that WiFi network. The plugin pulls the stream, so the _server_ — not your phone or browser — must reach the camera. A machine with a single WiFi radio leaves the boat network when it joins the camera's; use a second interface for anything beyond a quick session.
+3. Keep the camera on external power.
+4. The wizard pre-fills the 360 preview address (`rtsp://192.168.42.1:8554/live`) and records the stream as **equirectangular**, so the viewer knows to render a swipe-around spherical view. Test it, then save.
+
+> The WiFi preview is a reverse-engineered, lower-resolution stream (~1440×720) — not the camera's full recording quality.
+
+**GoPro (HERO12 / HERO13) — the camera pushes; you give it a target:**
+
+1. Install the **GoPro Labs** firmware (stock firmware only streams to GoPro's cloud).
+2. Run an RTMP server the boat network can reach — e.g. [MediaMTX](https://github.com/bluenviron/mediamtx) on the boat computer. The GoPro **pushes** to it, and SK Video pulls from it.
+3. Point the GoPro at your server with a GoPro Labs QR code, e.g. `rtmp://<server-address>:1935/gopro`.
+4. Enter that **same** `rtmp://` address in the wizard as the camera source, test it, and save.
+5. Start the live stream on the GoPro. Expect to restart it after a drop — Labs RTMP auto-reconnect is limited.
+
+### 4. Uploaded clips
 
 The **Uploaded** tab plays videos you've saved to the boat (see [Snapshots & recording](snapshots-and-recording.md)) rather than a live camera — handy for chart briefings or reviewing a saved clip.
 

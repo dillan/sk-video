@@ -38,7 +38,7 @@ A masthead 360° camera can replace several fixed cameras — one device, a full
 - The **server passes the stream through unchanged** — it never tries to flatten ("dewarp") a 360 image, because doing that on a small server would peg a CPU core. The dewarping happens in your browser.
 - 360 streams are bandwidth-heavy; pair them with a camera **sub-stream** on weaker networks.
 
-**Action cameras (GoPro / Insta360)** can be onboarded opportunistically — there are built-in hints for them — but treat them as _temporary_ sources, not permanent installs: their live-streaming modes are lower-resolution, need external power, and reconnect unreliably.
+**Action cameras (GoPro / Insta360)** have a guided setup in the wizard (**Cameras → Add a camera → Action camera**) that walks through each device and tests the stream before saving — see [Adding & organizing cameras](cameras.md#3-action-cameras-gopro--insta360--guided-setup). Treat them as _temporary_ sources, not permanent installs: their live-streaming modes are lower-resolution, need external power, and reconnect unreliably.
 
 ---
 
