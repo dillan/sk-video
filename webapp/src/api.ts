@@ -457,6 +457,53 @@ export const discoverCameras = async (signal?: AbortSignal): Promise<ICandidate[
   return body.cameras ?? [];
 };
 
+/** A curated action-camera onboarding hint (GoPro / Insta360) — walkthrough, sources, honest caveats. */
+export interface IOnboardingSource {
+  label: string;
+  scheme: string;
+  host: string;
+  port?: number;
+  path?: string;
+  /** Pre-fills the camera's media.projection for a 360 source. */
+  projection?: string;
+}
+export interface IDeviceHint {
+  key: string;
+  make: string;
+  models: string[];
+  apHost: string;
+  /** The numbered walkthrough the wizard renders. */
+  steps: string[];
+  /** Pre-fillable sources; EMPTY when the device only pushes (GoPro → RTMP relay). */
+  sources: IOnboardingSource[];
+  /** Honest limitations — opportunistic, never a permanent install. */
+  caveats: string[];
+}
+
+export const fetchOnboardingHints = async (signal?: AbortSignal): Promise<IDeviceHint[]> => {
+  const body = await getJson<{ hints?: IDeviceHint[] }>(
+    '/cameras/onboarding-hints',
+    'hints',
+    signal,
+  );
+  return body.hints ?? [];
+};
+
+/** Connection-test an UNSAVED source (ffprobe on the server, SSRF-guarded) — nothing persists. */
+export interface ITestResult {
+  ok: boolean;
+  message?: string;
+  suggestedPaths?: string[];
+}
+export const testCamera = async (input: {
+  source: { scheme: string; host: string; port?: number; path?: string };
+  username?: string;
+  password?: string;
+}): Promise<ITestResult> => {
+  const res = await send('/cameras/test', { method: 'POST', body: JSON.stringify(input) }, 'test');
+  return (await res.json()) as ITestResult;
+};
+
 /** One advertised media profile (codec + resolution + source), as returned by introspection. */
 export interface IIntrospectStream {
   codec: string;

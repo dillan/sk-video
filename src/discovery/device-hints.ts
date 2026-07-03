@@ -25,6 +25,8 @@ export interface IDeviceHint {
   models: string[];
   /** The device's own WiFi access-point address — join its AP, then it is reachable here. */
   apHost: string;
+  /** The numbered walkthrough the onboarding wizard renders — plain, ordered, user-facing. */
+  steps: string[];
   /** Pre-fillable sources; may be EMPTY when the device only supports pushing (e.g. GoPro). */
   sources: IOnboardingSource[];
   /** Honest limitations — opportunistic, never a permanent install. */
@@ -37,6 +39,12 @@ const HINTS: IDeviceHint[] = [
     make: 'Insta360',
     models: ['X3', 'X4', 'X5'],
     apHost: '192.168.42.1',
+    steps: [
+      'Power the camera and turn on its WiFi — the camera hosts its own access point (Insta360 X…).',
+      'Join the SIGNAL K SERVER’s machine to that WiFi network. The plugin pulls the stream, so the server — not your phone or browser — must reach the camera. A machine with one WiFi radio leaves the boat network when it joins the camera’s; use a second interface for anything permanent.',
+      'Keep the camera on external power — the preview drains a battery quickly.',
+      'The 360 preview then streams from the address below (pre-filled). Test it, then continue.',
+    ],
     sources: [
       {
         label: 'WiFi 360 preview (RTSP)',
@@ -59,6 +67,13 @@ const HINTS: IDeviceHint[] = [
     make: 'GoPro',
     models: ['HERO12 Black', 'HERO13 Black'],
     apHost: '10.5.5.9',
+    steps: [
+      'Install the GoPro Labs firmware on the camera (it adds RTMP live-streaming; stock firmware can only push to GoPro’s cloud).',
+      'Run an RTMP server the boat network can reach — e.g. MediaMTX on the boat computer. The GoPro PUSHES to it, and this plugin pulls from it.',
+      'Point the GoPro at your server with a GoPro Labs QR code, e.g. rtmp://<server-address>:1935/gopro.',
+      'Enter that SAME rtmp:// address below as the camera source, test it, then continue.',
+      'Start the live stream on the GoPro. Expect to restart it after a drop — Labs RTMP auto-reconnect is limited.',
+    ],
     // No clean pull source: a GoPro streams by PUSHING (GoPro Labs RTMP) or via a keepalive'd UDP
     // preview, so there is nothing to pre-fill as a pull URL.
     sources: [],
@@ -75,6 +90,7 @@ function clone(hint: IDeviceHint): IDeviceHint {
   return {
     ...hint,
     models: [...hint.models],
+    steps: [...hint.steps],
     sources: hint.sources.map((s) => ({ ...s })),
     caveats: [...hint.caveats],
   };

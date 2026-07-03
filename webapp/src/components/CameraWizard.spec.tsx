@@ -29,6 +29,42 @@ function mockApi(opts: { introspectOk?: boolean; introspect?: unknown } = {}) {
           ? Promise.resolve({ ok: false, status: 502 })
           : ok(opts.introspect ?? INTROSPECT);
       }
+      if (u.includes('/onboarding-hints')) {
+        return ok({
+          hints: [
+            {
+              key: 'insta360-x',
+              make: 'Insta360',
+              models: ['X3', 'X4', 'X5'],
+              apHost: '192.168.42.1',
+              steps: ['Power the camera and turn on its WiFi.', 'Join the server to it.'],
+              sources: [
+                {
+                  label: 'WiFi 360 preview (RTSP)',
+                  scheme: 'rtsp',
+                  host: '192.168.42.1',
+                  port: 8554,
+                  path: '/live',
+                  projection: 'equirectangular',
+                },
+              ],
+              caveats: ['Reverse-engineered preview.'],
+            },
+            {
+              key: 'gopro-hero',
+              make: 'GoPro',
+              models: ['HERO13 Black'],
+              apHost: '10.5.5.9',
+              steps: ['Install GoPro Labs.', 'Run an RTMP server.', 'Push rtmp:// to it.'],
+              sources: [],
+              caveats: ['Push-only; expect restarts.'],
+            },
+          ],
+        });
+      }
+      if (u.includes('/cameras/test')) {
+        return ok({ ok: true, message: 'Stream reachable — video found.' });
+      }
       if (u.includes('/cameras/discover')) {
         return ok({
           cameras: [
@@ -243,5 +279,75 @@ describe('CameraWizard edit mode', () => {
     expect(cred).toBeTruthy();
     expect(cred!.url).toContain('/cameras/bow/credentials');
     expect(JSON.parse(cred!.init!.body as string).username).toBe('admin');
+  });
+
+  it('walks a GoPro through the push-model setup: no ONVIF probe, honest steps, tested rtmp source', async () => {
+    const calls = mockApi();
+    render(<CameraWizard onDone={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Action camera (GoPro / Insta360)' }));
+    fireEvent.click(await screen.findByRole('button', { name: /GoPro/ }));
+
+    // The walkthrough teaches the push model — a GoPro has nothing to pull directly.
+    expect(screen.getByText(/Run an RTMP server/)).toBeTruthy();
+    expect(screen.getByText(/Push-only; expect restarts/)).toBeTruthy();
+
+    // No pull source exists, so Continue stays disabled until an address is entered.
+    expect(
+      (screen.getByRole('button', { name: 'Continue' }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    fireEvent.change(screen.getByPlaceholderText(/RTMP server/), {
+      target: { value: '192.168.1.10' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Test the stream' }));
+    await waitFor(() => expect(screen.getByText(/Stream reachable/)).toBeTruthy());
+    const probe = calls.find((c) => c.url.includes('/cameras/test'));
+    expect(JSON.parse(String(probe!.init?.body))).toMatchObject({
+      source: { scheme: 'rtmp', host: '192.168.1.10' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Save camera' }));
+    await waitFor(() => {
+      const put = calls.find(
+        (c) => c.url.includes('/resources/cameras/') && c.init?.method === 'PUT',
+      );
+      expect(put).toBeTruthy();
+      const body = JSON.parse(String(put!.init?.body));
+      expect(body.source).toMatchObject({ scheme: 'rtmp', host: '192.168.1.10' });
+      expect(body.device).toMatchObject({ manufacturer: 'GoPro' });
+      // Action cams advertise no ONVIF — capabilities are honestly all-false, never guessed.
+      expect(body.capabilities.ptz).toBe(false);
+    });
+    // The ONVIF introspection path is never touched on this route.
+    expect(calls.some((c) => c.url.includes('/discover/introspect'))).toBe(false);
+  });
+
+  it('pre-fills the Insta360 RTSP preview and persists the 360 projection', async () => {
+    const calls = mockApi();
+    render(<CameraWizard onDone={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Action camera (GoPro / Insta360)' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Insta360/ }));
+
+    // The known AP source is pre-filled — nothing to type for the happy path.
+    expect((screen.getByPlaceholderText('192.168.42.1') as HTMLInputElement).value).toBe(
+      '192.168.42.1',
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Save camera' }));
+    await waitFor(() => {
+      const put = calls.find(
+        (c) => c.url.includes('/resources/cameras/') && c.init?.method === 'PUT',
+      );
+      expect(put).toBeTruthy();
+      const body = JSON.parse(String(put!.init?.body));
+      expect(body.source).toMatchObject({
+        scheme: 'rtsp',
+        host: '192.168.42.1',
+        port: 8554,
+        path: '/live',
+      });
+      // The 360 geometry rides along so clients know to render a spherical view.
+      expect(body.media).toMatchObject({ projection: 'equirectangular' });
+    });
   });
 });

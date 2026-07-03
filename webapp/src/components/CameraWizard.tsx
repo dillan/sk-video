@@ -2,12 +2,16 @@ import { useState } from 'react';
 import {
   discoverCameras,
   introspectCamera,
+  fetchOnboardingHints,
+  testCamera,
   saveCamera,
   setCredentials,
   ApiError,
   type ICandidate,
   type ICamera,
   type ICameraEntry,
+  type IDeviceHint,
+  type ITestResult,
 } from '../api';
 import { capabilityBadges } from '../lib/camera';
 import {
@@ -15,6 +19,7 @@ import {
   isOnvifCandidate,
   draftFromIntrospect,
   draftFromEntry,
+  draftFromHint,
   toResourceBody,
   mergeEdit,
   isValidSlug,
@@ -27,7 +32,7 @@ import {
 } from '../lib/onboard';
 import { codecLabel } from '../lib/transport';
 
-type Step = 'scan' | 'connect' | 'details';
+type Step = 'scan' | 'connect' | 'device' | 'guide' | 'details';
 interface Msg {
   kind: 'caution' | 'info';
   text: string;
@@ -60,6 +65,11 @@ export function CameraWizard({ onDone, edit, hasStoredLogin = false }: Props) {
   const [port, setPort] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+
+  // action-camera path (GoPro / Insta360): the curated hints + the one being walked through
+  const [hints, setHints] = useState<IDeviceHint[] | null>(null);
+  const [hint, setHint] = useState<IDeviceHint | null>(null);
+  const [probe, setProbe] = useState<ITestResult | null>(null);
 
   // details step
   const [draft, setDraft] = useState<ICameraDraft | null>(edit ? draftFromEntry(edit) : null);
@@ -97,6 +107,40 @@ export function CameraWizard({ onDone, edit, hasStoredLogin = false }: Props) {
     setHost('');
     setPort('');
     setStep('connect');
+  };
+
+  // The action-camera path: these devices advertise no ONVIF and often live on their own WiFi AP,
+  // so discovery can't find them — a curated walkthrough replaces the scan.
+  const actionCamera = (): void => {
+    setMsg(null);
+    setStep('device');
+    if (hints === null) {
+      fetchOnboardingHints()
+        .then(setHints)
+        .catch((err: unknown) => fail(err, 'load the device guides'));
+    }
+  };
+
+  const pickHint = (h: IDeviceHint): void => {
+    setHint(h);
+    setDraft(draftFromHint(h, h.sources[0] ?? null));
+    setProbe(null);
+    setMsg(null);
+    setStep('guide');
+  };
+
+  const runProbe = (): void => {
+    if (!draft || !draft.source.host.trim()) {
+      setMsg({ kind: 'caution', text: 'Enter the stream address first.' });
+      return;
+    }
+    setBusy(true);
+    setMsg(null);
+    setProbe(null);
+    testCamera({ source: draft.source })
+      .then(setProbe)
+      .catch((err: unknown) => fail(err, 'test the stream'))
+      .finally(() => setBusy(false));
   };
 
   const connect = (): void => {
@@ -187,6 +231,9 @@ export function CameraWizard({ onDone, edit, hasStoredLogin = false }: Props) {
             <button type="button" className="btn btn--ghost" onClick={manual}>
               Enter address manually
             </button>
+            <button type="button" className="btn btn--ghost" onClick={actionCamera}>
+              Action camera (GoPro / Insta360)
+            </button>
           </div>
           {candidates && candidates.length === 0 && (
             <p className="muted">Nothing found. Add the camera manually, then try again.</p>
@@ -216,6 +263,129 @@ export function CameraWizard({ onDone, edit, hasStoredLogin = false }: Props) {
               })}
             </ul>
           )}
+        </div>
+      )}
+
+      {step === 'device' && (
+        <div className="panel wizard__step">
+          <p className="muted">
+            Action cameras don’t announce themselves on the network (no ONVIF, usually their own
+            WiFi), so a scan can’t find them. Pick yours and the wizard walks you through it — they
+            work, but as <b>temporary</b> sources, not a permanent marine install.
+          </p>
+          {hints === null && <p className="muted">Loading device guides…</p>}
+          {hints && (
+            <ul className="candidates">
+              {hints.map((h) => (
+                <li key={h.key}>
+                  <button type="button" className="candidate" onClick={() => pickHint(h)}>
+                    <span className="candidate__name">{h.make}</span>
+                    <span className="mono candidate__addr">{h.models.join(' · ')}</span>
+                    <span className="chip chip--neutral">guided setup</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="wizard__actions">
+            <button type="button" className="btn btn--ghost" onClick={() => setStep('scan')}>
+              Back
+            </button>
+          </div>
+        </div>
+      )}
+
+      {step === 'guide' && hint && draft && (
+        <div className="panel wizard__step">
+          <p className="muted">
+            <b>
+              {hint.make} {hint.models.join(' / ')}
+            </b>
+          </p>
+          <ol className="wizard__walkthrough">
+            {hint.steps.map((s, i) => (
+              <li key={i}>{s}</li>
+            ))}
+          </ol>
+          <label className="field">
+            <span>Stream</span>
+            <select
+              value={draft.source.scheme}
+              onChange={(e) =>
+                setDraft({ ...draft, source: { ...draft.source, scheme: e.target.value } })
+              }
+            >
+              <option value="rtsp">rtsp</option>
+              <option value="rtmp">rtmp</option>
+            </select>
+          </label>
+          <label className="field">
+            <span>Address</span>
+            <input
+              value={draft.source.host}
+              onChange={(e) =>
+                setDraft({ ...draft, source: { ...draft.source, host: e.target.value } })
+              }
+              placeholder={hint.sources[0]?.host ?? 'your RTMP server’s address'}
+            />
+          </label>
+          <label className="field">
+            <span>Port</span>
+            <input
+              value={draft.source.port ?? ''}
+              inputMode="numeric"
+              onChange={(e) => {
+                const n = e.target.value === '' ? undefined : Number(e.target.value);
+                setDraft({
+                  ...draft,
+                  source: { ...draft.source, port: Number.isFinite(n) ? n : undefined },
+                });
+              }}
+              placeholder={draft.source.scheme === 'rtmp' ? '1935' : '8554'}
+            />
+          </label>
+          <label className="field">
+            <span>Stream path</span>
+            <input
+              value={draft.source.path ?? ''}
+              onChange={(e) =>
+                setDraft({
+                  ...draft,
+                  source: { ...draft.source, path: e.target.value || undefined },
+                })
+              }
+              placeholder={hint.sources[0]?.path ?? '/gopro'}
+            />
+          </label>
+          {probe && (
+            <div className={`chip chip--${probe.ok ? 'info' : 'caution'}`}>
+              {probe.ok ? (probe.message ?? 'Stream reachable.') : (probe.message ?? 'No stream.')}
+            </div>
+          )}
+          <ul className="wizard__caveats muted">
+            {hint.caveats.map((c, i) => (
+              <li key={i}>{c}</li>
+            ))}
+          </ul>
+          <div className="wizard__actions">
+            <button type="button" className="btn btn--ghost" onClick={() => setStep('device')}>
+              Back
+            </button>
+            <button type="button" className="btn btn--ghost" onClick={runProbe} disabled={busy}>
+              {busy ? 'Testing…' : 'Test the stream'}
+            </button>
+            <button
+              type="button"
+              className="btn"
+              disabled={!draft.source.host.trim()}
+              onClick={() => {
+                setMsg(null);
+                setStep('details');
+              }}
+            >
+              Continue
+            </button>
+          </div>
         </div>
       )}
 
@@ -275,7 +445,7 @@ export function CameraWizard({ onDone, edit, hasStoredLogin = false }: Props) {
         <div className="panel wizard__step">
           {!editing && (
             <p className="muted">
-              Read from the camera: <b>{draft.name}</b> ·{' '}
+              {hint ? 'Source' : 'Read from the camera'}: <b>{draft.name}</b> ·{' '}
               <span className="mono">
                 {draft.source.scheme}://{draft.source.host}
                 {draft.source.port ? `:${draft.source.port}` : ''}
@@ -452,7 +622,11 @@ export function CameraWizard({ onDone, edit, hasStoredLogin = false }: Props) {
           )}
           <div className="wizard__actions">
             {!editing && (
-              <button type="button" className="btn btn--ghost" onClick={() => setStep('connect')}>
+              <button
+                type="button"
+                className="btn btn--ghost"
+                onClick={() => setStep(hint ? 'guide' : 'connect')}
+              >
                 Back
               </button>
             )}

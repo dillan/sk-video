@@ -1,4 +1,11 @@
-import type { ICandidate, IIntrospectResult, ICameraWrite, ICameraEntry } from '../api';
+import type {
+  ICandidate,
+  IIntrospectResult,
+  ICameraWrite,
+  ICameraEntry,
+  IDeviceHint,
+  IOnboardingSource,
+} from '../api';
 
 /** Vessel mounts + roles (mirrors the plugin's closed enums so dropdowns produce valid values). */
 export const MOUNTS = [
@@ -90,8 +97,9 @@ export interface ICameraDraft {
     imaging?: string[];
     auxCommands?: string[];
   };
-  /** Main-stream codec + the H.264 substream path captured by introspection (drives live routing). */
-  media?: { codec?: string; substreamPath?: string };
+  /** Main-stream codec + the H.264 substream path captured by introspection (drives live routing),
+   *  and the stream geometry for 360 sources (equirectangular/dualfisheye → client-side vPTZ). */
+  media?: { codec?: string; substreamPath?: string; projection?: string };
   /** Device identity + firmware captured by introspection (durable identity; firmware-change detection). */
   device?: { manufacturer?: string; model?: string; serial?: string; firmware?: string };
   /** Read-only: the media profiles introspection found, surfaced in the wizard (never persisted). */
@@ -220,6 +228,34 @@ export function mergeRescan(existing: ICameraEntry, r: IIntrospectResult): ICame
  * A stored role/mount outside the closed enums falls back to unset so the dropdowns stay valid;
  * capabilities/media/device ride along for display only — {@link mergeEdit} keeps the stored ones.
  */
+/**
+ * Build a draft from a curated action-camera hint (GoPro / Insta360). A hint source pre-fills the
+ * stream address (and the 360 projection, so the resource records the geometry); a push-only device
+ * (GoPro) starts with an empty rtmp:// source the walkthrough teaches the user to fill in. Action
+ * cams advertise no ONVIF, so capabilities are honestly all-false — never guessed.
+ */
+export function draftFromHint(hint: IDeviceHint, source: IOnboardingSource | null): ICameraDraft {
+  const draft: ICameraDraft = {
+    id: slugify(hint.make),
+    name: `${hint.make} ${hint.models[0] ?? ''}`.trim(),
+    source: source
+      ? { scheme: source.scheme, host: source.host, port: source.port, path: source.path }
+      : { scheme: 'rtmp', host: '' },
+    capabilities: {
+      ptz: false,
+      absolutePtz: false,
+      audio: false,
+      audioBackchannel: false,
+      substreams: false,
+    },
+    device: { manufacturer: hint.make },
+  };
+  if (source?.projection) {
+    draft.media = { projection: source.projection };
+  }
+  return draft;
+}
+
 export function draftFromEntry(entry: ICameraEntry): ICameraDraft {
   const caps = entry.capabilities ?? {};
   const draft: ICameraDraft = {
@@ -297,7 +333,7 @@ export function toResourceBody(d: ICameraDraft): ICameraWrite {
     source: d.source,
     capabilities: d.capabilities,
   };
-  if (d.media && (d.media.codec || d.media.substreamPath)) {
+  if (d.media && (d.media.codec || d.media.substreamPath || d.media.projection)) {
     body.media = d.media;
   }
   if (d.device) {

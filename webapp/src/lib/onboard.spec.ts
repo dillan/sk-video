@@ -10,6 +10,7 @@ import {
   mergeRescan,
   mergeEdit,
   isStableSerial,
+  draftFromHint,
 } from './onboard';
 import type { ICandidate, IIntrospectResult, ICameraEntry } from '../api';
 
@@ -372,5 +373,58 @@ describe('isStableSerial (identity hygiene)', () => {
   it('keeps real serials and MAC addresses', () => {
     expect(isStableSerial('QSX1234567890')).toBe(true);
     expect(isStableSerial('aa:bb:cc:dd:ee:ff')).toBe(true);
+  });
+});
+
+describe('draftFromHint (action-camera guided setup)', () => {
+  const insta = {
+    key: 'insta360-x',
+    make: 'Insta360',
+    models: ['X3', 'X4'],
+    apHost: '192.168.42.1',
+    steps: ['a', 'b'],
+    sources: [
+      {
+        label: 'WiFi 360 preview (RTSP)',
+        scheme: 'rtsp',
+        host: '192.168.42.1',
+        port: 8554,
+        path: '/live',
+        projection: 'equirectangular',
+      },
+    ],
+    caveats: ['x'],
+  };
+  const gopro = {
+    key: 'gopro-hero',
+    make: 'GoPro',
+    models: ['HERO13 Black'],
+    apHost: '10.5.5.9',
+    steps: ['a', 'b'],
+    sources: [],
+    caveats: ['x'],
+  };
+
+  it('pre-fills the hint source and carries the 360 projection into the resource body', () => {
+    const draft = draftFromHint(insta, insta.sources[0]);
+    expect(draft.source).toEqual({
+      scheme: 'rtsp',
+      host: '192.168.42.1',
+      port: 8554,
+      path: '/live',
+    });
+    expect(draft.media?.projection).toBe('equirectangular');
+    const body = toResourceBody(draft);
+    expect(body.media).toMatchObject({ projection: 'equirectangular' });
+    expect(body.device).toMatchObject({ manufacturer: 'Insta360' });
+  });
+
+  it('starts a push-only device with an empty rtmp source and honest all-false capabilities', () => {
+    const draft = draftFromHint(gopro, null);
+    expect(draft.source).toEqual({ scheme: 'rtmp', host: '' });
+    expect(draft.media).toBeUndefined();
+    expect(Object.values(draft.capabilities).every((v) => v === false)).toBe(true);
+    expect(draft.id).toBe('gopro');
+    expect(draft.name).toBe('GoPro HERO13 Black');
   });
 });

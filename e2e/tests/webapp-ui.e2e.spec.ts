@@ -112,6 +112,29 @@ test.describe('SK Video webapp — shell + navigation', () => {
   });
 });
 
+test.describe('SK Video webapp — action-camera guided onboarding', () => {
+  test('walks a GoPro through the push model and pre-fills the Insta360 preview', async ({
+    page,
+  }) => {
+    await page.goto(`${APP}#/cameras`);
+    await page.getByRole('button', { name: 'Add a camera' }).click();
+    await page.getByRole('button', { name: 'Action camera (GoPro / Insta360)' }).click();
+
+    // GoPro: push-only — the walkthrough teaches the RTMP relay and Continue waits for an address.
+    await page.getByRole('button', { name: /GoPro/ }).click();
+    await expect(page.getByText(/Run an RTMP server/)).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Continue' })).toBeDisabled();
+
+    // Insta360: the known AP preview is pre-filled, projection rides along server-side.
+    await page.getByRole('button', { name: 'Back' }).click();
+    await page.getByRole('button', { name: /Insta360/ }).click();
+    await expect(page.getByPlaceholder('192.168.42.1')).toHaveValue('192.168.42.1');
+    await expect(page.getByText(/reverse-engineered/i)).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Continue' })).toBeEnabled();
+    await expect(page.getByRole('button', { name: 'Test the stream' })).toBeVisible();
+  });
+});
+
 test.describe('SK Video webapp — Settings theme', () => {
   test('switches to Night-Red and persists across a reload', async ({ page }) => {
     await page.goto(`${APP}#/settings`);

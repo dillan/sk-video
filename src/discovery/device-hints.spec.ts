@@ -39,6 +39,24 @@ describe('deviceHints', () => {
     expect(deviceHints()[0].caveats).not.toContain('mutated'); // the source is untouched
   });
 
+  it('every hint carries a numbered wizard walkthrough, defensively copied', () => {
+    for (const hint of deviceHints()) {
+      expect(hint.steps.length, `${hint.key} has no walkthrough`).toBeGreaterThanOrEqual(3);
+      for (const step of hint.steps) {
+        expect(step.length).toBeGreaterThan(10);
+      }
+    }
+    // The GoPro walkthrough must teach the push model (there is nothing to pull directly).
+    const gopro = deviceHint('gopro-hero')!;
+    expect(gopro.steps.join(' ')).toMatch(/rtmp/i);
+    // The Insta360 walkthrough must say the SERVER joins the camera's AP (not the phone/browser).
+    const insta = deviceHint('insta360-x')!;
+    expect(insta.steps.join(' ')).toMatch(/server/i);
+    // Defensive copies: mutating a returned hint never leaks into the next read.
+    insta.steps[0] = 'mutated';
+    expect(deviceHint('insta360-x')!.steps[0]).not.toBe('mutated');
+  });
+
   it('returns null for an unknown key', () => {
     expect(deviceHint('nope')).toBeNull();
   });
