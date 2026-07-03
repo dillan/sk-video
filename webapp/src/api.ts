@@ -145,6 +145,31 @@ export async function fetchCameras(signal?: AbortSignal): Promise<ICameraEntry[]
     .sort((a, b) => a.id.localeCompare(b.id));
 }
 
+/** One camera in the aggregate wall projection: definition + health(+last-good) + transport walk. */
+export interface IProjectedCamera extends Omit<ICameraEntry, 'source'> {
+  safetyCritical: boolean;
+  /** go2rtc health merged with the last-good tracker; null while the gateway is down. */
+  health: (IStreamHealth & { lastGoodAt: number | null; trackedSince: number }) | null;
+  /** Server-recommended transport walk; null while the gateway is down. */
+  transport: ITransportHints | null;
+}
+
+export interface ILayoutGroup {
+  key: string;
+  label: string;
+  cameraIds: string[];
+}
+
+/** The aggregate wall projection: one request instead of N health + N transport fan-outs. */
+export interface ICamerasProjection {
+  gatewayOnline: boolean;
+  cameras: IProjectedCamera[];
+  layout: { groups: ILayoutGroup[] };
+}
+
+export const fetchCamerasProjection = (signal?: AbortSignal): Promise<ICamerasProjection> =>
+  getJson<ICamerasProjection>('/cameras', 'cameras', signal);
+
 /** Raw `vessels/self` tree for the telemetry strip; parsed by lib/format's parseVesselState. */
 export async function fetchVesselSelf(signal?: AbortSignal): Promise<unknown> {
   const res = await fetch(`${SK_ROOT}/signalk/v1/api/vessels/self`, {

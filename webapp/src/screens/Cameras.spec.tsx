@@ -5,7 +5,12 @@ import { Cameras } from './Cameras';
 const ok = (json: unknown) => Promise.resolve({ ok: true, json: async () => json });
 
 function mockApi(
-  opts: { cameras?: Record<string, unknown>; presence?: unknown; rescanResult?: unknown } = {},
+  opts: {
+    cameras?: Record<string, unknown>;
+    presence?: unknown;
+    rescanResult?: unknown;
+    health?: Record<string, unknown>;
+  } = {},
 ) {
   const calls: { url: string; init?: RequestInit }[] = [];
   vi.stubGlobal(
@@ -19,6 +24,16 @@ function mockApi(
       if (u.includes('/resources/cameras')) {
         if (init?.method === 'PUT' || init?.method === 'DELETE') return ok({});
         return ok(opts.cameras ?? {});
+      }
+      // The aggregate projection: rows read their health tri-state from it.
+      if (u.endsWith('/plugins/sk-video/cameras')) {
+        const cameras = Object.entries(opts.cameras ?? {}).map(([id, c]) => ({
+          id,
+          ...(c as Record<string, unknown>),
+          health: opts.health?.[id] ?? null,
+          transport: null,
+        }));
+        return ok({ gatewayOnline: true, cameras, layout: { groups: [] } });
       }
       return ok({});
     }),
@@ -57,6 +72,30 @@ describe('Cameras manage', () => {
     await waitFor(() => expect(screen.getByText('Bow')).toBeTruthy());
     expect(screen.getByText('PTZ')).toBeTruthy();
     await waitFor(() => expect(screen.getByText('login stored')).toBeTruthy());
+  });
+
+  it('shows the health tri-state on each enabled row from the aggregate projection', async () => {
+    mockApi({
+      cameras: {
+        bow: { name: 'Bow', enabled: true, source: { scheme: 'rtsp', host: '10.0.0.9' } },
+        stern: { name: 'Stern', enabled: true, source: { scheme: 'rtsp', host: '10.0.0.8' } },
+      },
+      health: {
+        bow: { online: true, producers: 1, consumers: 0, codecs: [], sources: [] },
+        stern: {
+          online: false,
+          producers: 0,
+          consumers: 0,
+          codecs: [],
+          sources: [],
+          lastGoodAt: Date.UTC(2026, 0, 1, 12, 0),
+          trackedSince: 1,
+        },
+      },
+    });
+    render(<Cameras />);
+    await waitFor(() => expect(screen.getByText('live')).toBeTruthy());
+    expect(screen.getByText(/went dark — last seen live/)).toBeTruthy();
   });
 
   it('re-scans a camera and saves the refreshed capabilities + device', async () => {

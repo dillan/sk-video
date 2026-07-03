@@ -56,6 +56,11 @@ export function go2rtcStreamsUrl(apiPort: number, cameraId: string): string {
   return `http://127.0.0.1:${apiPort}/api/streams?src=${cameraId}`;
 }
 
+/** The loopback go2rtc URL for ALL streams — one read serves the whole camera wall. */
+export function go2rtcAllStreamsUrl(apiPort: number): string {
+  return `http://127.0.0.1:${apiPort}/api/streams`;
+}
+
 /** HLS sub-resource names the master/media playlists reference (media playlist, segments, init). */
 const HLS_RESOURCE = /^[A-Za-z0-9._-]+$/;
 

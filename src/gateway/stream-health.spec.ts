@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { parseStreamHealth, fetchStreamHealth } from './stream-health';
+import { parseStreamHealth, fetchStreamHealth, fetchAllStreamsHealth } from './stream-health';
 
 const sample = {
   producers: [
@@ -64,5 +64,27 @@ describe('fetchStreamHealth', () => {
     });
     expect(h).toMatchObject({ online: true, producers: 1 });
     expect(h.codecs).toContain('H264');
+  });
+});
+
+describe('fetchAllStreamsHealth', () => {
+  it('reads /api/streams once and parses every requested camera (missing ids read offline)', async () => {
+    const all = {
+      cam: { producers: [{ url: 'rtsp://user:pw@10.0.0.2/main' }], consumers: [] },
+      cam_sub: { producers: [], consumers: [] },
+    };
+    const fetchImpl = vi.fn().mockResolvedValue({ json: () => Promise.resolve(all) });
+    const healths = await fetchAllStreamsHealth({
+      apiPort: 1984,
+      cameraIds: ['cam', 'ghost'],
+      fetchImpl,
+    });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(fetchImpl).toHaveBeenCalledWith('http://127.0.0.1:1984/api/streams', {
+      signal: expect.any(AbortSignal),
+    });
+    expect(healths.cam.online).toBe(true);
+    expect(healths.cam.sources).toEqual(['rtsp://***@10.0.0.2/main']);
+    expect(healths.ghost).toMatchObject({ online: false, producers: 0 });
   });
 });

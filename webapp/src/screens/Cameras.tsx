@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   fetchCameras,
+  fetchCamerasProjection,
   getCredentialPresence,
   saveCamera,
   deleteCamera,
@@ -8,11 +9,12 @@ import {
   ApiError,
   type ICameraEntry,
   type ICameraWrite,
+  type IProjectedCamera,
 } from '../api';
 import { CameraWizard } from '../components/CameraWizard';
 import { CameraHealth } from '../components/CameraHealth';
 import { CalibrationWizard } from '../components/CalibrationWizard';
-import { capabilityBadges } from '../lib/camera';
+import { capabilityBadges, healthPresence } from '../lib/camera';
 import { mergeRescan } from '../lib/onboard';
 
 type Load =
@@ -49,6 +51,7 @@ function bodyFrom(entry: ICameraEntry, enabled: boolean): ICameraWrite | null {
 export function Cameras() {
   const [load, setLoad] = useState<Load>({ state: 'loading' });
   const [creds, setCreds] = useState<Record<string, boolean>>({});
+  const [presence, setPresence] = useState<Record<string, IProjectedCamera['health']>>({});
   const [view, setView] = useState<View>({ kind: 'list' });
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [rescanId, setRescanId] = useState<string | null>(null);
@@ -68,6 +71,12 @@ export function Cameras() {
       .catch((err: unknown) =>
         setLoad({ state: 'error', message: err instanceof Error ? err.message : 'unreachable' }),
       );
+    // One aggregate read gives every row its health tri-state (producing / went dark / never seen).
+    fetchCamerasProjection(ctrl.signal)
+      .then((p) =>
+        setPresence(Object.fromEntries(p.cameras.map((c) => [c.id, c.health] as const))),
+      )
+      .catch(() => undefined); // rows still render without presence chips
     return () => ctrl.abort();
   }, []);
 
@@ -192,6 +201,18 @@ export function Cameras() {
                 ))}
                 {creds[c.id] && <span className="chip chip--neutral">login stored</span>}
                 {!c.enabled && <span className="chip chip--caution">disabled</span>}
+                {c.enabled &&
+                  presence[c.id] &&
+                  (() => {
+                    const p = healthPresence(presence[c.id]!);
+                    return (
+                      <span
+                        className={`chip ${p.tone === 'caution' ? 'chip--caution' : 'chip--neutral'}`}
+                      >
+                        {p.tone === 'live' ? 'live' : p.label}
+                      </span>
+                    );
+                  })()}
               </div>
               <div className="camrow__actions">
                 <button

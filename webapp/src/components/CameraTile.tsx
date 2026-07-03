@@ -1,11 +1,21 @@
 import { useEffect, useState } from 'react';
-import type { ICameraEntry, TTransport } from '../api';
-import { cameraSubtitle, tileStatus, tileCategory, type TileCategory } from '../lib/camera';
+import type { ICameraEntry, IStreamHealth, ITransportHints, TTransport } from '../api';
+import {
+  cameraSubtitle,
+  tileStatus,
+  tileCategory,
+  healthPresence,
+  type TileCategory,
+} from '../lib/camera';
 import { VideoPlayer } from './VideoPlayer';
 import { H264_TRANSPORTS, transportLabel } from '../lib/transport';
 
 interface Props {
   camera: ICameraEntry;
+  /** Server transport walk from the wall projection; drives main-variant tiles when present. */
+  transport?: ITransportHints | null;
+  /** Server health (+last-good) from the projection; enriches the No-signal chip tooltip. */
+  health?: IStreamHealth | null;
   hero?: boolean;
   /** When provided, the tile is a button that opens Camera Focus for this camera. */
   onOpen?: (id: string) => void;
@@ -28,13 +38,16 @@ const CHIP_TONE = {
  * flowing, "Connecting…" while it negotiates, and "No signal" after a grace period with no frame (so a
  * dead camera never reads "Connecting…" forever). Tapping opens Camera Focus.
  */
-export function CameraTile({ camera, hero, onOpen, onState }: Props) {
+export function CameraTile({ camera, transport, health, hero, onOpen, onState }: Props) {
   const subtitle = cameraSubtitle(camera);
   const [rung, setRung] = useState<TTransport>('mjpeg');
   const [active, setActive] = useState(false);
   const [signalLost, setSignalLost] = useState(false);
   // Prefer the captured H.264 sub-stream for the grid; fall back to main for a camera without one.
   const variant = camera.capabilities?.substreams && camera.media?.substreamPath ? 'sub' : 'main';
+  // The sub-stream is H.264 by selection, so its walk is the H.264 one; a main-variant tile follows
+  // the server-computed walk from the projection (codec-aware, e.g. HLS-first for an H.265 main).
+  const walk = variant === 'main' && transport ? transport.recommended : H264_TRANSPORTS;
 
   // Arm the "No signal" grace timer while connecting; a frame (active) or a source change resets it.
   useEffect(() => {
@@ -60,7 +73,7 @@ export function CameraTile({ camera, hero, onOpen, onState }: Props) {
       {camera.enabled ? (
         <VideoPlayer
           cameraId={camera.id}
-          transports={H264_TRANSPORTS}
+          transports={walk}
           variant={variant}
           onRung={setRung}
           onActive={setActive}
@@ -70,7 +83,11 @@ export function CameraTile({ camera, hero, onOpen, onState }: Props) {
       )}
       <div className="tile__scrim" />
       <div className="tile__top">
-        <span className={`chip ${CHIP_TONE[status.tone]}`}>
+        <span
+          className={`chip ${CHIP_TONE[status.tone]}`}
+          // On a dead tile, say when the camera was last seen live (or that it never was).
+          title={!status.live && health ? healthPresence(health).label : undefined}
+        >
           {status.label}
           {status.live && <span className="mono"> · {transportLabel(rung)}</span>}
         </span>

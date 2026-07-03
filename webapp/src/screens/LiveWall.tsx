@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
-  fetchCameras,
+  fetchCamerasProjection,
   fetchVesselSelf,
   fetchStatus,
   fetchRecordingTimeline,
-  type ICameraEntry,
+  type IProjectedCamera,
   type IMobStatus,
 } from '../api';
 import { parseVesselState, type IVesselState } from '../lib/format';
@@ -14,14 +14,14 @@ import { CameraTile } from '../components/CameraTile';
 
 type Cams =
   | { state: 'loading' }
-  | { state: 'ready'; cameras: ICameraEntry[] }
+  | { state: 'ready'; cameras: IProjectedCamera[]; gatewayOnline: boolean }
   | { state: 'error'; message: string };
 
 /**
  * The hero surface: a glanceable mosaic of the boat's cameras, arranged with the first as the hero
- * tile. Cameras come from the shared Signal K resource; the telemetry strip from vessels/self. Each
- * enabled tile plays its low-res H.264 sub-stream (substream-in-grid); the richer health states
- * (went-dark / never-seen) arrive with the per-camera health wiring.
+ * tile. One aggregate projection request carries definitions + per-camera health (went-dark /
+ * never-seen) + the server transport walk, so the wall never fans out N health + N transport reads
+ * over a marina link. Each enabled tile plays its low-res H.264 sub-stream (substream-in-grid).
  */
 export function LiveWall({
   mob,
@@ -43,8 +43,8 @@ export function LiveWall({
 
   useEffect(() => {
     const ctrl = new AbortController();
-    fetchCameras(ctrl.signal)
-      .then((cameras) => setCams({ state: 'ready', cameras }))
+    fetchCamerasProjection(ctrl.signal)
+      .then((p) => setCams({ state: 'ready', cameras: p.cameras, gatewayOnline: p.gatewayOnline }))
       .catch((err: unknown) => {
         if (ctrl.signal.aborted) return;
         setCams({ state: 'error', message: err instanceof Error ? err.message : 'unreachable' });
@@ -97,12 +97,19 @@ export function LiveWall({
           <p className="muted">Add a camera in Cameras to see it on the wall.</p>
         </div>
       )}
+      {cams.state === 'ready' && !cams.gatewayOnline && (
+        <div className="chip chip--caution" style={{ marginBottom: 8 }}>
+          Video gateway is down — tiles will reconnect when it recovers.
+        </div>
+      )}
       {cams.state === 'ready' && cams.cameras.length > 0 && (
         <div className="mosaic">
           {cams.cameras.map((c, i) => (
             <CameraTile
               key={c.id}
               camera={c}
+              transport={c.transport}
+              health={c.health}
               hero={i === 0}
               onOpen={onOpenCamera}
               onState={onState}

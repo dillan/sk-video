@@ -30,6 +30,22 @@ function mockApi(
           ? Promise.resolve({ ok: false, status: 500 })
           : ok(opts.cameras ?? {});
       }
+      // The Live Wall's aggregate projection (defs + health + transport + layout in one response).
+      if (u.endsWith('/plugins/sk-video/cameras')) {
+        if (opts.camerasOk === false) {
+          return Promise.resolve({ ok: false, status: 500 });
+        }
+        const cameras = Object.entries(opts.cameras ?? {})
+          .map(([id, c]) => ({
+            id,
+            ...(c as Record<string, unknown>),
+            safetyCritical: false,
+            health: null,
+            transport: null,
+          }))
+          .sort((a, b) => a.id.localeCompare(b.id));
+        return ok({ gatewayOnline: true, cameras, layout: { groups: [] } });
+      }
       if (u.includes('/vessels/self')) {
         return ok(opts.vessel ?? {});
       }

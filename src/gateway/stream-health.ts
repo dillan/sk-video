@@ -6,7 +6,7 @@
  * go2rtc connects to a source lazily, so a healthy camera with no current viewer reads as not-online.
  */
 import { redactUrl } from '../security/redact';
-import { go2rtcStreamsUrl } from './go2rtc-proxy';
+import { go2rtcStreamsUrl, go2rtcAllStreamsUrl } from './go2rtc-proxy';
 
 export interface IStreamHealth {
   /** A producer (source connection) is currently active in go2rtc. */
@@ -63,6 +63,28 @@ export async function fetchStreamHealth(opts: {
   });
   const data: unknown = await upstream.json();
   return parseStreamHealth(data, opts.cameraId);
+}
+
+/**
+ * One bulk read for the whole wall: fetch go2rtc's full /api/streams once and parse each camera out
+ * of the keyed response, instead of N loopback round-trips. Ids with no stream entry parse to the
+ * honest all-zero health (offline, nothing negotiated).
+ */
+export async function fetchAllStreamsHealth(opts: {
+  apiPort: number;
+  cameraIds: readonly string[];
+  fetchImpl?: typeof fetch;
+}): Promise<Record<string, IStreamHealth>> {
+  const doFetch = opts.fetchImpl ?? fetch;
+  const upstream = await doFetch(go2rtcAllStreamsUrl(opts.apiPort), {
+    signal: AbortSignal.timeout(LOOPBACK_TIMEOUT_MS),
+  });
+  const data: unknown = await upstream.json();
+  const out: Record<string, IStreamHealth> = {};
+  for (const id of opts.cameraIds) {
+    out[id] = parseStreamHealth(data, id);
+  }
+  return out;
 }
 
 /** The /api/streams response may be the stream object directly (src filter) or keyed by name. */

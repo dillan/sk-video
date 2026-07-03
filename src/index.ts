@@ -30,7 +30,8 @@ import { registerProxyRoutes } from './gateway/go2rtc-proxy-routes';
 import { candidateHost } from './gateway/sdp-scrub';
 import { LastGoodTracker } from './gateway/last-good';
 import { StreamWatchdog } from './gateway/stream-watchdog';
-import { fetchStreamHealth } from './gateway/stream-health';
+import { fetchStreamHealth, fetchAllStreamsHealth } from './gateway/stream-health';
+import { registerCamerasProjectionRoute } from './cameras/cameras-projection-routes';
 import { PtzManager } from './onvif/ptz-manager';
 import { registerPtzRoutes } from './onvif/ptz-routes';
 import { registerImagingRoutes } from './onvif/imaging-routes';
@@ -1186,6 +1187,23 @@ export = function (app: ServerAPI): Plugin {
             .filter(Boolean)
             .map(candidateHost),
         noteHealth: (id, online) => lastGood.note(id, online),
+        lastGood: (id) => lastGood.get(id),
+      });
+
+      // Aggregate wall projection: defs + health(+last-good) + transport + layout in one response,
+      // so the heaviest screen on the worst link never fans out N health + N transport requests.
+      registerCamerasProjectionRoute(router, {
+        listCameras: () => (cameras ? cameras.list() : null),
+        fetchAllHealth: async (ids) => {
+          const healths = await fetchAllStreamsHealth({
+            apiPort: gateway?.apiPort ?? 1984,
+            cameraIds: ids,
+          });
+          for (const [id, health] of Object.entries(healths)) {
+            lastGood.note(id, health.online); // bulk reads double as last-good observations
+          }
+          return healths;
+        },
         lastGood: (id) => lastGood.get(id),
       });
 
