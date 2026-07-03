@@ -61,13 +61,19 @@ const VISION_MODES: { id: TImagingPreset; label: string }[] = [
   { id: 'glare', label: 'Glare' },
 ];
 
+/* Stroke goes through `style` (not the SVG attribute) because callers pass var(--…) theme tokens —
+ * Night-Red remaps them in CSS, and presentation attributes can't resolve custom properties. */
 const svg = (path: string, w = 16, stroke = 'currentColor', sw = 1.9): React.ReactElement => (
-  <svg width={w} height={w} viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth={sw}>
+  <svg width={w} height={w} viewBox="0 0 24 24" fill="none" style={{ stroke }} strokeWidth={sw}>
     {path.split('|').map((d, i) => (
       <path key={i} d={d} />
     ))}
   </svg>
 );
+
+/* Connected-state dot colours as theme tokens, so Night-Red's no-green remap applies. */
+const DOT_LIVE = 'var(--status-online)';
+const DOT_IDLE = 'var(--status-dark)';
 const ICON = {
   vision:
     'M12 8a4 4 0 100 8 4 4 0 000-8|M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2',
@@ -237,7 +243,7 @@ export function CameraControls(props: Props) {
       label: 'Main',
       sub: `${codecLabel(camera.media?.codec ?? 'h264')} · ${transportLabel(rung)}`,
       active: variant === 'main',
-      dot: variant === 'main' && live ? '#34C759' : '#5b6b7d',
+      dot: variant === 'main' && live ? DOT_LIVE : DOT_IDLE,
       onSelect: () => onVariant('main'),
     },
   ];
@@ -247,7 +253,7 @@ export function CameraControls(props: Props) {
       label: 'Sub',
       sub: `H.264 · ${transportLabel(variant === 'sub' ? rung : 'webrtc')}`,
       active: variant === 'sub',
-      dot: variant === 'sub' && live ? '#34C759' : '#5b6b7d',
+      dot: variant === 'sub' && live ? DOT_LIVE : DOT_IDLE,
       onSelect: () => onVariant('sub'),
     });
   }
@@ -305,7 +311,7 @@ export function CameraControls(props: Props) {
 
   const caret = (open: boolean): React.ReactElement => (
     <span className={`menu__caret${open ? ' menu__caret--open' : ''}`}>
-      {svg(ICON.caretDown, 14, '#9fb0c0', 2)}
+      {svg(ICON.caretDown, 14, 'var(--cx-muted)', 2)}
     </span>
   );
 
@@ -322,7 +328,7 @@ export function CameraControls(props: Props) {
           aria-expanded={open}
           aria-label="Vision mode"
         >
-          <span className="cchip__icon">{svg(ICON.vision, 16, '#6cbaff')}</span>
+          <span className="cchip__icon">{svg(ICON.vision, 16, 'var(--cx-accent-ico)')}</span>
           <span className="cchip__strong">{VISION_MODES.find((m) => m.id === vision)?.label}</span>
           <span className="cchip__muted">vision</span>
           {caret(open)}
@@ -350,10 +356,10 @@ export function CameraControls(props: Props) {
           aria-expanded={open}
           aria-label="PTZ presets"
         >
-          <span className="cchip__icon">{svg(ICON.preset, 15, '#6cbaff')}</span>
+          <span className="cchip__icon">{svg(ICON.preset, 15, 'var(--cx-accent-ico)')}</span>
           <span>{presetName ?? 'Presets'}</span>
           <span className={`menu__caret${open ? ' menu__caret--open' : ''}`}>
-            {svg(ICON.caretUp, 14, '#9fb0c0', 2)}
+            {svg(ICON.caretUp, 14, 'var(--cx-muted)', 2)}
           </span>
         </button>
       )}
@@ -382,7 +388,7 @@ export function CameraControls(props: Props) {
           aria-expanded={open}
           aria-label="Stream variant"
         >
-          <span className="cchip__dot" style={{ background: live ? '#34C759' : '#5b6b7d' }} />
+          <span className="cchip__dot" style={{ background: live ? DOT_LIVE : DOT_IDLE }} />
           {variant === 'sub' ? 'sub' : 'main'} · {transportLabel(rung)}
           {caret(open)}
         </button>

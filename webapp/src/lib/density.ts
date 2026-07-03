@@ -2,8 +2,9 @@
  * Density is the second display axis (orthogonal to theme): **Helm-glance** is roomy with large touch
  * targets for a moving helm; **Desk** is tighter for a chart-table desktop. Like theme it's a value swap
  * on a single `data-density` attribute (CSS does the rest) persisted to localStorage. With nothing
- * stored we default by device — Desk on a wide desktop, Helm-glance otherwise — but the operator's
- * choice always wins. Storage access is defensive (a privacy-mode throw just loses persistence).
+ * stored we default by device — Desk on a fine-pointer wide screen, Helm-glance for touch or narrow
+ * — but the operator's choice always wins. Storage access is defensive (a privacy-mode throw just
+ * loses persistence).
  */
 export const DENSITIES = ['helm', 'desk'] as const;
 export type Density = (typeof DENSITIES)[number];
@@ -19,10 +20,12 @@ export function isDensity(value: unknown): value is Density {
   return typeof value === 'string' && (DENSITIES as readonly string[]).includes(value);
 }
 
-/** A wide pointer-driven screen defaults to Desk; touch/narrow defaults to the roomy Helm-glance. */
+/** Touch-first (coarse-pointer) devices default to Helm-glance regardless of width — a big helm
+ *  tablet still needs the large targets. Only a fine-pointer wide screen defaults to Desk. */
 function deviceDefault(): Density {
   try {
     if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
+      if (window.matchMedia('(pointer: coarse)').matches) return 'helm';
       if (window.matchMedia('(min-width: 1024px)').matches) return 'desk';
     }
   } catch {

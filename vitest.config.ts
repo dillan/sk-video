@@ -3,7 +3,8 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
     environment: 'node',
-    include: ['src/**/*.spec.ts'],
+    // scripts/ holds plain-node build tooling (e.g. the design-token exporter) with its own specs.
+    include: ['src/**/*.spec.ts', 'scripts/**/*.spec.mjs'],
     coverage: {
       provider: 'v8',
       include: ['src/**/*.ts'],

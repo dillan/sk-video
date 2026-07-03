@@ -181,4 +181,25 @@ describe('CameraControls', () => {
     expect(await screen.findByRole('menuitemradio', { name: /Auto/ })).toBeTruthy(); // vision folded in
     expect(screen.getByText('Listen')).toBeTruthy(); // capability folded in
   });
+
+  it('drives status dots and icon strokes from theme tokens so Night-Red can remap them', () => {
+    // Hardcoded hex here would survive the theme swap and leak blue/green light at night.
+    mockApi();
+    render(<CameraControls {...base} camera={camera()} live />);
+    const chip = screen.getByRole('button', { name: 'Stream variant' });
+    expect((chip.querySelector('.cchip__dot') as HTMLElement).style.background).toBe(
+      'var(--status-online)',
+    );
+    const vision = screen.getByRole('button', { name: 'Vision mode' });
+    expect(vision.querySelector('svg')?.getAttribute('style')).toContain('var(--cx-accent-ico)');
+  });
+
+  it('shows the idle stream dot from the status-dark token when not live', () => {
+    mockApi();
+    render(<CameraControls {...base} camera={camera()} live={false} />);
+    const chip = screen.getByRole('button', { name: 'Stream variant' });
+    expect((chip.querySelector('.cchip__dot') as HTMLElement).style.background).toBe(
+      'var(--status-dark)',
+    );
+  });
 });

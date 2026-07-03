@@ -12,19 +12,23 @@
  * Ported from the design system's ptz-pad-variant reference (SK Video — Deference v2).
  */
 
+/* Colours ride --ptz-* custom properties (they inherit through the shadow boundary), so Night-Red
+ * can remap the cool blue/white glass onto its red ramp from theme.css; the literals are the
+ * Dark/Day defaults. Ordinary theme selectors cannot reach into this shadow root. */
 const GLASS = {
   font: "ui-monospace,'SF Mono',Menlo,monospace",
   letter: '.14em',
-  ring: 'rgba(255,255,255,.09)',
-  ringLive: 'rgba(190,214,240,.4)',
-  glow: 'rgba(150,185,225,.34)',
-  chev: 'rgba(222,232,244,.5)',
-  accent: '#c8def2',
+  ring: 'var(--ptz-ring, rgba(255,255,255,.09))',
+  ringLive: 'var(--ptz-ring-live, rgba(190,214,240,.4))',
+  glow: 'var(--ptz-glow, rgba(150,185,225,.34))',
+  chev: 'var(--ptz-chev, rgba(222,232,244,.5))',
+  accent: 'var(--ptz-accent, #c8def2)',
   knobA: 'rgba(64,78,94,.5)',
   knobB: 'rgba(16,22,30,.42)',
-  nubA: '#d2e2f2',
-  nubB: '#8fa6bd',
-  hud: 'rgba(206,220,236,.85)',
+  nubA: 'var(--ptz-nub-a, #d2e2f2)',
+  nubB: 'var(--ptz-nub-b, #8fa6bd)',
+  nubHi: 'var(--ptz-nub-hi, #ffffff)',
+  hud: 'var(--ptz-hud, rgba(206,220,236,.85))',
 };
 
 interface IGeom {
@@ -132,7 +136,7 @@ class PtzPadVariant extends HTMLElement {
         .nub{width:${g.nub}px;height:${g.nub}px;border-radius:50%;
           background:radial-gradient(120% 120% at 50% 28%,${t.nubA},${t.nubB});
           box-shadow:inset 0 1px 1px rgba(255,255,255,.5),0 1px 2px rgba(0,0,0,.5);transition:background .16s ease;}
-        .knob.live .nub{background:radial-gradient(120% 120% at 50% 28%,#ffffff,${t.accent});}
+        .knob.live .nub{background:radial-gradient(120% 120% at 50% 28%,${t.nubHi},${t.accent});}
         .chev{position:absolute;width:${g.chev}px;height:${g.chev}px;margin:-${g.chev / 2}px 0 0 -${g.chev / 2}px;
           border:none;padding:0;border-radius:50%;cursor:pointer;color:${t.chev};background:transparent;
           box-shadow:none;display:flex;align-items:center;justify-content:center;
@@ -146,6 +150,14 @@ class PtzPadVariant extends HTMLElement {
           box-shadow:inset 0 0 0 1px rgba(255,255,255,.07);opacity:0;transition:opacity .2s ease;
           pointer-events:none;text-transform:uppercase;}
         .hud.show{opacity:1;}
+        /* The document-level reduced-motion/-transparency guards don't pierce the shadow boundary,
+         * so this style block carries its own. */
+        @media (prefers-reduced-motion: reduce){
+          .base,.guide,.knob,.nub,.chev,.hud{transition:none !important;}
+        }
+        @media (prefers-reduced-transparency: reduce){
+          .hud{background:rgb(6,10,16);}
+        }
       </style>
       <div class="wrap">
         ${chevHTML}

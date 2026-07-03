@@ -10,7 +10,7 @@
   "packageManager": "npm@11.16.0",
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "build:webapp": "npm --prefix webapp run build",
+    "build:webapp": "npm --prefix webapp run build && node scripts/export-tokens.mjs",
     "dev": "tsc -p tsconfig.json --watch",
     "dev:link": "scripts/dev-link.sh",
     "clean": "rm -rf dist",

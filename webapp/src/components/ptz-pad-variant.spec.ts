@@ -93,4 +93,20 @@ describe('<ptz-pad-variant> (glass)', () => {
     expect(events.at(-1)).toMatchObject({ type: 'step', dir: 'up', x: 0, y: 1 });
     up.dispatchEvent(pointer('pointerup', {}));
   });
+
+  it('themes its shadow styles via --ptz-* custom properties and carries its own a11y media guards', () => {
+    // Document-level [data-theme] selectors and reduced-motion/-transparency rules can't pierce the
+    // shadow boundary; inherited custom properties and in-shadow @media blocks are the contract.
+    const el = makePad();
+    const style = el.shadowRoot!.querySelector('style')!.textContent!;
+    for (const token of ['--ptz-ring', '--ptz-ring-live', '--ptz-glow', '--ptz-chev']) {
+      expect(style).toContain(`var(${token},`);
+    }
+    for (const token of ['--ptz-accent', '--ptz-nub-a', '--ptz-nub-b', '--ptz-nub-hi']) {
+      expect(style).toContain(`var(${token},`);
+    }
+    expect(style).toContain('var(--ptz-hud,');
+    expect(style).toContain('@media (prefers-reduced-motion: reduce)');
+    expect(style).toContain('@media (prefers-reduced-transparency: reduce)');
+  });
 });

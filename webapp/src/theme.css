@@ -40,6 +40,12 @@
   --radius-lg: 18px;
   --space: 8px;
   --tap-min: 44px;
+  /* Notch / home-indicator insets (viewport-fit=cover) — 0px wherever env() is unsupported. Shell
+   * edges (rail, content, tab bar) add these so landscape notches never clip controls. */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
   --font-ui: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   --font-num: ui-monospace, 'SF Mono', 'Roboto Mono', Menlo, Consolas, monospace;
 
@@ -95,6 +101,60 @@
   background: rgba(255, 129, 89, 0.14);
   box-shadow: inset 0 0 0 1px rgba(255, 129, 89, 0.3);
   color: var(--accent-bright);
+}
+/* Hardcoded blue/green fills survive the token swap, so each gets an explicit red-orange remap.
+ * Faint white fills (≤8% alpha) read as neutral gray on near-black and are left alone. */
+[data-theme='night'] .navitem[aria-current='page'] {
+  background: rgba(255, 129, 89, 0.14);
+  box-shadow: inset 0 0 0 1px rgba(255, 129, 89, 0.28);
+}
+[data-theme='night'] .btn:not(.btn--ghost):not(.btn--danger) {
+  background: rgba(255, 129, 89, 0.16);
+}
+[data-theme='night'] .iconbtn--on {
+  background: rgba(255, 129, 89, 0.18);
+  box-shadow: inset 0 0 0 1.5px rgba(255, 129, 89, 0.5);
+}
+[data-theme='night'] .mob__ok {
+  box-shadow: inset 0 0 0 1px rgba(255, 159, 10, 0.4);
+}
+/* The tile sheen stands in for video, so it takes the same luminance cap as the live player. */
+[data-theme='night'] .tile__sheen {
+  filter: brightness(0.4) saturate(0.5);
+}
+/* Review playback (recordings / incidents / imported clips / snapshots) gets the same luminance cap
+ * as the live player — a bright recorded frame blows out night vision exactly like a live one. */
+[data-theme='night'] :is(.vidrow__player, .snap__img) {
+  filter: brightness(0.4);
+}
+/* Cool-gray and white chrome floating over video moves onto the warm text ramp (no white at sea). */
+[data-theme='night'] .tile__meta {
+  color: var(--text-secondary);
+}
+[data-theme='night'] .focus__clock {
+  color: rgba(242, 105, 60, 0.85);
+}
+[data-theme='night'] .joystick {
+  border-color: rgba(255, 129, 89, 0.5);
+}
+[data-theme='night'] .snap__cam,
+[data-theme='night'] .mob__stagelabel {
+  color: var(--text-primary);
+  text-shadow: none;
+}
+/* Flatten the remaining glows and large drop shadows (dark adaptation + a Pi GPU win). The red
+ * safety pulses keep their keyframe ring — red carries the alarm and is night-safe. */
+[data-theme='night'] .rail__logo,
+[data-theme='night'] .mob__pulse,
+[data-theme='night'] .mob__arm,
+[data-theme='night'] .mob__reticle::after {
+  box-shadow: none;
+}
+[data-theme='night'] .focus__dock {
+  box-shadow: inset 0 0 0 1px var(--inset-ring);
+}
+[data-theme='night'] .menu__pop {
+  box-shadow: var(--cring);
 }
 
 /* Day: a sunlit-helm light theme. Chrome goes light; video stays on the invariant near-black mat. A few
@@ -172,7 +232,7 @@
   --tap-min: 40px;
 }
 [data-density='desk'] .content {
-  padding: 16px 20px 18px;
+  padding: calc(16px + var(--safe-top)) calc(20px + var(--safe-right)) 18px 20px;
 }
 [data-density='desk'] .panel {
   padding: 18px;
@@ -242,13 +302,13 @@ body {
   min-height: 0;
 }
 .rail {
-  width: 108px;
+  width: calc(108px + var(--safe-left));
   flex: none;
   background: var(--surface-1);
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 18px 0;
+  padding: calc(18px + var(--safe-top)) 0 calc(18px + var(--safe-bottom)) var(--safe-left);
   gap: 30px;
 }
 .rail__logo {
@@ -299,7 +359,8 @@ body {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  padding: 22px 24px 24px;
+  /* Left inset is absorbed by the rail beside us; the top/right edges meet the notch directly. */
+  padding: calc(22px + var(--safe-top)) calc(24px + var(--safe-right)) 24px 24px;
 }
 
 /* phone bottom tab bar — hidden on wider screens */
@@ -1423,7 +1484,9 @@ button.tile {
     display: none;
   }
   .content {
-    padding: 14px 14px calc(14px + env(safe-area-inset-bottom));
+    /* No rail on phones — the content meets every screen edge, so all four insets apply here. */
+    padding: calc(14px + var(--safe-top)) calc(14px + var(--safe-right))
+      calc(14px + var(--safe-bottom)) calc(14px + var(--safe-left));
     overflow-y: auto;
   }
   .mosaic {
@@ -1444,7 +1507,8 @@ button.tile {
     flex: none;
     border-top: 1px solid var(--hairline);
     background: var(--surface-1);
-    padding: 8px 10px calc(8px + env(safe-area-inset-bottom));
+    padding: 8px calc(10px + var(--safe-right)) calc(8px + var(--safe-bottom))
+      calc(10px + var(--safe-left));
   }
   .tabbar .navitem {
     flex: 1;
@@ -1459,7 +1523,7 @@ button.tile {
 /* ---- Desktop: a touch more density ---- */
 @media (min-width: 1280px) {
   .content {
-    padding: 26px 32px 30px;
+    padding: calc(26px + var(--safe-top)) calc(32px + var(--safe-right)) 30px 32px;
   }
 }
 
@@ -1842,8 +1906,10 @@ button.tile {
   bottom: 24px;
   z-index: 6;
 }
+/* Scoped under .ccap: the shell's nav rail also uses .rail, and an unscoped rule here would clobber
+ * its layout (padding/background/gap) for every viewport. */
 .pod,
-.rail {
+.ccap .rail {
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -1935,7 +2001,116 @@ button.tile {
 }
 
 /* Night-Red: flatten glass blur/translucency per the engineering-mode rules. */
-[data-theme='night'] :is(.cchip, .menu__pop, .pod, .rail, .aim__housing, .morebtn, .ctop__back) {
+[data-theme='night']
+  :is(.cchip, .menu__pop, .pod, .ccap .rail, .aim__housing, .morebtn, .ctop__back) {
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
+}
+
+/* Night-Red: the floating-cluster tokens above are blues / cool grays on :root and never went
+ * through the theme swap — remap them onto the red-orange ramp. Declared after the :root block so
+ * the later rule wins the equal-specificity cascade. */
+[data-theme='night'] {
+  --cglass: rgba(7, 9, 12, 0.66);
+  --cglass-solid: rgba(7, 9, 12, 0.92);
+  --cring: inset 0 0 0 1px rgba(255, 129, 89, 0.22);
+  --cx-accent: #ff8159;
+  --cx-accent-txt: #ff9a78;
+  --cx-accent-ico: #ff8159;
+  --cx-txt: #f2693c;
+  --cx-muted: #9c5230;
+  /* PTZ pad (shadow DOM) — custom properties inherit through the shadow boundary, so these reach
+   * the pad's internal glass styles where ordinary selectors cannot. */
+  --ptz-ring: rgba(255, 129, 89, 0.18);
+  --ptz-ring-live: rgba(255, 129, 89, 0.45);
+  --ptz-glow: rgba(0, 0, 0, 0);
+  --ptz-chev: rgba(255, 129, 89, 0.55);
+  --ptz-accent: #ff8159;
+  --ptz-nub-a: #f2693c;
+  --ptz-nub-b: #9c5230;
+  --ptz-nub-hi: #ff9a78;
+  --ptz-hud: rgba(242, 105, 60, 0.85);
+}
+/* Night-Red: cluster fills/text hardcoded in blue or cool gray move to the red-orange family. */
+[data-theme='night'] .menu__row--active {
+  background: rgba(255, 129, 89, 0.14);
+}
+[data-theme='night'] .toggle {
+  background: rgba(255, 129, 89, 0.14);
+}
+[data-theme='night'] .toggle::after {
+  background: var(--text-secondary);
+}
+[data-theme='night'] .toggle--on {
+  background: rgba(255, 129, 89, 0.5);
+}
+[data-theme='night'] .toggle--on::after {
+  background: #ffb08f;
+}
+[data-theme='night'] .rail__btn--on {
+  background: rgba(255, 129, 89, 0.18);
+  box-shadow: inset 0 0 0 1px rgba(255, 129, 89, 0.42);
+}
+[data-theme='night'] .livechip {
+  background: rgba(255, 129, 89, 0.14);
+  color: var(--text-secondary);
+}
+/* Re-assert the LIVE state: white-on-red is the one deliberate safety treatment kept at night. */
+[data-theme='night'] .livechip--on {
+  background: rgba(255, 59, 48, 0.92);
+  color: #fff;
+}
+[data-theme='night'] .ctop__name {
+  color: var(--text-primary);
+}
+[data-theme='night'] .cchip--mono {
+  color: var(--text-secondary);
+}
+[data-theme='night'] :is(.cchip__muted, .menu__title, .menu__sub) {
+  color: var(--text-dim);
+}
+[data-theme='night'] :is(.menu__row:disabled, .zoompill__btn:disabled) {
+  color: var(--text-faint);
+}
+
+/* Glass surfaces stack translucency + backdrop blur; when the OS asks for reduced transparency,
+ * every glass goes opaque and the blur (which then does nothing) is dropped. Values mirror each
+ * theme's glass base colour at full alpha. Last in the file so it wins the cascade. */
+@media (prefers-reduced-transparency: reduce) {
+  :root,
+  [data-theme='dark'] {
+    --glass: #0d1117;
+    --cglass: #0d1117;
+    --cglass-solid: #0d1117;
+  }
+  [data-theme='night'] {
+    --glass: #07090c;
+    --cglass: #07090c;
+    --cglass-solid: #07090c;
+  }
+  [data-theme='day'] {
+    /* Day chrome glass is light; clusters floating over video keep the dark glass tokens above. */
+    --glass: #ffffff;
+  }
+  .focus__dock,
+  .btn--ghost,
+  .cglass,
+  .cchip,
+  .menu__pop,
+  .ctop__back,
+  .aim__housing,
+  .pod,
+  .ccap .rail,
+  .morebtn {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+  /* One-off translucent fills go opaque so labels stay legible over a moving frame. */
+  .ctop__back,
+  .aim__housing {
+    background: var(--cglass);
+  }
+  .joystick {
+    background: var(--video-mat);
+  }
 }
