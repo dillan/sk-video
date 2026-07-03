@@ -201,6 +201,47 @@ describe('SignalKBridge — notifications', () => {
   });
 });
 
+describe('SignalKBridge — shared acknowledgement', () => {
+  it('acknowledges via the notifications API using the tracked id', () => {
+    const acked: string[] = [];
+    const h = makeApp();
+    (h.app.notifications as { acknowledge?: (id: string) => void }).acknowledge = (id) =>
+      acked.push(id);
+    const bridge = new SignalKBridge({ app: h.app, pluginId: 'sk-video' });
+    bridge.raiseNotification('mob', { state: 'emergency', message: 'Person overboard' });
+    expect(bridge.ackNotification('mob')).toBe(true);
+    expect(acked).toEqual(['note-1']);
+  });
+
+  it('falls back to a silenced (method: []) delta with the original state + message', () => {
+    const h = makeApp({ notifications: undefined });
+    const bridge = new SignalKBridge({ app: h.app, pluginId: 'sk-video' });
+    bridge.raiseNotification('mob', { state: 'emergency', message: 'Person overboard' });
+    expect(bridge.ackNotification('mob')).toBe(true);
+    const v = h.deltas.at(-1)!.msg.updates[0].values[0];
+    expect(v.path).toBe('notifications.sk-video.mob');
+    expect(v.value).toMatchObject({ state: 'emergency', message: 'Person overboard', method: [] });
+  });
+
+  it('refuses to ack a key that was never raised', () => {
+    const h = makeApp({ notifications: undefined });
+    const bridge = new SignalKBridge({ app: h.app, pluginId: 'sk-video' });
+    expect(bridge.ackNotification('ghost')).toBe(false);
+  });
+
+  it('degrades to the delta fallback when acknowledge() throws (canAcknowledge=false)', () => {
+    const h = makeApp();
+    (h.app.notifications as { acknowledge?: (id: string) => void }).acknowledge = () => {
+      throw new Error('canAcknowledge=false');
+    };
+    const bridge = new SignalKBridge({ app: h.app, pluginId: 'sk-video' });
+    bridge.raiseNotification('mob', { state: 'emergency', message: 'Person overboard' });
+    expect(bridge.ackNotification('mob')).toBe(true);
+    const v = h.deltas.at(-1)!.msg.updates[0].values[0];
+    expect(v.value).toMatchObject({ method: [] });
+  });
+});
+
 describe('SignalKBridge — actions', () => {
   it('registers a PUT handler on vessels.self sourced by the plugin id', () => {
     const h = makeApp();
