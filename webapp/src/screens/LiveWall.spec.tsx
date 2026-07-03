@@ -103,4 +103,24 @@ describe('LiveWall group chips', () => {
     await screen.findByText('Foredeck');
     expect(screen.queryByRole('navigation', { name: 'Camera groups' })).toBeNull();
   });
+
+  it('persists the picked group per device and restores it on the next visit (saved view)', async () => {
+    const store = new Map<string, string>();
+    vi.stubGlobal('localStorage', {
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => void store.set(k, v),
+    });
+    mockProjection(THREE_CAMS, THREE_GROUPS);
+    const first = render(<LiveWall onOpenCamera={() => undefined} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Forward' }));
+    expect(store.get('sk-video.wall-group')).toBe('sector:forward');
+    first.unmount();
+
+    mockProjection(THREE_CAMS, THREE_GROUPS);
+    render(<LiveWall onOpenCamera={() => undefined} />);
+    // The restored view filters immediately: only the Forward camera is on the wall.
+    await screen.findByText('Foredeck');
+    expect(screen.queryByText('Aftdeck')).toBeNull();
+    vi.unstubAllGlobals();
+  });
 });

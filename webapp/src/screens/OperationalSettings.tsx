@@ -259,6 +259,10 @@ export function OperationalSettings() {
           ))}
         </select>
       </label>
+      <p className="muted">
+        The override is advisory — it re-budgets features (recording channels, analytics hints) but
+        can’t make slower hardware faster. Leave it on auto-detect unless detection got it wrong.
+      </p>
 
       <div className="wizard__actions">
         <button

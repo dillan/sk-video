@@ -27,7 +27,22 @@ export function LiveWall({ onOpenCamera }: { onOpenCamera: (id: string) => void 
   const [states, setStates] = useState<Record<string, TileCategory>>({});
   // Group filter, in-memory only (a wall filter is a moment-to-moment choice, not a setting).
   // 'all' shows every camera, including any the layout groups omit (they cover enabled cameras only).
-  const [group, setGroup] = useState('all');
+  // The selection persists per device (the v1 "saved view") — storage failures just lose persistence.
+  const [group, setGroup] = useState(() => {
+    try {
+      return localStorage.getItem('sk-video.wall-group') ?? 'all';
+    } catch {
+      return 'all';
+    }
+  });
+  const pickGroup = useCallback((key: string) => {
+    setGroup(key);
+    try {
+      localStorage.setItem('sk-video.wall-group', key);
+    } catch {
+      /* persistence is best-effort */
+    }
+  }, []);
   const onState = useCallback(
     (id: string, category: TileCategory) =>
       setStates((prev) => (prev[id] === category ? prev : { ...prev, [id]: category })),
@@ -109,7 +124,7 @@ export function LiveWall({ onOpenCamera }: { onOpenCamera: (id: string) => void 
             type="button"
             className={`iconbtn iconbtn--wide${group === 'all' ? ' iconbtn--on' : ''}`}
             aria-pressed={group === 'all'}
-            onClick={() => setGroup('all')}
+            onClick={() => pickGroup('all')}
           >
             All cameras
           </button>
@@ -119,7 +134,7 @@ export function LiveWall({ onOpenCamera }: { onOpenCamera: (id: string) => void 
               type="button"
               className={`iconbtn iconbtn--wide${group === g.key ? ' iconbtn--on' : ''}`}
               aria-pressed={group === g.key}
-              onClick={() => setGroup(g.key)}
+              onClick={() => pickGroup(g.key)}
             >
               {g.label}
             </button>
