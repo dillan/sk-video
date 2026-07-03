@@ -38,12 +38,29 @@ describe('Snapshots', () => {
   it('shows the gallery and is honest about a missing GPS fix', async () => {
     mockSnaps(SNAPS);
     render(<Snapshots />);
-    await waitFor(() => expect(screen.getByText('bow')).toBeTruthy());
-    expect(screen.getByText('stern')).toBeTruthy();
+    // camera names appear both as gallery captions and as filter tabs
+    await waitFor(() => expect(screen.getAllByText('bow').length).toBeGreaterThan(0));
+    expect(screen.getAllByText('stern').length).toBeGreaterThan(0);
     // s1 had no fix → honest "No GPS fix"; s2 had one → no such badge on its tile
     expect(screen.getByText('No GPS fix')).toBeTruthy();
     // each snapshot renders an <img> pointing at its blob url
     expect(document.querySelectorAll('img.snap__img').length).toBe(2);
+  });
+
+  it('shows the capture time on every card', async () => {
+    mockSnaps(SNAPS);
+    render(<Snapshots />);
+    await waitFor(() => expect(document.querySelectorAll('.snap__meta time').length).toBe(2));
+  });
+
+  it('filters the gallery by camera', async () => {
+    mockSnaps(SNAPS);
+    render(<Snapshots />);
+    await waitFor(() => expect(screen.getByRole('tab', { name: 'stern' })).toBeTruthy());
+    screen.getByRole('tab', { name: 'stern' }).click();
+    await waitFor(() => expect(document.querySelectorAll('img.snap__img').length).toBe(1));
+    screen.getByRole('tab', { name: 'All' }).click();
+    await waitFor(() => expect(document.querySelectorAll('img.snap__img').length).toBe(2));
   });
 
   it('shows an honest empty state', async () => {

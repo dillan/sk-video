@@ -706,9 +706,38 @@ export interface IIncidentBundle {
   failures: IIncidentFailure[];
   digest: { algo: 'sha256'; value: string };
   telemetry: { coversPreRoll: boolean; positionAvailable?: boolean };
+  /** What fired the capture and when — the anchor for the requested-vs-actual span. */
+  trigger?: { source: string; firedAt: number; reason?: string };
+  /** The requested pre/post-roll around the trigger. */
+  window?: { preMs: number; postMs: number };
   label?: string;
   notes?: string;
   pinned?: boolean;
+}
+
+/** The requested capture span vs what the clips actually cover; null when nothing is comparable. */
+export function incidentSpan(
+  b: IIncidentBundle,
+): {
+  requested: { start: number; end: number };
+  actual: { start: number; end: number } | null;
+} | null {
+  if (!b.trigger || !b.window) return null;
+  const requested = {
+    start: b.trigger.firedAt - b.window.preMs,
+    end: b.trigger.firedAt + b.window.postMs,
+  };
+  const covered = b.assets
+    .map((a) => a.coverage)
+    .filter((c): c is NonNullable<IIncidentAsset['coverage']> => c != null);
+  const actual =
+    covered.length > 0
+      ? {
+          start: Math.min(...covered.map((c) => c.actualStartMs)),
+          end: Math.max(...covered.map((c) => c.actualEndMs)),
+        }
+      : null;
+  return { requested, actual };
 }
 
 export const fetchIncidents = (signal?: AbortSignal): Promise<IIncidentListItem[]> =>

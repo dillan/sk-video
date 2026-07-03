@@ -112,13 +112,35 @@ export function registerRecordingRoutes(
 
   // Scrubbable-timeline contract for the widget: per-camera tracks with derived segment durations and
   // coverage gaps. Registered before '/recordings/:name' so the literal path isn't taken as a name.
-  router.get('/recordings/timeline', (_req: Request, res: Response) => {
+  // `?camera=` narrows to one track; `?from=`/`?to=` (epoch ms) window the scan so a client reviewing
+  // one hour never pays for the whole rolling buffer.
+  router.get('/recordings/timeline', (req: Request, res: Response) => {
     const manager = requireManager(res);
     if (!manager) {
       return;
     }
+    const numQuery = (v: unknown): number | undefined => {
+      if (typeof v !== 'string' || v === '') return undefined;
+      const n = Number(v);
+      return Number.isFinite(n) ? n : undefined;
+    };
+    const camera = typeof req.query.camera === 'string' ? req.query.camera : undefined;
+    const from = numQuery(req.query.from);
+    const to = numQuery(req.query.to);
+    const nominalMs = manager.segmentLengthSeconds() * 1000;
+    let segments = listSegments();
+    if (camera !== undefined) {
+      segments = segments.filter((s) => s.cameraId === camera);
+    }
+    if (from !== undefined) {
+      // A segment starting up to one nominal length before the window can still overlap it.
+      segments = segments.filter((s) => s.startedAt >= from - nominalMs);
+    }
+    if (to !== undefined) {
+      segments = segments.filter((s) => s.startedAt <= to);
+    }
     res.json(
-      buildRecordingTimeline(listSegments(), {
+      buildRecordingTimeline(segments, {
         now: now(),
         activeCameras: manager.activeCameras(),
         segmentSeconds: manager.segmentLengthSeconds(),

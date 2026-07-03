@@ -69,7 +69,7 @@ function makeRes() {
   };
   return res;
 }
-const fakeReq = (over: Partial<Request> = {}) => ({ params: {}, ...over }) as Request;
+const fakeReq = (over: Partial<Request> = {}) => ({ params: {}, query: {}, ...over }) as Request;
 
 describe('registerSnapshotReadRoutes', () => {
   it('lists snapshots newest-first', () => {
@@ -78,6 +78,18 @@ describe('registerSnapshotReadRoutes', () => {
     handlers['GET /snapshots'](fakeReq(), res as unknown as Response);
     const ids = (res.body as { snapshots: ISnapshotMetadata[] }).snapshots.map((s) => s.id);
     expect(ids).toEqual(['b', 'c', 'a']); // createdAt 300, 200, 100
+  });
+
+  it('filters the gallery by camera', () => {
+    const { handlers } = setup();
+    const res = makeRes();
+    handlers['GET /snapshots'](
+      fakeReq({ query: { camera: 'bow' } as never }),
+      res as unknown as Response,
+    );
+    const rows = (res.body as { snapshots: ISnapshotMetadata[] }).snapshots;
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.every((s) => s.cameraId === 'bow')).toBe(true);
   });
 
   it('serves a JPEG blob by id with the stored content type', () => {

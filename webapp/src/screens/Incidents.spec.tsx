@@ -27,6 +27,8 @@ const DETAIL = {
   failures: [{ kind: 'clip', cameraId: 'stern', reason: 'no DVR segments overlapped the window' }],
   digest: { algo: 'sha256', value: 'x' },
   telemetry: { coversPreRoll: false },
+  trigger: { source: 'manual', firedAt: 100_000 },
+  window: { preMs: 30_000, postMs: 60_000 },
   pinned: false,
 };
 const LIST = [
@@ -67,6 +69,7 @@ function mockApi(opts: { deleteStatus?: number } = {}) {
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  vi.useRealTimers(); // a failed fake-timer test must not starve the rest of the file
 });
 
 describe('Incidents', () => {
@@ -85,6 +88,66 @@ describe('Incidents', () => {
     await waitFor(() => expect(screen.getByText(/no DVR segments overlapped/)).toBeTruthy());
     expect(screen.getByText(/file-integrity check, not/)).toBeTruthy();
     expect(screen.getByText(/clip · bow/)).toBeTruthy();
+  });
+
+  it('shows the requested-vs-actual capture span in the detail view', async () => {
+    // The clip actually covers less than requested — the span row says so plainly.
+    const withCoverage = {
+      ...DETAIL,
+      assets: [
+        {
+          ...DETAIL.assets[0],
+          coverage: { actualStartMs: 80_000, actualEndMs: 140_000, contiguous: true, segmentCount: 2 },
+        },
+      ],
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) =>
+        /\/incidents\/[^/]+$/.test(String(url))
+          ? ok(withCoverage)
+          : ok({ incidents: LIST }),
+      ),
+    );
+    render(<Incidents />);
+    fireEvent.click(await screen.findByRole('button', { name: /bow, stern/ }));
+    await waitFor(() => expect(screen.getByText(/Requested /)).toBeTruthy());
+    expect(screen.getByText(/captured /)).toBeTruthy();
+  });
+
+  it('polls a capturing bundle until it settles (status reconciled without a manual reload)', async () => {
+    vi.useFakeTimers();
+    let phase = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        const u = String(url);
+        if (/\/incidents\/[^/]+$/.test(u)) {
+          phase += 1;
+          return ok({ ...DETAIL, status: phase < 2 ? 'capturing' : 'partial' });
+        }
+        return ok({ incidents: LIST });
+      }),
+    );
+    render(<Incidents />);
+    const { act } = await import('@testing-library/react');
+    // resolve the list + open the detail
+    await act(async () => {
+      await Promise.resolve();
+    });
+    fireEvent.click(screen.getByRole('button', { name: /bow, stern/ }));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(screen.getByText('Capturing…')).toBeTruthy();
+    await act(async () => {
+      vi.advanceTimersByTime(3100);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    // Both the status pill and the failures chip say PARTIAL once settled.
+    expect(screen.getAllByText(/PARTIAL/).length).toBeGreaterThan(0);
+    vi.useRealTimers();
   });
 
   it('pins a bundle (PATCH)', async () => {

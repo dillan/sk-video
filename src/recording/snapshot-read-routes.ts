@@ -34,12 +34,17 @@ export function registerSnapshotReadRoutes(
     return store;
   };
 
-  router.get('/snapshots', (_req: Request, res: Response) => {
+  router.get('/snapshots', (req: Request, res: Response) => {
     const store = requireStore(res);
     if (!store) {
       return;
     }
-    const snapshots = [...store.list()].sort((a, b) => b.createdAt - a.createdAt);
+    let snapshots = [...store.list()].sort((a, b) => b.createdAt - a.createdAt);
+    // `?camera=` narrows the gallery to one camera's stills.
+    const camera = req.query.camera;
+    if (typeof camera === 'string' && camera !== '') {
+      snapshots = snapshots.filter((s) => s.cameraId === camera);
+    }
     res.json({ snapshots });
   });
 

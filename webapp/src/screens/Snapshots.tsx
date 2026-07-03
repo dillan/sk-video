@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { fetchSnapshots, snapshotUrl, type ISnapshot } from '../api';
 import { formatLatLon } from '../lib/format';
 
@@ -10,6 +10,10 @@ import { formatLatLon } from '../lib/format';
 export function Snapshots() {
   const [snaps, setSnaps] = useState<ISnapshot[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [camera, setCamera] = useState<string | null>(null);
+
+  const cameras = useMemo(() => [...new Set((snaps ?? []).map((s) => s.cameraId))].sort(), [snaps]);
+  const shown = camera ? (snaps ?? []).filter((s) => s.cameraId === camera) : (snaps ?? []);
 
   useEffect(() => {
     const ctrl = new AbortController();
@@ -34,6 +38,36 @@ export function Snapshots() {
         was no GPS fix the stamp says so, never a guessed position.
       </p>
 
+      {cameras.length > 1 && (
+        <div
+          role="tablist"
+          aria-label="Camera filter"
+          style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}
+        >
+          <button
+            type="button"
+            role="tab"
+            aria-selected={camera === null}
+            className={`chip ${camera === null ? 'chip--info' : 'chip--neutral'}`}
+            onClick={() => setCamera(null)}
+          >
+            All
+          </button>
+          {cameras.map((id) => (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              aria-selected={camera === id}
+              className={`chip ${camera === id ? 'chip--info' : 'chip--neutral'}`}
+              onClick={() => setCamera(id)}
+            >
+              {id}
+            </button>
+          ))}
+        </div>
+      )}
+
       {err && <div className="chip chip--caution">Can’t load snapshots ({err})</div>}
       {snaps && snaps.length === 0 && !err && (
         <div className="empty">
@@ -41,9 +75,9 @@ export function Snapshots() {
           <p className="muted">Capture one with Snapshot on a camera.</p>
         </div>
       )}
-      {snaps && snaps.length > 0 && (
+      {shown.length > 0 && (
         <div className="snapgrid">
-          {snaps.map((s) => (
+          {shown.map((s) => (
             <a
               key={s.id}
               className="snap"
@@ -54,6 +88,9 @@ export function Snapshots() {
               <img className="snap__img" src={snapshotUrl(s.id)} alt="" loading="lazy" />
               <div className="snap__meta">
                 <span className="snap__cam">{s.cameraId}</span>
+                <time className="mono muted" dateTime={new Date(s.createdAt).toISOString()}>
+                  {new Date(s.createdAt).toLocaleString()}
+                </time>
                 {s.telemetry.positionAvailable && s.telemetry.position ? (
                   <span className="chip chip--neutral mono">
                     {formatLatLon(s.telemetry.position.latitude, s.telemetry.position.longitude)}

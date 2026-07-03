@@ -53,7 +53,7 @@ class FakeRes extends Writable {
 }
 
 function fakeReq(over: Partial<Request> & { body?: unknown } = {}): Request {
-  return { params: {}, headers: {}, on: () => undefined, ...over } as unknown as Request;
+  return { params: {}, query: {}, headers: {}, on: () => undefined, ...over } as unknown as Request;
 }
 
 function makeManager(maxChannels = 2) {
@@ -229,6 +229,33 @@ describe('registerRecordingRoutes', () => {
     ]);
     // First segment's span is capped to the 1s gap to the next; the active last segment grows from now.
     expect(tl.cameras[0].segments[0].durationMs).toBe(1000);
+  });
+
+  it('GET /recordings/timeline windows by camera and time range', () => {
+    const { handlers } = setup();
+    const res = new FakeRes();
+    handlers.get('GET /recordings/timeline')!(
+      fakeReq({ query: { camera: 'ghost' } as never }),
+      res as unknown as Response,
+    );
+    expect((res.body as { cameras: unknown[] }).cameras).toHaveLength(0);
+
+    const res2 = new FakeRes();
+    // Fixtures start at 1000 and 2000; a window ending before both excludes the whole track.
+    handlers.get('GET /recordings/timeline')!(
+      fakeReq({ query: { camera: 'bow', to: '500' } as never }),
+      res2 as unknown as Response,
+    );
+    expect((res2.body as { cameras: unknown[] }).cameras).toHaveLength(0);
+
+    const res3 = new FakeRes();
+    // A from-window keeps segments that can still overlap it (one nominal length of slack).
+    handlers.get('GET /recordings/timeline')!(
+      fakeReq({ query: { from: '2000' } as never }),
+      res3 as unknown as Response,
+    );
+    const tracks = (res3.body as { cameras: { segments: unknown[] }[] }).cameras;
+    expect(tracks).toHaveLength(1);
   });
 
   it('GET /recordings/timeline returns 503 before the plugin has started', () => {

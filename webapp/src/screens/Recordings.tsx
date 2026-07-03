@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   fetchRecordingTimeline,
+  fetchStatus,
   recordingUrl,
   markIncident,
   type IRecordingCameraTimeline,
@@ -101,9 +102,15 @@ function CameraDvr({
           <button
             type="button"
             className="iconbtn iconbtn--wide"
-            disabled={marking}
+            // A gap has nothing in the buffer to cut — offering the mark there would mint an
+            // empty/failed bundle, so the affordance is honestly disabled instead.
+            disabled={marking || !loc}
             onClick={() => onMark(cam.camera, t)}
-            title="Capture an incident bundle from the rolling buffer around this moment"
+            title={
+              loc
+                ? 'Capture an incident bundle from the rolling buffer around this moment'
+                : 'No coverage at this point — there is nothing in the buffer to capture'
+            }
           >
             {marking ? 'Marking…' : 'Mark incident here'}
           </button>
@@ -125,6 +132,7 @@ export function Recordings() {
   const [marking, setMarking] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ kind: 'info' | 'caution'; text: string } | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
+  const [recordingChannels, setRecordingChannels] = useState<number | null>(null);
 
   useEffect(() => {
     const ctrl = new AbortController();
@@ -133,6 +141,16 @@ export function Recordings() {
       .catch((e: unknown) => {
         if (!ctrl.signal.aborted) setErr(e instanceof Error ? e.message : 'unreachable');
       });
+    // Tier context for the empty state: "no recordings" on a tier with zero channels is a
+    // capability fact, not an operator omission.
+    fetchStatus(ctrl.signal)
+      .then((s) => {
+        const caps = (
+          s.hardware as { capabilities?: { maxRecordingChannels?: number } } | null | undefined
+        )?.capabilities;
+        setRecordingChannels(caps?.maxRecordingChannels ?? null);
+      })
+      .catch(() => undefined);
     return () => ctrl.abort();
   }, []);
 
@@ -189,9 +207,14 @@ export function Recordings() {
       {cameras && cameras.length === 0 && !err && (
         <div className="empty">
           <p>No recordings yet.</p>
-          <p className="muted">
-            Recording needs a capable hardware tier; start it with Record on a camera.
-          </p>
+          {recordingChannels === 0 ? (
+            <p className="muted">
+              Recording isn’t available on this hardware tier — live viewing still works. A Pi&nbsp;4
+              or better enables the rolling buffer.
+            </p>
+          ) : (
+            <p className="muted">Start one with Record on a camera.</p>
+          )}
         </div>
       )}
 

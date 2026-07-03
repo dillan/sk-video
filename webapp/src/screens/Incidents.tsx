@@ -4,6 +4,7 @@ import {
   fetchIncident,
   incidentAssetUrl,
   incidentExportUrl,
+  incidentSpan,
   setIncidentPinned,
   deleteIncident,
   ApiError,
@@ -12,7 +13,7 @@ import {
   type IIncidentAsset,
   type TIncidentStatus,
 } from '../api';
-import { formatBytes } from '../lib/format';
+import { formatBytes, formatClock } from '../lib/format';
 
 interface Msg {
   kind: 'caution' | 'info';
@@ -125,6 +126,19 @@ export function Incidents() {
     return () => ctrl.abort();
   }, [selected]);
 
+  // Reconcile an in-flight capture: while the bundle is still capturing, poll it so the status
+  // pill and asset list converge on the final (possibly PARTIAL) truth without a manual reload.
+  useEffect(() => {
+    if (!selected || !detail) return;
+    if (detail.status !== 'capturing') return;
+    const t = setInterval(() => {
+      fetchIncident(selected)
+        .then(setDetail)
+        .catch(() => undefined);
+    }, 3000);
+    return () => clearInterval(t);
+  }, [selected, detail]);
+
   const refreshDetail = async (id: string) => {
     const d = await fetchIncident(id).catch(() => null);
     if (d) setDetail(d);
@@ -210,6 +224,20 @@ export function Incidents() {
           Cameras: {detail.cameras.join(', ') || '—'}. sha256 is a file-integrity check, not
           chain-of-custody. Telemetry is forward-only from the trigger — it doesn’t cover pre-roll.
         </p>
+
+        {(() => {
+          const span = incidentSpan(detail);
+          if (!span) return null;
+          return (
+            <p className="muted mono">
+              Requested {formatClock(span.requested.start)}–{formatClock(span.requested.end)}
+              {' · '}
+              {span.actual
+                ? `captured ${formatClock(span.actual.start)}–${formatClock(span.actual.end)}`
+                : 'nothing captured yet'}
+            </p>
+          );
+        })()}
 
         {detail.failures.length > 0 && (
           <div className="chip chip--caution">

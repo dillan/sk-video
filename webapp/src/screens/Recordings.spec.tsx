@@ -77,6 +77,20 @@ describe('Recordings — DVR scrubber', () => {
     await waitFor(() => expect(screen.getByText(/Incident marked/)).toBeTruthy());
   });
 
+  it('disables Mark incident inside a coverage gap (nothing in the buffer to capture)', async () => {
+    mockApi([cam]);
+    render(<Recordings />);
+    const track = await screen.findByRole('slider', { name: /Scrub bow/ });
+    // Click at the far right of the track — inside the trailing gap.
+    Object.defineProperty(track, 'getBoundingClientRect', {
+      value: () => ({ left: 0, width: 100, top: 0, height: 10, right: 100, bottom: 10 }),
+    });
+    fireEvent.click(track, { clientX: 99 });
+    await waitFor(() => expect(screen.getByText(/No coverage at this point/)).toBeTruthy());
+    const mark = screen.getByRole('button', { name: 'Mark incident here' }) as HTMLButtonElement;
+    expect(mark.disabled).toBe(true);
+  });
+
   it('shows an honest empty state', async () => {
     mockApi([]);
     render(<Recordings />);
