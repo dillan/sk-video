@@ -53,6 +53,31 @@ export function isSecurityEnabled(strategy: ISecurityStrategy | undefined): bool
   }
 }
 
+/**
+ * The principal's coarse permission level ('readonly' | 'readwrite' | 'admin') when the server
+ * exposes one on the request, else null. The principal shape is not part of the public server API,
+ * so this reads it structurally and reports "unknown" rather than guessing.
+ */
+export function principalPermissions(req: IAuthenticatableRequest): string | null {
+  const principal = req.skPrincipal;
+  if (principal && typeof principal === 'object') {
+    const permissions = (principal as { permissions?: unknown }).permissions;
+    if (typeof permissions === 'string') {
+      return permissions;
+    }
+  }
+  return null;
+}
+
+/**
+ * True only when the principal is KNOWN read-only. An unknown/absent permission shape is never
+ * treated as read-only — denying writes on a guess would lock out legitimate users on servers
+ * whose principal shape differs; known-readonly is the only safe thing to enforce.
+ */
+export function isReadOnlyPrincipal(req: IAuthenticatableRequest): boolean {
+  return principalPermissions(req) === 'readonly';
+}
+
 export function isAuthorizedSensitiveRequest(
   strategy: ISecurityStrategy | undefined,
   req: IAuthenticatableRequest,

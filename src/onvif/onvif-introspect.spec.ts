@@ -167,6 +167,44 @@ describe('introspectOnvifCamera', () => {
     ]);
   });
 
+  it('never labels a HIGHER-res H.264 profile the substream (inverted-default camera)', async () => {
+    // The camera's default profile is its LOW-res one; the 4K H.264 profile must not become "sub".
+    const result = await introspectOnvifCamera(
+      { host: '192.168.1.50' },
+      deps({
+        connectFactory: () => async () =>
+          fakeCam({
+            streamUri: 'rtsp://192.168.1.50:554/Preview_01_low',
+            profiles: [
+              {
+                $: { token: 'low' },
+                name: 'Low',
+                videoEncoderConfiguration: {
+                  encoding: 'H264',
+                  resolution: { width: 640, height: 480 },
+                },
+              },
+              {
+                $: { token: 'high' },
+                name: 'High',
+                videoEncoderConfiguration: {
+                  encoding: 'H264',
+                  resolution: { width: 3840, height: 2160 },
+                },
+              },
+            ],
+            streamUriByToken: {
+              low: 'rtsp://192.168.1.50:554/Preview_01_low',
+              high: 'rtsp://192.168.1.50:554/Preview_01_high',
+            },
+          }),
+      }),
+    );
+    expect(result.source).toMatchObject({ path: '/Preview_01_low' });
+    expect(result.substreams).toBeFalsy();
+    expect(result.substreamPath).toBeUndefined();
+  });
+
   it('does not adopt a substream that resolves to a forbidden host', async () => {
     const result = await introspectOnvifCamera(
       { host: '192.168.1.50' },

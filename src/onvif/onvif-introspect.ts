@@ -213,12 +213,20 @@ function pickSubstream(
   if (!mainSource) {
     return undefined;
   }
+  // Guard the inverted-default case: if the camera's default profile is its LOW-res one, a
+  // higher-res H.264 profile must not be labelled the "sub". Only enforceable when both sides
+  // report a resolution (area 0 = unknown -> keep the candidate rather than lose the substream).
+  const main = streams.find(
+    (s) => sameEndpoint(s.source, mainSource) && s.source.path === mainSource.path,
+  );
+  const mainArea = main ? streamArea(main) : 0;
   const candidates = streams.filter(
     (s) =>
       s.codec === 'h264' &&
       !!s.source.path &&
       s.source.path !== mainSource.path &&
-      sameEndpoint(s.source, mainSource),
+      sameEndpoint(s.source, mainSource) &&
+      (mainArea === 0 || streamArea(s) === 0 || streamArea(s) < mainArea),
   );
   return [...candidates].sort((a, b) => streamArea(a) - streamArea(b))[0];
 }

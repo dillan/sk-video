@@ -23,6 +23,14 @@ describe('describeAuth', () => {
     expect(describeAuth({ securityEnabled: true, authenticated: false, pluginVersion: '1' })).toBe(
       'secured · sign in required',
     );
+    expect(
+      describeAuth({
+        securityEnabled: true,
+        authenticated: true,
+        readOnly: true,
+        pluginVersion: '1',
+      }),
+    ).toBe('secured · read-only');
   });
 });
 

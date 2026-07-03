@@ -1,6 +1,7 @@
 import type { IRouter, Request, Response } from 'express';
 import {
   isAuthorizedSensitiveRequest,
+  isReadOnlyPrincipal,
   isSecurityEnabled,
   type IAuthenticatableRequest,
   type ISecurityStrategy,
@@ -19,6 +20,8 @@ export interface ISessionInfo {
   securityEnabled: boolean;
   /** This request is allowed to perform sensitive actions (always true on an open server). */
   authenticated: boolean;
+  /** The principal is KNOWN read-only — the app disables write controls. Unknown shapes read false. */
+  readOnly: boolean;
   /** The plugin's version, so the app can detect a stale shell after a redeploy. */
   pluginVersion: string;
 }
@@ -31,6 +34,7 @@ export function describeSession(
   return {
     securityEnabled: isSecurityEnabled(strategy),
     authenticated: isAuthorizedSensitiveRequest(strategy, req),
+    readOnly: isReadOnlyPrincipal(req),
     pluginVersion,
   };
 }

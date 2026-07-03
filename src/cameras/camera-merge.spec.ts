@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mergeDiscovered } from './camera-merge';
+import { mergeDiscovered, isStableSerial } from './camera-merge';
 import type { ICamera } from './camera-validation';
 import type { IIntrospectResult } from '../onvif/onvif-introspect';
 
@@ -69,5 +69,20 @@ describe('mergeDiscovered', () => {
     });
     expect(bad.capabilities?.substreams).toBe(false);
     expect(bad.media?.substreamPath).toBeUndefined();
+  });
+});
+
+describe('isStableSerial (camera identity hygiene)', () => {
+  it('rejects IP-shaped and empty serials — an address is not an identity', () => {
+    expect(isStableSerial('192.168.1.50')).toBe(false);
+    expect(isStableSerial('')).toBe(false);
+    expect(isStableSerial('   ')).toBe(false);
+    expect(isStableSerial('fe80::abcd:1')).toBe(false);
+  });
+
+  it('keeps real serials and MAC addresses (both durable)', () => {
+    expect(isStableSerial('QSX1234567890')).toBe(true);
+    expect(isStableSerial('aa:bb:cc:dd:ee:ff')).toBe(true);
+    expect(isStableSerial('0000-1111-2222')).toBe(true);
   });
 });

@@ -42,6 +42,7 @@ import { ImagingPresetApplier } from './onvif/imaging-apply';
 import { isAfterDusk } from './safety/dusk';
 import {
   isAuthorizedSensitiveRequest,
+  isReadOnlyPrincipal,
   type ISecurityStrategy,
   type IAuthenticatableRequest,
 } from './security/request-auth';
@@ -275,11 +276,17 @@ export = function (app: ServerAPI): Plugin {
   // credential routes can't be used to enumerate which cameras have a stored login. Open servers and
   // authenticated callers pass through. Returns true when the request was rejected.
   const unauthorized = (req: Request, res: Response): boolean => {
-    if (isAuthorizedSensitiveRequest(securityStrategy, req as IAuthenticatableRequest)) {
-      return false;
+    if (!isAuthorizedSensitiveRequest(securityStrategy, req as IAuthenticatableRequest)) {
+      res.status(401).json({ error: 'authentication required' });
+      return true;
     }
-    res.status(401).json({ error: 'authentication required' });
-    return true;
+    // Authenticated but KNOWN read-only: a readonly Signal K principal must not trigger writes
+    // (arm MOB, record, PTZ, delete). An unknown permission shape passes — only certainty denies.
+    if (isReadOnlyPrincipal(req as IAuthenticatableRequest)) {
+      res.status(403).json({ error: 'write permission required' });
+      return true;
+    }
+    return false;
   };
 
   async function runSync(): Promise<void> {

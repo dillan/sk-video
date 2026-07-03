@@ -130,6 +130,24 @@ export function mediaFromIntrospect(r: IIntrospectResult): {
   return media;
 }
 
+/**
+ * Whether a camera-reported serial is a durable identity. Some vendors report their IP address (or
+ * nothing) as the serial — persisting that as identity breaks dedupe the moment DHCP moves the
+ * camera, so such serials are dropped and identity falls back to manufacturer+model.
+ */
+export function isStableSerial(serial: string): boolean {
+  const trimmed = serial.trim();
+  if (trimmed === '') return false;
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(trimmed)) return false; // IPv4-shaped
+  if (trimmed.includes(':') && /^[0-9a-f:.]+$/i.test(trimmed)) {
+    const groups = trimmed.split(':');
+    // A MAC (six 2-hex-digit groups) IS a durable identity; other colon-hex is IPv6-shaped.
+    const isMac = groups.length === 6 && groups.every((g) => /^[0-9a-f]{2}$/i.test(g));
+    if (!isMac) return false;
+  }
+  return true;
+}
+
 /** Device identity (durable id + firmware) from the scan, when the camera reported any of it. */
 export function deviceFromIntrospect(
   r: IIntrospectResult,
@@ -137,7 +155,9 @@ export function deviceFromIntrospect(
   const device: { manufacturer?: string; model?: string; serial?: string; firmware?: string } = {};
   if (r.manufacturer) device.manufacturer = r.manufacturer;
   if (r.model) device.model = r.model;
-  if (r.serialNumber !== undefined) device.serial = String(r.serialNumber);
+  if (r.serialNumber !== undefined && isStableSerial(String(r.serialNumber))) {
+    device.serial = String(r.serialNumber);
+  }
   if (r.firmwareVersion) device.firmware = r.firmwareVersion;
   return Object.keys(device).length ? device : undefined;
 }

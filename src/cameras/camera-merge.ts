@@ -14,6 +14,24 @@ import type { IIntrospectResult } from '../onvif/onvif-introspect';
 const SAFE_PATH = /^\/[\w\-./~]*$/;
 const safePath = (p?: string): boolean => !!p && SAFE_PATH.test(p) && !p.includes('..');
 
+/**
+ * Whether a camera-reported serial is a durable identity. Some vendors report their IP address (or
+ * nothing) as the serial; persisting that as identity breaks dedupe and the never-seen-vs-known
+ * health UX the moment DHCP hands out a new lease — fall back to manufacturer+model instead.
+ */
+export function isStableSerial(serial: string): boolean {
+  const trimmed = serial.trim();
+  if (trimmed === '') return false;
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(trimmed)) return false; // IPv4-shaped
+  if (trimmed.includes(':') && /^[0-9a-f:.]+$/i.test(trimmed)) {
+    const groups = trimmed.split(':');
+    // A MAC (six 2-hex-digit groups) IS a durable identity; anything else colon-hex is IPv6-shaped.
+    const isMac = groups.length === 6 && groups.every((g) => /^[0-9a-f]{2}$/i.test(g));
+    if (!isMac) return false;
+  }
+  return true;
+}
+
 export function mergeDiscovered(existing: ICamera, r: IIntrospectResult): ICamera {
   const hasSub = r.substreams === true && safePath(r.substreamPath);
   const capabilities: ICameraCapabilities = {
@@ -44,7 +62,9 @@ export function mergeDiscovered(existing: ICamera, r: IIntrospectResult): ICamer
   const device = { ...existing.device };
   if (r.manufacturer) device.manufacturer = r.manufacturer;
   if (r.model) device.model = r.model;
-  if (r.serialNumber !== undefined) device.serial = String(r.serialNumber);
+  if (r.serialNumber !== undefined && isStableSerial(String(r.serialNumber))) {
+    device.serial = String(r.serialNumber);
+  }
   if (r.firmwareVersion) device.firmware = r.firmwareVersion;
 
   return {

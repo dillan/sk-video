@@ -7,6 +7,7 @@ import {
   draftFromIntrospect,
   toResourceBody,
   mergeRescan,
+  isStableSerial,
 } from './onboard';
 import type { ICandidate, IIntrospectResult, ICameraEntry } from '../api';
 
@@ -242,5 +243,18 @@ describe('mergeRescan', () => {
     expect(body.media?.projection).toBe('equirect');
     // The resource body must not carry the entry id (that's the URL param).
     expect(body).not.toHaveProperty('id');
+  });
+});
+
+describe('isStableSerial (identity hygiene)', () => {
+  it('drops IP-shaped and empty serials so an address never persists as identity', () => {
+    expect(isStableSerial('192.168.1.50')).toBe(false);
+    expect(isStableSerial('')).toBe(false);
+    expect(isStableSerial('fe80::abcd:1')).toBe(false);
+  });
+
+  it('keeps real serials and MAC addresses', () => {
+    expect(isStableSerial('QSX1234567890')).toBe(true);
+    expect(isStableSerial('aa:bb:cc:dd:ee:ff')).toBe(true);
   });
 });

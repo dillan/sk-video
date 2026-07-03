@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { isAuthorizedSensitiveRequest, isSecurityEnabled } from './request-auth';
+import {
+  isAuthorizedSensitiveRequest,
+  isSecurityEnabled,
+  principalPermissions,
+  isReadOnlyPrincipal,
+} from './request-auth';
 
 describe('isSecurityEnabled', () => {
   it('is false when no strategy is present (security not configured)', () => {
@@ -78,5 +83,22 @@ describe('isAuthorizedSensitiveRequest', () => {
     expect(isAuthorizedSensitiveRequest(strat, { skPrincipal: { identifier: 'alice' } })).toBe(
       true,
     );
+  });
+});
+
+describe('principal permissions (readonly refinement)', () => {
+  it('reads a string permissions field off the principal, else reports unknown', () => {
+    expect(principalPermissions({ skPrincipal: { permissions: 'readonly' } })).toBe('readonly');
+    expect(principalPermissions({ skPrincipal: { permissions: 'admin' } })).toBe('admin');
+    expect(principalPermissions({ skPrincipal: {} })).toBeNull();
+    expect(principalPermissions({ skPrincipal: 'user' })).toBeNull();
+    expect(principalPermissions({})).toBeNull();
+  });
+
+  it('flags ONLY a known-readonly principal (unknown shapes must never deny writes)', () => {
+    expect(isReadOnlyPrincipal({ skPrincipal: { permissions: 'readonly' } })).toBe(true);
+    expect(isReadOnlyPrincipal({ skPrincipal: { permissions: 'readwrite' } })).toBe(false);
+    expect(isReadOnlyPrincipal({ skPrincipal: {} })).toBe(false);
+    expect(isReadOnlyPrincipal({})).toBe(false);
   });
 });

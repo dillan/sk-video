@@ -8,6 +8,7 @@ describe('describeSession', () => {
     expect(describeSession(undefined, {}, '1.2.3')).toEqual({
       securityEnabled: false,
       authenticated: true,
+      readOnly: false,
       pluginVersion: '1.2.3',
     });
     expect(describeSession({ isDummy: () => true }, {}, '1.2.3').securityEnabled).toBe(false);
@@ -18,8 +19,19 @@ describe('describeSession', () => {
     expect(describeSession(strategy, { skPrincipal: { id: 'alice' } }, '1.2.3')).toEqual({
       securityEnabled: true,
       authenticated: true,
+      readOnly: false,
       pluginVersion: '1.2.3',
     });
+  });
+
+  it('flags a known read-only principal so the app can disable write controls', () => {
+    const strategy: ISecurityStrategy = { isDummy: () => false };
+    const session = describeSession(
+      strategy,
+      { skPrincipal: { identifier: 'guest', permissions: 'readonly' } },
+      '1.2.3',
+    );
+    expect(session).toMatchObject({ authenticated: true, readOnly: true });
   });
 
   it('reports a secured server with an unauthenticated request', () => {
@@ -27,6 +39,7 @@ describe('describeSession', () => {
     expect(describeSession(strategy, {}, '1.2.3')).toEqual({
       securityEnabled: true,
       authenticated: false,
+      readOnly: false,
       pluginVersion: '1.2.3',
     });
   });
@@ -62,6 +75,7 @@ describe('registerSessionRoute', () => {
     expect(call({})).toEqual({
       securityEnabled: false,
       authenticated: true,
+      readOnly: false,
       pluginVersion: '1.1.0',
     });
   });
@@ -71,6 +85,7 @@ describe('registerSessionRoute', () => {
     expect(call({})).toEqual({
       securityEnabled: true,
       authenticated: false,
+      readOnly: false,
       pluginVersion: '1.1.0',
     });
   });

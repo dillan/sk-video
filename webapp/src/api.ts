@@ -98,6 +98,8 @@ export function fetchMobStatus(signal?: AbortSignal): Promise<IMobStatus> {
 export interface ISessionInfo {
   securityEnabled: boolean;
   authenticated: boolean;
+  /** The principal is KNOWN read-only — write controls should be disabled with a why. */
+  readOnly?: boolean;
   pluginVersion: string;
 }
 
@@ -109,7 +111,10 @@ export function describeAuth(session: ISessionInfo | null): string {
   if (!session.securityEnabled) {
     return 'open server';
   }
-  return session.authenticated ? 'secured · signed in' : 'secured · sign in required';
+  if (!session.authenticated) {
+    return 'secured · sign in required';
+  }
+  return session.readOnly === true ? 'secured · read-only' : 'secured · signed in';
 }
 
 export function fetchSession(signal?: AbortSignal): Promise<ISessionInfo> {
@@ -716,9 +721,7 @@ export interface IIncidentBundle {
 }
 
 /** The requested capture span vs what the clips actually cover; null when nothing is comparable. */
-export function incidentSpan(
-  b: IIncidentBundle,
-): {
+export function incidentSpan(b: IIncidentBundle): {
   requested: { start: number; end: number };
   actual: { start: number; end: number } | null;
 } | null {
