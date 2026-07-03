@@ -16,8 +16,8 @@ Camera definitions are managed through the standard Signal K Resources API at `/
 
 | Method | Path | Purpose | Notes |
 | --- | --- | --- | --- |
-| `GET` | `/status` | Plugin health: ready flag, camera count, detected hardware. | — |
-| `GET` | `/session` | Whoami: `securityEnabled` / `authenticated` booleans + `pluginVersion` (booleans only — no token). The app calls it on connect / after a `401` to decide sign-in UI; tier/capabilities stay sourced from `/status`. | ungated |
+| `GET` | `/status` | Plugin health: ready flag, camera count, detected hardware, and the Frigate posture (`configured`/`connected`) so an empty detection feed can't read as "nothing happened". | — |
+| `GET` | `/session` | Whoami: `securityEnabled` / `authenticated` / `readOnly` booleans + `pluginVersion` (booleans only — no token). `readOnly` is true only for a KNOWN read-only principal, so the app can disable write controls; a known-readonly principal also gets `403` from every mutating route. | ungated |
 | `GET` | `/cameras/:id/credentials` | Whether a login is stored (presence flags only — **no secrets**). | auth required¹ · rate-limited (20/min) |
 | `POST` | `/cameras/:id/credentials` | Store a write-only camera login (never echoed). | auth required¹ · rate-limited (20/min) → `204` |
 | `DELETE` | `/cameras/:id/credentials` | Delete a stored login. | auth required¹ · rate-limited (20/min) → `204`/`404` |
@@ -33,7 +33,7 @@ Camera definitions are managed through the standard Signal K Resources API at `/
 | `GET` | `/cameras/:id/hls/:resource` | HLS media playlist / segments / init segment. | `200`, `404`, `502` |
 | `GET` | `/cameras/:id/frame.jpeg` | A single JPEG still from the stream (served `no-store`). | `200`, `404`, `502` |
 | `GET` | `/cameras/:id/health` | Diagnostic: negotiated codecs, online/producer/consumer counts (source URLs **redacted**), plus `lastGoodAt`/`trackedSince` so went-dark and never-seen read apart. | `200`, `502` |
-| `GET` | `/cameras/:id/transport` | The recommended transport-fallback walk (`webrtc → hls → mjpeg`, codec-aware). | `200`, `502` |
+| `GET` | `/cameras/:id/transport` | The recommended transport-fallback walk (`webrtc → hls → mjpeg`, codec-aware). `?variant=sub` computes the walk from the `_sub` stream's own codecs (H.264 → WebRTC-first). | `200`, `404`, `502` |
 | `GET` | `/cameras` | Aggregate wall projection: every camera's definition (**no source/network address**), health (+last-good), server transport walk, and layout hints in one response — the Live Wall's single read. | `200`, `503` |
 | `POST` | `/cameras/:id/talk` | Two-way audio backchannel (WebRTC SDP with a talk track). Gated on the camera reporting a speaker. | `200`, `404`, `502` |
 
@@ -70,10 +70,10 @@ Camera definitions are managed through the standard Signal K Resources API at `/
 | --- | --- | --- | --- |
 | `POST` | `/cameras/:id/record` | Start/stop continuous recording (`{ active }`). Tier-gated. | `200`, `404`, `409`, `503` |
 | `GET` | `/recordings` | Active recorders + on-disk segments (newest first). | `200`, `503` |
-| `GET` | `/recordings/timeline` | Scrubbable-DVR timeline: per-camera tracks with segment spans + coverage gaps ([contract](#dvr-timeline-contract)). | `200`, `503` |
+| `GET` | `/recordings/timeline` | Scrubbable-DVR timeline: per-camera tracks with segment spans + coverage gaps ([contract](#dvr-timeline-contract)). `?camera=` narrows to one track; `?from=`/`?to=` (epoch ms) window the scan. | `200`, `503` |
 | `GET` | `/recordings/:name` | Stream a segment with HTTP Range. | `200`, `206`, `404`, `416`, `503` |
 | `POST` | `/cameras/:id/snapshot` | Capture a telemetry-stamped still. | `201`, `404`, `502`, `503` |
-| `GET` | `/snapshots` | Snapshot library: stored stills' telemetry-stamped metadata, newest-first. | `200`, `503` |
+| `GET` | `/snapshots` | Snapshot library: stored stills' telemetry-stamped metadata, newest-first. `?camera=` filters to one camera. | `200`, `503` |
 | `GET` | `/snapshots/:id` | Serve a stored JPEG by its opaque id (`private` cache, `nosniff`). | `200`, `400`, `404`, `503` |
 | `POST` | `/videos` | Upload a video (magic-byte validated, quota-bounded, streamed to disk). | `201`, `400`, `413`, `415`, `503` |
 | `GET` | `/videos` | List stored videos. | `200`, `503` |
@@ -85,7 +85,7 @@ Camera definitions are managed through the standard Signal K Resources API at `/
 | Method | Path | Purpose | Codes |
 | --- | --- | --- | --- |
 | `POST` | `/mob` | Activate/deactivate the man-overboard response (`{ active }`). Also a Signal K PUT action. | `200`, `503` |
-| `GET` | `/mob` | Read-only MOB status (booleans + a count) so a client can seed/repair the armed state on connect without re-aiming. Ungated, like `/status`. | `200`, `503` |
+| `GET` | `/mob` | Read-only MOB status so a client can seed/repair the armed state on connect without re-aiming: counts, per-camera aim outcomes (`aimed` / `at-limit` / `no-solution` / `command-failed`), and the visual-refine posture. Ungated, like `/status`. | `200`, `503` |
 | `POST` | `/cameras/:id/slew-to-cue` | Aim a calibrated PTZ camera at the nearest-CPA AIS target (single aim; re-POST to re-cue). | `200`, `404`, `409`, `502`, `503` |
 | `GET` | `/cameras/layout` | Role/placement grouping hints for auto-arranging cameras. | `200`, `503` |
 
@@ -109,7 +109,8 @@ These serve the SK Video web app (the management surface the Signal K admin form
 
 | Method | Path | Purpose | Notes |
 | --- | --- | --- | --- |
-| `GET` | `/events/log` | The durable, newest-first activity feed (MOB, incidents, anchor drag, camera-offline). `?limit=` bounds the page; `?before=<epoch-ms>` pages strictly-older rows. Carries only type/state/message — no secrets. | ungated → `200`, `503` |
+| `GET` | `/events/log` | The durable, newest-first activity feed (MOB, incidents, anchor drag, camera-offline). `?limit=` bounds the page; `?before=<epoch-ms>` pages strictly-older rows; `?type=` filters one event family by dotted prefix (e.g. `camera`, `frigate`). Carries only type/state/message — no secrets. | ungated → `200`, `503` |
+| `POST` | `/notifications/ack` | Acknowledge an active plugin notification SHARED-STATE (`{ key }`): the ack writes back to Signal K notification state, so silencing an alarm on one client silences every client. | auth required → `204`, `400`, `404` |
 | `GET` | `/operational-config` | The web-app-owned operational settings (hardware tier, trigger/anchor paths, Frigate). The write-only Frigate `mqttPassword` is redacted to an `mqttPasswordSet` boolean. | auth required → `200`, `503` |
 | `PUT` | `/operational-config` | Validate + merge (preserving the password) + apply via the server's `restart()` — a brief plugin restart, so the response says `{ restarting: true }`. | auth required → `200`, `400`, `503` |
 | `GET` | `/push/vapid-public-key` | The web-push application-server public key the browser needs before it can subscribe. | ungated → `200`, `503` |
