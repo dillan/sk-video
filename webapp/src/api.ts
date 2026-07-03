@@ -51,6 +51,8 @@ export interface IPluginStatus {
   ready: boolean;
   cameras?: number;
   hardware?: { tier?: string; label?: string } | null;
+  /** Frigate posture: an empty detection feed must be distinguishable from "not wired". */
+  frigate?: { configured: boolean; connected: boolean };
 }
 
 export function fetchStatus(signal?: AbortSignal): Promise<IPluginStatus> {
@@ -774,12 +776,13 @@ export interface ILoggedEvent {
 
 /** Newest-first page of the event log; `before` (epoch-ms) pages strictly-older rows. */
 export const fetchEvents = (
-  opts: { limit?: number; before?: number } = {},
+  opts: { limit?: number; before?: number; type?: string } = {},
   signal?: AbortSignal,
 ): Promise<ILoggedEvent[]> => {
   const qs = new URLSearchParams();
   if (opts.limit !== undefined) qs.set('limit', String(opts.limit));
   if (opts.before !== undefined) qs.set('before', String(opts.before));
+  if (opts.type !== undefined) qs.set('type', opts.type);
   const suffix = qs.toString() ? `?${qs}` : '';
   return getJson<{ events: ILoggedEvent[] }>(`/events/log${suffix}`, 'events', signal).then(
     (r) => r.events,

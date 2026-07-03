@@ -37,6 +37,11 @@ export function registerEventLogRoutes(
     if (limit !== undefined) query.limit = limit;
     const before = numParam(req.query.before);
     if (before !== undefined) query.before = before;
+    // `?type=` narrows to one event family (a dotted-prefix match, e.g. `camera` or `frigate`).
+    const type = req.query.type;
+    if (typeof type === 'string' && /^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/.test(type)) {
+      query.type = type;
+    }
     res.json({ events: reader.list(query) });
   });
 }

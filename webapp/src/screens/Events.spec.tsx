@@ -50,20 +50,60 @@ describe('Events', () => {
   });
 
   it('pages older events with the before cursor', async () => {
-    const fetchMock = vi
-      .fn()
-      .mockReturnValueOnce(ok({ events: EVENTS }))
-      .mockReturnValueOnce(
-        ok({ events: [{ id: 'e0', at: 500, type: 'anchor.drag', state: 'alarm' }] }),
-      );
+    const fetchMock = vi.fn((url: string) => {
+      const u = String(url);
+      if (u.includes('/status')) return ok({ ready: true });
+      if (u.includes('before='))
+        return ok({ events: [{ id: 'e0', at: 500, type: 'anchor.drag', state: 'alarm' }] });
+      return ok({ events: EVENTS });
+    });
     vi.stubGlobal('fetch', fetchMock);
     render(<Events />);
     await waitFor(() => expect(screen.getByText('Man overboard')).toBeTruthy());
 
     fireEvent.click(screen.getByRole('button', { name: /Load older/ }));
     await waitFor(() => expect(screen.getByText(/Anchor watch/)).toBeTruthy());
-    // the second request asked for events strictly older than the oldest currently shown (at=1000)
-    const secondUrl = String(fetchMock.mock.calls[1][0]);
-    expect(secondUrl).toContain('before=1000');
+    // the follow-up asked for events strictly older than the oldest currently shown (at=1000)
+    const older = fetchMock.mock.calls.map((c) => String(c[0])).find((u) => u.includes('before='));
+    expect(older).toContain('before=1000');
+  });
+
+  it('re-fetches with the server type filter when a family tab is picked', async () => {
+    const fetchMock = vi.fn((url: string) =>
+      String(url).includes('/status')
+        ? ok({ ready: true })
+        : ok({ events: String(url).includes('type=camera') ? [EVENTS[0]] : EVENTS }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    render(<Events />);
+    await waitFor(() => expect(screen.getByText('Man overboard')).toBeTruthy());
+    fireEvent.click(screen.getByRole('tab', { name: 'Cameras' }));
+    await waitFor(() => expect(screen.queryByText('Man overboard')).toBeNull());
+    expect(screen.getByText(/Camera offline/)).toBeTruthy();
+    expect(fetchMock.mock.calls.some((c) => String(c[0]).includes('type=camera'))).toBe(true);
+  });
+
+  it('says Frigate is not connected instead of implying an empty feed means nothing happened', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) =>
+        String(url).includes('/status')
+          ? ok({ ready: true, frigate: { configured: false, connected: false } })
+          : ok({ events: [] }),
+      ),
+    );
+    render(<Events />);
+    await waitFor(() => expect(screen.getByText(/Frigate is not connected/)).toBeTruthy());
+  });
+
+  it('deep-links an incident row to the Incidents tab', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => ok({ events: [EVENTS[1]] })),
+    );
+    render(<Events />);
+    await waitFor(() => expect(screen.getByText('Incident')).toBeTruthy());
+    const link = screen.getByRole('link', { name: 'View →' });
+    expect(link.getAttribute('href')).toBe('#/review/incidents');
   });
 });

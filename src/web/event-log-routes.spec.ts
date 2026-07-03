@@ -68,6 +68,15 @@ describe('event-log routes', () => {
     expect(list).toHaveBeenCalledWith({});
   });
 
+  it('passes a well-formed type filter through, and drops a malformed one', () => {
+    const list = vi.fn(() => EVENTS);
+    const handler = register(() => ({ list }));
+    handler({ query: { type: 'camera' } } as unknown as Request, makeRes());
+    expect(list).toHaveBeenCalledWith({ type: 'camera' });
+    handler({ query: { type: '../etc' } } as unknown as Request, makeRes());
+    expect(list).toHaveBeenLastCalledWith({});
+  });
+
   it('503s before the plugin has started', () => {
     const handler = register(() => null);
     const res = makeRes();

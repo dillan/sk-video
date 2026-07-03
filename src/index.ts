@@ -211,6 +211,9 @@ export = function (app: ServerAPI): Plugin {
   const lastGood = new LastGoodTracker();
   let frigateClient: FrigateClient | null = null;
   let frigateMqtt: IMqttConnection | null = null;
+  // Live broker-link state so the console can say "Frigate not connected" instead of implying
+  // an empty feed means nothing was detected.
+  let frigateConnected = false;
   let frigateClips: AssetStore | null = null;
   let frigatePruneTimer: ReturnType<typeof setInterval> | null = null;
   const triggerState: ITriggerState = { lastFiredAtByKey: {} };
@@ -873,6 +876,12 @@ export = function (app: ServerAPI): Plugin {
               username: fr?.mqttUsername || undefined,
               password: fr?.mqttPassword || undefined,
             });
+            frigateMqtt.on('connect', () => {
+              frigateConnected = true;
+            });
+            frigateMqtt.on('close', () => {
+              frigateConnected = false;
+            });
             // Subscribes on every (re)connect, so a dropped link resumes event flow cleanly.
             wireFrigateMqtt(frigateMqtt, {
               topic: FRIGATE_EVENT_TOPIC,
@@ -995,6 +1004,7 @@ export = function (app: ServerAPI): Plugin {
       }
       frigateMqtt?.end(true); // stop consuming events before the client/bridge are torn down
       frigateMqtt = null;
+      frigateConnected = false;
       if (visualRefineTimer) {
         clearInterval(visualRefineTimer);
         visualRefineTimer = null;
@@ -1053,6 +1063,8 @@ export = function (app: ServerAPI): Plugin {
           ready: cameras !== null,
           cameras: cameras ? Object.keys(cameras.list()).length : 0,
           hardware,
+          // Honest Frigate posture: an empty detection feed must be distinguishable from "not wired".
+          frigate: { configured: frigateClient !== null, connected: frigateConnected },
         });
       });
 

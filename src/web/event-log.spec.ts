@@ -83,6 +83,19 @@ describe('EventLog', () => {
     const older = log.list({ limit: 2, before: firstPage[firstPage.length - 1].at });
     expect(older.map((e) => e.type)).toEqual(['b', 'a']); // strictly older than c
   });
+
+  it('filters by type prefix on dotted-segment boundaries', () => {
+    const { log } = makeLog();
+    for (const type of ['mob', 'camera.bow.offline', 'camera.stern.offline', 'cameraman']) {
+      log.append({ type });
+    }
+    expect(log.list({ type: 'camera' }).map((e) => e.type)).toEqual([
+      'camera.stern.offline',
+      'camera.bow.offline',
+    ]); // 'cameraman' must not match a 'camera' prefix
+    expect(log.list({ type: 'mob' }).map((e) => e.type)).toEqual(['mob']);
+    expect(log.list({ type: 'anchor' })).toEqual([]);
+  });
 });
 
 describe('FileEventLogPersistence', () => {

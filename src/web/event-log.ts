@@ -44,6 +44,8 @@ export interface IEventLogQuery {
   limit?: number;
   /** Return only events strictly older than this epoch-ms (paging older). */
   before?: number;
+  /** Return only events whose type matches this prefix (e.g. `frigate`, `camera`, `incident`). */
+  type?: string;
 }
 
 // Conservative bound: a boat raising a handful of events a day keeps months of history well under this.
@@ -112,12 +114,16 @@ export class EventLog {
     return logged;
   }
 
-  /** Newest-first page of events, optionally bounded by a limit and a strictly-older-than cursor. */
+  /** Newest-first page of events, optionally bounded by a limit, an older-than cursor, and a type. */
   list(query: IEventLogQuery = {}): ILoggedEvent[] {
     const limit = query.limit ?? DEFAULT_LIMIT;
     let rows = [...this.events].reverse();
     if (query.before !== undefined) {
       rows = rows.filter((e) => e.at < (query.before as number));
+    }
+    if (query.type !== undefined) {
+      const prefix = query.type;
+      rows = rows.filter((e) => e.type === prefix || e.type.startsWith(`${prefix}.`));
     }
     return rows.slice(0, limit);
   }
