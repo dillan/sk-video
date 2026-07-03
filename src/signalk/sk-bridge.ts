@@ -63,6 +63,8 @@ export interface ISignalKApp {
       o: { state?: AlarmState; message?: string; data?: Record<string, unknown> },
     ): void;
     clear?(id: string): void;
+    /** Shared ack (sets status.acknowledged); throws when the alarm has canAcknowledge=false. */
+    acknowledge?(id: string): void;
   };
   /** Bacon-style self-path delta stream; present on full servers, absent on partial ones. */
   streambundle?: {
@@ -127,6 +129,8 @@ const SELF_PATHS = {
 export class SignalKBridge {
   /** Notification ids keyed by our stable notification key, so a raise can later update/clear. */
   private readonly notificationIds = new Map<string, string>();
+  // Last options per active key, so an ack can re-emit the same state/message silenced (method: []).
+  private readonly notificationOptions = new Map<string, INotificationOptions>();
   private readonly now: () => number;
   private readonly onNotify?: (key: string, options: INotificationOptions) => void;
 
@@ -178,6 +182,7 @@ export class SignalKBridge {
     // A first raise is a new event for the durable log; a re-raise under the same active key is just an
     // update (e.g. MOB re-aiming every few seconds) and must not flood the log.
     const isNew = !this.notificationIds.has(key);
+    this.notificationOptions.set(key, options);
     const tap = () => {
       if (isNew) {
         this.notificationIds.set(key, this.notificationIds.get(key) ?? '');
@@ -220,10 +225,35 @@ export class SignalKBridge {
     return this.emit(this.notificationDelta(key, options));
   }
 
+  /**
+   * Acknowledge an active notification SHARED-STATE: every client sees it silenced, so the helm
+   * acking an alarm also quiets the nav station (a device-local ack is a coordination hazard).
+   * Prefers the server notifications API's acknowledge(); falls back to re-emitting the same
+   * state + message with `method: []` when the API is absent or refuses (canAcknowledge=false).
+   */
+  ackNotification(key: string): boolean {
+    const options = this.notificationOptions.get(key);
+    if (options === undefined) {
+      return false; // never raised (or already cleared) — nothing to ack
+    }
+    const n = this.app.notifications;
+    const id = this.notificationIds.get(key);
+    if (n?.acknowledge && id !== undefined && id !== '') {
+      try {
+        n.acknowledge(id);
+        return true;
+      } catch (err) {
+        this.log(`notifications.acknowledge(${key}) failed: ${errMessage(err)}; using a delta`);
+      }
+    }
+    return this.emit(this.notificationDelta(key, options, { silenced: true }));
+  }
+
   /** Clear a previously raised notification keyed by `key`. */
   clearNotification(key: string): boolean {
     const n = this.app.notifications;
     const id = this.notificationIds.get(key);
+    this.notificationOptions.delete(key);
     if (n?.clear && id !== undefined) {
       try {
         n.clear(id);
@@ -330,14 +360,19 @@ export class SignalKBridge {
     return `${this.pluginId}.${key}`;
   }
 
-  private notificationDelta(key: string, options: INotificationOptions): IDeltaValue {
+  private notificationDelta(
+    key: string,
+    options: INotificationOptions,
+    flags?: { silenced?: boolean },
+  ): IDeltaValue {
     return {
       path: `notifications.${this.notifPath(key)}`,
       value: {
         state: options.state,
         message: options.message,
-        method:
-          options.state === 'alarm' || options.state === 'emergency'
+        method: flags?.silenced
+          ? []
+          : options.state === 'alarm' || options.state === 'emergency'
             ? ['visual', 'sound']
             : ['visual'],
         ...(options.data ? { data: options.data } : {}),

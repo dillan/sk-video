@@ -17,6 +17,7 @@ import { fanOutPush } from './web/push-sender';
 import { notificationForEvent } from './web/push-events';
 import { loadOrCreateVapidKeys, fileVapidIo } from './web/vapid';
 import { registerConfigRoutes } from './web/config-routes';
+import { registerAckRoutes } from './web/ack-routes';
 import type { IOperationalConfig } from './web/operational-config';
 import { validateCamera, sourceEndpointChanged } from './cameras/camera-validation';
 import { assertHostAllowed, type ISsrfOptions } from './security/ssrf-guard';
@@ -1159,6 +1160,13 @@ export = function (app: ServerAPI): Plugin {
         const status = mob.activate();
         visualRefine?.activate();
         res.json(status);
+      });
+
+      // Shared safety-event acknowledgement: writes back to Signal K notification state so every
+      // client sees the alarm silenced (never a device-local ack).
+      registerAckRoutes(router, {
+        ack: (key) => bridge?.ackNotification(key) === true,
+        gate: unauthorized,
       });
 
       // Read-only MOB status (module route, ratchet-covered) so a client can seed or repair the

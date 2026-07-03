@@ -207,7 +207,7 @@ describe('SignalKBridge — shared acknowledgement', () => {
     const h = makeApp();
     (h.app.notifications as { acknowledge?: (id: string) => void }).acknowledge = (id) =>
       acked.push(id);
-    const bridge = new SignalKBridge({ app: h.app, pluginId: 'sk-video' });
+    const bridge = new SignalKBridge(h.app, 'sk-video');
     bridge.raiseNotification('mob', { state: 'emergency', message: 'Person overboard' });
     expect(bridge.ackNotification('mob')).toBe(true);
     expect(acked).toEqual(['note-1']);
@@ -215,7 +215,7 @@ describe('SignalKBridge — shared acknowledgement', () => {
 
   it('falls back to a silenced (method: []) delta with the original state + message', () => {
     const h = makeApp({ notifications: undefined });
-    const bridge = new SignalKBridge({ app: h.app, pluginId: 'sk-video' });
+    const bridge = new SignalKBridge(h.app, 'sk-video');
     bridge.raiseNotification('mob', { state: 'emergency', message: 'Person overboard' });
     expect(bridge.ackNotification('mob')).toBe(true);
     const v = h.deltas.at(-1)!.msg.updates[0].values[0];
@@ -225,7 +225,7 @@ describe('SignalKBridge — shared acknowledgement', () => {
 
   it('refuses to ack a key that was never raised', () => {
     const h = makeApp({ notifications: undefined });
-    const bridge = new SignalKBridge({ app: h.app, pluginId: 'sk-video' });
+    const bridge = new SignalKBridge(h.app, 'sk-video');
     expect(bridge.ackNotification('ghost')).toBe(false);
   });
 
@@ -234,7 +234,7 @@ describe('SignalKBridge — shared acknowledgement', () => {
     (h.app.notifications as { acknowledge?: (id: string) => void }).acknowledge = () => {
       throw new Error('canAcknowledge=false');
     };
-    const bridge = new SignalKBridge({ app: h.app, pluginId: 'sk-video' });
+    const bridge = new SignalKBridge(h.app, 'sk-video');
     bridge.raiseNotification('mob', { state: 'emergency', message: 'Person overboard' });
     expect(bridge.ackNotification('mob')).toBe(true);
     const v = h.deltas.at(-1)!.msg.updates[0].values[0];
