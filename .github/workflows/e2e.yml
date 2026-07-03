@@ -32,9 +32,9 @@ jobs:
       - run: npm --prefix webapp ci
       - run: npm run build:webapp
 
-      # The container's node user (uid 1000) must be able to write the mounted config dir.
-      - name: Make the Signal K config dir writable in-container
-        run: chmod -R 777 e2e/signalk-config
+      # The container's node user (uid 1000) must be able to write the mounted config dirs.
+      - name: Make the Signal K config dirs writable in-container
+        run: chmod -R 777 e2e/signalk-config e2e/signalk-config-secured
 
       - name: Start the stack
         working-directory: e2e
@@ -43,7 +43,9 @@ jobs:
           KIP_PATH: ${{ runner.temp }}/empty-kip
         run: |
           mkdir -p "$KIP_PATH"
-          docker compose up -d --build mediamtx signalk
+          # The secured profile adds a second Signal K with security ENABLED, so the auth spec can
+          # prove every mutating route 401s unauthenticated (the open server can't test that).
+          docker compose --profile secured up -d --build mediamtx signalk signalk-secured
 
       - name: Wait for Signal K and seed the camera
         working-directory: e2e
@@ -65,6 +67,7 @@ jobs:
         working-directory: e2e
         env:
           SIGNALK_URL: http://localhost:3000
+          SECURED_URL: http://localhost:3001
         run: npx playwright test
 
       - name: Stack logs on failure

@@ -54,6 +54,23 @@ services:
       - ../:/home/node/.signalk/node_modules/sk-video:ro
       - ${KIP_PATH:-../../kip}:/home/node/.signalk/node_modules/@mxtommy/kip:ro
 
+  # Opt-in: the SAME server image with security ENABLED (the image's default entrypoint keeps
+  # --securityenabled), so the auth e2e can prove every mutating plugin route 401s unauthenticated.
+  # Fixture admin login: admin / e2e-password (see signalk-config-secured/README.md).
+  #   docker compose --profile secured up -d --build signalk-secured
+  #   SECURED_URL=http://localhost:3001 npx playwright test tests/auth.e2e.spec.ts
+  signalk-secured:
+    build: ./signalk-image
+    container_name: skv-signalk-secured
+    profiles: ['secured']
+    environment:
+      IS_IN_DOCKER: 'true'
+    ports:
+      - '${SIGNALK_SECURED_PORT:-3001}:3000'
+    volumes:
+      - ./signalk-config-secured:/home/node/.signalk
+      - ../:/home/node/.signalk/node_modules/sk-video:ro
+
   # Opt-in: a virtual ONVIF Profile-S device wrapping the mediamtx stream, for exercising PTZ.
   # ONVIF/PTZ are unicast HTTP and work over this network; WS-Discovery needs multicast (see README).
   #   docker compose --profile onvif up --build

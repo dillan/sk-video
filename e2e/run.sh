@@ -29,11 +29,12 @@ else
   echo "   The server-side e2e (API contract) still works without it."
 fi
 
+# macOS ships bash 3.2, where "${EMPTY[@]}" trips `set -u` — use ${arr[@]+…} to expand safely.
 PROFILE=()
 [[ "${1:-}" == "--onvif" ]] && PROFILE=(--profile onvif)
 
 echo "==> Starting the stack"
-docker compose "${PROFILE[@]}" up -d --build
+docker compose ${PROFILE[@]+"${PROFILE[@]}"} up -d --build
 
 echo "==> Waiting for Signal K to answer"
 for i in $(seq 1 60); do

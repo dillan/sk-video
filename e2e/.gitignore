@@ -9,4 +9,11 @@ signalk-config/*
 signalk-config/plugin-config-data/*
 !signalk-config/plugin-config-data/sk-video.json
 !signalk-config/plugin-config-data/kip.json
+signalk-config-secured/*
+!signalk-config-secured/README.md
+!signalk-config-secured/settings.json
+!signalk-config-secured/security.json
+!signalk-config-secured/plugin-config-data/
+signalk-config-secured/plugin-config-data/*
+!signalk-config-secured/plugin-config-data/sk-video.json
 screenshots/out/

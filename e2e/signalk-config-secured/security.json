@@ -1,0 +1,12 @@
+{
+  "allow_readonly": true,
+  "expiration": "1d",
+  "secretKey": "4afae41e160db81e82b526d65f1a972f3cc481dd6470a1c1e704b32ae5e1e98a",
+  "users": [
+    {
+      "username": "admin",
+      "type": "admin",
+      "password": "$2a$10$uzLKynb2sRbME0gWzhj03O/Ln6GBCN9rEX7gO.8IdoJPMQm0Ha1vy"
+    }
+  ]
+}
