@@ -1,14 +1,16 @@
 /*
  * SK Video service worker — an app-shell cache only.
  *
- * Scope is the app mount (/plugins/sk-video/app/), so the worker only ever sees the app's own
- * requests — never the plugin API or the video streams, which live at the parent path. That is the
- * honest boundary: the shell (HTML/JS/CSS/icon) works offline once visited, but live video and fresh
- * lists ALWAYS hit the network, because stale safety/operational data must never be served from cache.
+ * IMPORTANT: the registration scope (/plugins/sk-video/app/) limits which PAGES this worker
+ * controls, not which fetches it sees — a controlled page's subresource requests to ANY url
+ * (live frame.jpeg refreshes, snapshot blobs, API calls at the parent path) all dispatch fetch
+ * events here. The fetch handler must therefore enforce the boundary itself: only requests whose
+ * path is inside the app mount are ever answered from cache. Live video and fresh lists ALWAYS
+ * fall through to the network, because stale safety/operational data must never replay from cache
+ * (a cached frame.jpeg would render as a stale image labelled LIVE).
  *
- * Caching is runtime, not a precomputed precache manifest, so it survives hashed-asset renames across
- * deploys without a build plugin: navigations are network-first (fall back to the cached shell when
- * offline); static assets are cache-first and populated on first fetch.
+ * Precache: install fetches index.html and pulls the hashed asset urls out of it, so offline
+ * cold-launch works from the first visit (runtime cache-first still backfills anything missed).
  */
 const CACHE = 'sk-video-shell-v1';
 const SHELL = [
@@ -21,11 +23,31 @@ const SHELL = [
   './icons/icon-512.png',
 ];
 
+// The app mount's pathname (e.g. /plugins/sk-video/app/) — the only subtree we may serve from cache.
+const SCOPE_PATH = new URL(self.registration.scope).pathname;
+
+/** Hashed bundle urls referenced by the shell, so first-visit installs are offline-complete. */
+async function shellAssetUrls() {
+  try {
+    const res = await fetch('./index.html');
+    if (!res.ok) return [];
+    const html = await res.text();
+    const urls = [];
+    const attr = /(?:src|href)="(\.\/assets\/[^"]+)"/g;
+    let m;
+    while ((m = attr.exec(html)) !== null) {
+      urls.push(m[1]);
+    }
+    return urls;
+  } catch {
+    return []; // offline install — runtime caching backfills later
+  }
+}
+
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches
-      .open(CACHE)
-      .then((cache) => cache.addAll(SHELL))
+    Promise.all([caches.open(CACHE), shellAssetUrls()])
+      .then(([cache, assets]) => cache.addAll(SHELL.concat(assets)))
       .then(() => self.skipWaiting()),
   );
 });
@@ -49,6 +71,11 @@ self.addEventListener('fetch', (event) => {
   const req = event.request;
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
+
+  // The honest boundary: anything outside the app mount — the plugin API, live frames, snapshot
+  // blobs, recordings — is never intercepted, never cached. Falling through means the browser
+  // fetches it from the network exactly as if no worker existed.
+  if (url.origin !== self.location.origin || !url.pathname.startsWith(SCOPE_PATH)) return;
 
   // Navigations: network-first so a fresh shell is preferred, cached shell only when offline.
   if (req.mode === 'navigate') {

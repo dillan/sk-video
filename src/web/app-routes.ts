@@ -102,9 +102,15 @@ export function registerAppRoutes(router: IRouter, deps: IAppRoutesDeps): void {
 
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Content-Type', contentTypeFor(served));
+    // Only assets/* names carry a content hash; the manifest, worker, and icons keep stable names
+    // across deploys, so they must revalidate — an immutable year would pin a stale copy.
     res.setHeader(
       'Cache-Control',
-      served === 'index.html' ? 'no-store' : 'public, max-age=31536000, immutable',
+      served === 'index.html'
+        ? 'no-store'
+        : served.startsWith('assets/')
+          ? 'public, max-age=31536000, immutable'
+          : 'no-cache',
     );
     if (req.method === 'HEAD') {
       res.end();

@@ -84,6 +84,8 @@ describe('registerAppRoutes', () => {
   const bundle: Record<string, Buffer> = {
     'index.html': Buffer.from('<!doctype html><div id=root>'),
     'assets/main-abc.js': Buffer.from('console.log(1)'),
+    'manifest.webmanifest': Buffer.from('{}'),
+    'sw.js': Buffer.from('// worker'),
   };
   const deps = { readAsset: (rel: string) => bundle[rel] ?? null };
 
@@ -105,6 +107,18 @@ describe('registerAppRoutes', () => {
     expect(res.statusCode).toBe(200);
     expect(res.headers['Content-Type']).toMatch(/javascript/);
     expect(res.headers['Cache-Control']).toContain('immutable');
+  });
+
+  it('serves unhashed files (manifest, sw.js) with revalidation, never immutable', () => {
+    // Only assets/* carry a content hash in their name; the manifest, worker, and icons keep
+    // stable names across deploys, so a year-long immutable cache would pin a stale copy.
+    const { router, call } = fakeRouter();
+    registerAppRoutes(router, deps);
+    for (const path of ['/manifest.webmanifest', '/sw.js']) {
+      const res = call({ path });
+      expect(res.statusCode).toBe(200);
+      expect(res.headers['Cache-Control']).toBe('no-cache');
+    }
   });
 
   it('falls back to index.html for an extension-less client route', () => {

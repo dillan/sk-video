@@ -42,6 +42,7 @@ function bootSw() {
     skipWaiting: vi.fn(),
     clients: { claim: vi.fn(), matchAll: vi.fn(async () => []), openWindow: vi.fn() },
     registration: { scope: SCOPE, showNotification: vi.fn() },
+    location: { origin: new URL(SCOPE).origin },
   };
   new Function('self', 'caches', 'fetch', SW_SOURCE)(self, caches, fetchMock);
   const dispatchFetch = (url: string, mode = 'no-cors'): IFetchEvent => {
