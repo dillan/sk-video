@@ -46,14 +46,16 @@ afterEach(() => {
 });
 
 describe('CalibrationWizard', () => {
-  it('captures two points per axis and saves the solved samples', async () => {
+  it('captures two points per axis, saves the solved samples, then offers verification', async () => {
     const calls = mockApi();
     const onDone = vi.fn();
     render(<CalibrationWizard id="reolink" name="Foredeck" onDone={onDone} />);
     await captureAll();
 
     fireEvent.click(screen.getByRole('button', { name: 'Save calibration' }));
-    await waitFor(() => expect(onDone).toHaveBeenCalledWith(true));
+    // A successful save opens the verify step instead of closing the wizard.
+    await waitFor(() => expect(screen.getByText('Calibration saved — verify it')).toBeTruthy());
+    expect(onDone).not.toHaveBeenCalled();
 
     const post = calls.find((c) => c.url.includes('/calibration') && c.init?.method === 'POST');
     expect(post).toBeTruthy();
@@ -62,6 +64,58 @@ describe('CalibrationWizard', () => {
     expect(body.tilt).toHaveLength(2);
     expect(body.pan[0]).toMatchObject({ deg: -30 });
     expect(typeof body.pan[0].normalized).toBe('number');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+    expect(onDone).toHaveBeenCalledWith(true);
+  });
+
+  it('renders the live feed with the aim reticle, playing the H.264 sub when the camera has one', async () => {
+    mockApi();
+    const camera = {
+      id: 'reolink',
+      name: 'Foredeck',
+      enabled: true,
+      capabilities: { ptz: true, absolutePtz: true, substreams: true },
+    };
+    const { container } = render(
+      <CalibrationWizard id="reolink" name="Foredeck" camera={camera} onDone={vi.fn()} />,
+    );
+    // jsdom has no WebRTC/native HLS, so the player settles on the still-refresh <img> rung.
+    await waitFor(() => expect(container.querySelector('.player img.player__media')).toBeTruthy());
+    const img = container.querySelector('img.player__media') as HTMLImageElement;
+    expect(img.src).toContain('/cameras/reolink/frame.jpeg');
+    expect(img.src).toContain('variant=sub');
+    expect(container.querySelector('.mob__reticle')).toBeTruthy();
+  });
+
+  it('plays the main stream when the camera has no substream', async () => {
+    mockApi();
+    const { container } = render(
+      <CalibrationWizard id="reolink" name="Foredeck" onDone={vi.fn()} />,
+    );
+    await waitFor(() => expect(container.querySelector('img.player__media')).toBeTruthy());
+    const img = container.querySelector('img.player__media') as HTMLImageElement;
+    expect(img.src).not.toContain('variant=sub');
+  });
+
+  it('verify-by-slew calls the slew-to-cue endpoint after a save', async () => {
+    const calls = mockApi();
+    render(<CalibrationWizard id="reolink" name="Foredeck" onDone={vi.fn()} />);
+    await captureAll();
+    fireEvent.click(screen.getByRole('button', { name: 'Save calibration' }));
+    // Honest framing: verification needs a live AIS target; calibration stays static.
+    await waitFor(() =>
+      expect(screen.getByText(/needs a live AIS target/)).toBeTruthy(),
+    );
+    expect(screen.getByText(/re-run after the mount shifts/)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Verify: slew to AIS cue' }));
+    await waitFor(() =>
+      expect(
+        calls.some((c) => c.url.includes('/cameras/reolink/slew-to-cue') && c.init?.method === 'POST'),
+      ).toBe(true),
+    );
+    await waitFor(() => expect(screen.getByText(/Slew commanded/)).toBeTruthy());
   });
 
   it('asks for a bearing before capturing', async () => {

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, waitFor, cleanup, fireEvent } from '@testing-library/react';
 import { CameraWizard } from './CameraWizard';
+import type { ICameraEntry } from '../api';
 
 const ok = (json: unknown) => Promise.resolve({ ok: true, json: async () => json });
 
@@ -154,5 +155,93 @@ describe('CameraWizard', () => {
     await waitFor(() =>
       expect(screen.getByText(/Couldn’t reach or read that camera/)).toBeTruthy(),
     );
+  });
+});
+
+// The stored camera an edit opens on — includes a calibration the web app doesn't model, which a
+// save must carry through untouched.
+const ENTRY = {
+  id: 'bow',
+  name: 'Bow',
+  enabled: true,
+  role: 'security',
+  source: { scheme: 'rtsp', host: '192.168.1.100', port: 554, path: '/main' },
+  placement: { mount: 'bow', bearingRelativeDeg: 0 },
+  capabilities: { ptz: true, absolutePtz: true },
+  calibration: { pan: { offset: 0.1 } },
+} as unknown as ICameraEntry;
+
+describe('CameraWizard edit mode', () => {
+  it('opens pre-filled on the details step, skipping discovery, with the id locked', () => {
+    mockApi();
+    render(<CameraWizard edit={ENTRY} onDone={vi.fn()} />);
+    expect(screen.getByRole('heading', { name: 'Edit Bow' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Scan the network' })).toBeNull();
+    // Pre-filled from the stored entry: name, source, placement, role, enabled.
+    expect(screen.getByDisplayValue('Bow')).toBeTruthy();
+    expect(screen.getByDisplayValue('192.168.1.100')).toBeTruthy();
+    expect(screen.getByDisplayValue('/main')).toBeTruthy();
+    expect((screen.getByRole('checkbox') as HTMLInputElement).checked).toBe(true);
+    const selects = screen.getAllByRole('combobox') as HTMLSelectElement[];
+    expect(selects.map((s) => s.value)).toEqual(['security', 'bow']);
+    // The id is the resource key — locked so an edit can never mint a new camera.
+    // ('bow' also reads as the mount select's displayed option, so narrow to the input.)
+    const id = screen
+      .getAllByDisplayValue('bow')
+      .find((el) => el.tagName === 'INPUT') as HTMLInputElement;
+    expect(id.disabled).toBe(true);
+  });
+
+  it('saves by PUTting the SAME id, preserving fields the form does not edit', async () => {
+    const calls = mockApi();
+    const onDone = vi.fn();
+    render(<CameraWizard edit={ENTRY} onDone={onDone} />);
+    fireEvent.change(screen.getByDisplayValue('Bow'), { target: { value: 'Bow PTZ' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    await waitFor(() => expect(onDone).toHaveBeenCalledWith(true));
+
+    const puts = calls.filter((c) => c.init?.method === 'PUT');
+    expect(puts).toHaveLength(1);
+    expect(puts[0].url).toContain('/resources/cameras/bow');
+    const body = JSON.parse(puts[0].init!.body as string);
+    expect(body.name).toBe('Bow PTZ');
+    expect(body.enabled).toBe(true);
+    // Untouched stored fields survive the edit (incl. the unmodeled calibration).
+    expect(body.capabilities).toEqual({ ptz: true, absolutePtz: true });
+    expect(body.calibration).toEqual({ pan: { offset: 0.1 } });
+    expect(body.id).toBeUndefined();
+  });
+
+  it('never echoes a stored login — presence only — and skips the credentials write untouched', async () => {
+    const calls = mockApi();
+    const onDone = vi.fn();
+    render(<CameraWizard edit={ENTRY} hasStoredLogin onDone={onDone} />);
+    // Presence is stated; the login fields are empty (the stored secret is never fetched or shown).
+    expect(screen.getByText(/Login stored — write-only, never shown here/)).toBeTruthy();
+    const user = screen.getByPlaceholderText('leave blank to keep the current login');
+    expect((user as HTMLInputElement).value).toBe('');
+    expect(calls.some((c) => c.url.includes('/credentials'))).toBe(false);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    await waitFor(() => expect(onDone).toHaveBeenCalledWith(true));
+    // No new login typed → no credentials POST; the resource body carries no secret either.
+    expect(calls.some((c) => c.url.includes('/credentials'))).toBe(false);
+    const put = calls.find((c) => c.init?.method === 'PUT')!;
+    expect(JSON.parse(put.init!.body as string).password).toBeUndefined();
+  });
+
+  it('stores a NEW login via the write-only endpoint when one is entered', async () => {
+    const calls = mockApi();
+    const onDone = vi.fn();
+    render(<CameraWizard edit={ENTRY} hasStoredLogin onDone={onDone} />);
+    fireEvent.change(screen.getByPlaceholderText('leave blank to keep the current login'), {
+      target: { value: 'admin' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    await waitFor(() => expect(onDone).toHaveBeenCalledWith(true));
+    const cred = calls.find((c) => c.url.includes('/credentials') && c.init?.method === 'POST');
+    expect(cred).toBeTruthy();
+    expect(cred!.url).toContain('/cameras/bow/credentials');
+    expect(JSON.parse(cred!.init!.body as string).username).toBe('admin');
   });
 });

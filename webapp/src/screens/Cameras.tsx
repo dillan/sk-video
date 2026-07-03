@@ -25,8 +25,9 @@ type Load =
 type View =
   | { kind: 'list' }
   | { kind: 'add' }
+  | { kind: 'edit'; entry: ICameraEntry }
   | { kind: 'health'; id: string; name: string }
-  | { kind: 'calibrate'; id: string; name: string };
+  | { kind: 'calibrate'; entry: ICameraEntry };
 
 interface Msg {
   kind: 'caution' | 'info';
@@ -141,14 +142,30 @@ export function Cameras() {
       />
     );
   }
+  if (view.kind === 'edit') {
+    return (
+      <CameraWizard
+        edit={view.entry}
+        hasStoredLogin={creds[view.entry.id] === true}
+        onDone={(saved) => {
+          setView({ kind: 'list' });
+          if (saved) {
+            setMsg({ kind: 'info', text: 'Camera updated.' });
+            refresh();
+          }
+        }}
+      />
+    );
+  }
   if (view.kind === 'health') {
     return <CameraHealth id={view.id} name={view.name} onBack={() => setView({ kind: 'list' })} />;
   }
   if (view.kind === 'calibrate') {
     return (
       <CalibrationWizard
-        id={view.id}
-        name={view.name}
+        id={view.entry.id}
+        name={view.entry.name}
+        camera={view.entry}
         onDone={(saved) => {
           setView({ kind: 'list' });
           if (saved) setMsg({ kind: 'info', text: 'Calibration saved.' });
@@ -166,6 +183,10 @@ export function Cameras() {
           Add a camera
         </button>
       </header>
+      <p className="muted">
+        Manage cameras here — every client (including KIP widgets) shares this list; a widget only
+        picks which camera it shows.
+      </p>
 
       {msg && <div className={`chip chip--${msg.kind}`}>{msg.text}</div>}
 
@@ -218,6 +239,13 @@ export function Cameras() {
                 <button
                   type="button"
                   className="btn btn--ghost"
+                  onClick={() => setView({ kind: 'edit', entry: c })}
+                >
+                  Edit
+                </button>
+                <button
+                  type="button"
+                  className="btn btn--ghost"
                   onClick={() => setView({ kind: 'health', id: c.id, name: c.name })}
                 >
                   Diagnostics
@@ -235,7 +263,7 @@ export function Cameras() {
                   <button
                     type="button"
                     className="btn btn--ghost"
-                    onClick={() => setView({ kind: 'calibrate', id: c.id, name: c.name })}
+                    onClick={() => setView({ kind: 'calibrate', entry: c })}
                   >
                     Calibrate
                   </button>

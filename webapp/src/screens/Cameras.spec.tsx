@@ -148,6 +148,50 @@ describe('Cameras manage', () => {
     });
   });
 
+  it('carries the client-boundary line: this list is shared with every client, incl. KIP', async () => {
+    mockApi({ cameras: {} });
+    render(<Cameras />);
+    expect(
+      await screen.findByText(
+        /every client \(including KIP widgets\) shares this list; a widget only picks which camera it shows/,
+      ),
+    ).toBeTruthy();
+  });
+
+  it('opens Edit pre-filled from the stored camera and saves to the SAME id', async () => {
+    const calls = mockApi({
+      cameras: {
+        bow: {
+          name: 'Bow',
+          enabled: true,
+          role: 'security',
+          source: { scheme: 'rtsp', host: '192.168.1.100' },
+        },
+      },
+      presence: { hasUsername: true, hasPassword: true },
+    });
+    render(<Cameras />);
+    // Wait for the presence probe so the edit form knows a login is stored.
+    await screen.findByText('login stored');
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+
+    // The wizard opens on the details step, pre-filled — no discovery.
+    expect(screen.getByRole('heading', { name: 'Edit Bow' })).toBeTruthy();
+    expect(screen.getByDisplayValue('192.168.1.100')).toBeTruthy();
+    // Credential presence rides through so the form can say "login stored" without echoing it.
+    expect(screen.getByText(/Login stored — write-only, never shown here/)).toBeTruthy();
+
+    fireEvent.change(screen.getByDisplayValue('Bow'), { target: { value: 'Bow cam' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    await waitFor(() => {
+      const put = calls.find((c) => c.init?.method === 'PUT');
+      expect(put).toBeTruthy();
+      expect(put!.url).toContain('/resources/cameras/bow');
+      expect(JSON.parse(put!.init!.body as string).name).toBe('Bow cam');
+    });
+    await waitFor(() => expect(screen.getByText('Camera updated.')).toBeTruthy());
+  });
+
   it('requires a confirm before deleting', async () => {
     const calls = mockApi({
       cameras: { bow: { name: 'Bow', enabled: true, source: { scheme: 'rtsp', host: 'h' } } },

@@ -4,9 +4,13 @@ import {
   ptzStop,
   fetchPtzPosition,
   submitCalibration,
+  slewToCue,
   ApiError,
   type ICalibrationSample,
+  type ICameraEntry,
 } from '../api';
+import { VideoPlayer } from './VideoPlayer';
+import { H264_TRANSPORTS } from '../lib/transport';
 
 type Axis = 'pan' | 'tilt';
 type Slot = 0 | 1;
@@ -17,17 +21,21 @@ interface Msg {
 
 /**
  * Two-point-per-axis FOV calibration. Absolute ONVIF moves are normalised (−1..1), so geo-pointing
- * (MOB / AIS slew) needs a per-camera degrees→normalised map. The operator nudges the camera to two
- * known bearings per axis and captures each: we read the camera's normalised position and pair it with
- * the bearing they observed. Honest: it's a static map — re-run after the camera is remounted or sags.
+ * (MOB / AIS slew) needs a per-camera degrees→normalised map. The operator aims the live feed's
+ * frame-centre crosshair at two known bearings per axis and captures each: we read the camera's
+ * normalised position and pair it with the bearing they observed. Honest: it's a static map — re-run
+ * after the camera is remounted or sags.
  */
 export function CalibrationWizard({
   id,
   name,
+  camera,
   onDone,
 }: {
   id: string;
   name: string;
+  /** The stored entry, when the caller has it — picks the H.264 sub-stream for the in-wizard feed. */
+  camera?: ICameraEntry;
   onDone: (saved: boolean) => void;
 }) {
   const [pan, setPan] = useState<(ICalibrationSample | null)[]>([null, null]);
@@ -35,6 +43,9 @@ export function CalibrationWizard({
   const [deg, setDeg] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<Msg | null>(null);
+  // Saved calibrations get a verify step: slew to the AIS cue and watch the crosshair land.
+  const [saved, setSaved] = useState(false);
+  const [slewBusy, setSlewBusy] = useState(false);
 
   const fail = (err: unknown, what: string): void =>
     setMsg({
@@ -77,7 +88,10 @@ export function CalibrationWizard({
       pan: pan as ICalibrationSample[],
       tilt: tilt as ICalibrationSample[],
     })
-      .then(() => onDone(true))
+      .then(() => {
+        setMsg(null);
+        setSaved(true);
+      })
       .catch((err: unknown) => {
         if (err instanceof ApiError && err.status === 400) {
           setMsg({
@@ -89,6 +103,20 @@ export function CalibrationWizard({
         }
       })
       .finally(() => setBusy(false));
+  };
+
+  const verifySlew = (): void => {
+    setSlewBusy(true);
+    setMsg(null);
+    slewToCue(id)
+      .then(() =>
+        setMsg({
+          kind: 'info',
+          text: 'Slew commanded — the crosshair should land on the nearest AIS vessel.',
+        }),
+      )
+      .catch((err: unknown) => fail(err, 'slew to the AIS cue'))
+      .finally(() => setSlewBusy(false));
   };
 
   const slotRow = (axis: Axis, slot: Slot, captured: ICalibrationSample | null) => (
@@ -132,6 +160,16 @@ export function CalibrationWizard({
 
       <div className="panel">
         <div className="page-head__sub">Aim the camera</div>
+        <div className="mob__stage">
+          {/* An H.265 main can't decode in the browser, so the feed uses the H.264 sub when the
+              camera has one. The reticle marks the centre of frame — where the camera points. */}
+          <VideoPlayer
+            cameraId={id}
+            transports={H264_TRANSPORTS}
+            variant={camera?.capabilities?.substreams ? 'sub' : 'main'}
+          />
+          <div className="mob__reticle" aria-hidden="true" />
+        </div>
         <div className="dock__group calib__pad">
           <button
             type="button"
@@ -174,23 +212,48 @@ export function CalibrationWizard({
             STOP
           </button>
         </div>
-        <p className="muted">Watch the camera (or its feed) as it moves to a known bearing.</p>
+        <p className="muted">
+          Put the crosshair — the centre of frame — on a known bearing, then capture it below.
+        </p>
       </div>
 
-      <div className="panel">
-        <div className="page-head__sub">Pan</div>
-        {slotRow('pan', 0, pan[0])}
-        {slotRow('pan', 1, pan[1])}
-      </div>
-      <div className="panel">
-        <div className="page-head__sub">Tilt</div>
-        {slotRow('tilt', 0, tilt[0])}
-        {slotRow('tilt', 1, tilt[1])}
-      </div>
+      {!saved && (
+        <>
+          <div className="panel">
+            <div className="page-head__sub">Pan</div>
+            {slotRow('pan', 0, pan[0])}
+            {slotRow('pan', 1, pan[1])}
+          </div>
+          <div className="panel">
+            <div className="page-head__sub">Tilt</div>
+            {slotRow('tilt', 0, tilt[0])}
+            {slotRow('tilt', 1, tilt[1])}
+          </div>
 
-      <button type="button" className="btn" onClick={save} disabled={!ready || busy}>
-        {busy ? 'Saving…' : ready ? 'Save calibration' : 'Capture all four points to save'}
-      </button>
+          <button type="button" className="btn" onClick={save} disabled={!ready || busy}>
+            {busy ? 'Saving…' : ready ? 'Save calibration' : 'Capture all four points to save'}
+          </button>
+        </>
+      )}
+
+      {saved && (
+        <div className="panel">
+          <div className="page-head__sub">Calibration saved — verify it</div>
+          <p className="muted">
+            Verification needs a live AIS target in range: slew to the nearest vessel and check the
+            crosshair lands on it. No target nearby means nothing to check against — the calibration
+            is saved either way. Calibration is static — re-run after the mount shifts.
+          </p>
+          <div className="wizard__actions">
+            <button type="button" className="btn" onClick={verifySlew} disabled={slewBusy}>
+              {slewBusy ? 'Slewing…' : 'Verify: slew to AIS cue'}
+            </button>
+            <button type="button" className="btn btn--ghost" onClick={() => onDone(true)}>
+              Done
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

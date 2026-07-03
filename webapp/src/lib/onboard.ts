@@ -72,6 +72,9 @@ const isSafeMediaPath = (p: string): boolean => SAFE_PATH_RE.test(p) && !p.inclu
 export interface ICameraDraft {
   id: string;
   name: string;
+  /** Edit mode carries the stored enabled state so an edit never silently re-enables a camera;
+   *  the add flow leaves it unset (a new camera saves enabled). */
+  enabled?: boolean;
   role?: Role;
   mount?: Mount;
   bearingRelativeDeg?: number;
@@ -212,11 +215,85 @@ export function mergeRescan(existing: ICameraEntry, r: IIntrospectResult): ICame
   } as ICameraWrite;
 }
 
+/**
+ * Build an editable draft from a stored camera, for the edit flow (no discovery to draft from).
+ * A stored role/mount outside the closed enums falls back to unset so the dropdowns stay valid;
+ * capabilities/media/device ride along for display only — {@link mergeEdit} keeps the stored ones.
+ */
+export function draftFromEntry(entry: ICameraEntry): ICameraDraft {
+  const caps = entry.capabilities ?? {};
+  const draft: ICameraDraft = {
+    id: entry.id,
+    name: entry.name,
+    enabled: entry.enabled,
+    source: entry.source ? { ...entry.source } : { scheme: 'rtsp', host: '' },
+    capabilities: {
+      ptz: caps.ptz === true,
+      absolutePtz: caps.absolutePtz === true,
+      audio: caps.audio === true,
+      audioBackchannel: caps.audioBackchannel === true,
+      substreams: caps.substreams === true,
+      ...(caps.spotlight !== undefined ? { spotlight: caps.spotlight } : {}),
+      ...(caps.alarm !== undefined ? { alarm: caps.alarm } : {}),
+      ...(caps.imaging ? { imaging: caps.imaging } : {}),
+      ...(caps.auxCommands ? { auxCommands: caps.auxCommands } : {}),
+    },
+  };
+  if (entry.role && (ROLES as readonly string[]).includes(entry.role)) {
+    draft.role = entry.role as Role;
+  }
+  const mount = entry.placement?.mount;
+  if (mount && (MOUNTS as readonly string[]).includes(mount)) {
+    draft.mount = mount as Mount;
+  }
+  if (typeof entry.placement?.bearingRelativeDeg === 'number') {
+    draft.bearingRelativeDeg = entry.placement.bearingRelativeDeg;
+  }
+  if (entry.media && (entry.media.codec || entry.media.substreamPath)) {
+    draft.media = { codec: entry.media.codec, substreamPath: entry.media.substreamPath };
+  }
+  if (entry.device) {
+    draft.device = entry.device;
+  }
+  return draft;
+}
+
+/**
+ * Merge the edit form back into an existing camera. Only the fields the form edits (name, enabled,
+ * source, role, mount, bearing) are replaced; everything else in the stored resource — capabilities,
+ * media (incl. projection), device, and fields the web app doesn't model (calibration, the safety
+ * flag) — is spread through verbatim, so an edit can never destroy a calibration. Same philosophy
+ * as {@link mergeRescan}. The caller PUTs to the EXISTING id — an edit never mints a new camera.
+ */
+export function mergeEdit(existing: ICameraEntry, d: ICameraDraft): ICameraWrite {
+  const { id: _id, ...rest } = existing as ICameraEntry & Record<string, unknown>;
+  void _id;
+  const body = {
+    ...rest,
+    name: d.name,
+    enabled: d.enabled ?? existing.enabled,
+    source: d.source,
+  } as ICameraWrite & Record<string, unknown>;
+  if (d.role) body.role = d.role;
+  else delete body.role;
+  // Rebuild mount/bearing from the form, keeping placement fields the form doesn't edit (heightM).
+  const placement = { ...(existing.placement ?? {}) } as Record<string, unknown>;
+  delete placement.mount;
+  delete placement.bearingRelativeDeg;
+  if (d.mount) placement.mount = d.mount;
+  if (typeof d.bearingRelativeDeg === 'number' && Number.isFinite(d.bearingRelativeDeg)) {
+    placement.bearingRelativeDeg = d.bearingRelativeDeg;
+  }
+  if (Object.keys(placement).length > 0) body.placement = placement as ICameraWrite['placement'];
+  else delete body.placement;
+  return body;
+}
+
 /** Assemble the resource body to PUT — only the validator's allowed, non-credential fields. */
 export function toResourceBody(d: ICameraDraft): ICameraWrite {
   const body: ICameraWrite = {
     name: d.name,
-    enabled: true,
+    enabled: d.enabled ?? true,
     source: d.source,
     capabilities: d.capabilities,
   };

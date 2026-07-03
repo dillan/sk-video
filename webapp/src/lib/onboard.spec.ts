@@ -5,8 +5,10 @@ import {
   slugify,
   isValidSlug,
   draftFromIntrospect,
+  draftFromEntry,
   toResourceBody,
   mergeRescan,
+  mergeEdit,
   isStableSerial,
 } from './onboard';
 import type { ICandidate, IIntrospectResult, ICameraEntry } from '../api';
@@ -192,6 +194,120 @@ describe('toResourceBody', () => {
   it('omits media entirely when no codec or substream was captured', () => {
     const body = toResourceBody(draftFromIntrospect(result, '192.168.1.100'));
     expect(body.media).toBeUndefined();
+  });
+  it('honours an explicit enabled flag and defaults new cameras to enabled', () => {
+    const draft = draftFromIntrospect(result, '192.168.1.100');
+    expect(toResourceBody(draft).enabled).toBe(true);
+    expect(toResourceBody({ ...draft, enabled: false }).enabled).toBe(false);
+  });
+});
+
+describe('draftFromEntry (edit flow)', () => {
+  const entry = {
+    id: 'foredeck',
+    name: 'My Foredeck',
+    enabled: false,
+    role: 'security',
+    source: { scheme: 'rtsp', host: '192.168.1.100', port: 554, path: '/main' },
+    placement: { mount: 'mast', bearingRelativeDeg: 90, heightM: 4 },
+    capabilities: { ptz: true, absolutePtz: true, substreams: true, imaging: ['irCut'] },
+    media: { codec: 'h265', substreamPath: '/sub' },
+    device: { manufacturer: 'REOLINK' },
+  } as unknown as ICameraEntry;
+
+  it('pre-fills the form fields from the stored camera, keeping the id and enabled state', () => {
+    const d = draftFromEntry(entry);
+    expect(d.id).toBe('foredeck');
+    expect(d.name).toBe('My Foredeck');
+    expect(d.enabled).toBe(false);
+    expect(d.role).toBe('security');
+    expect(d.mount).toBe('mast');
+    expect(d.bearingRelativeDeg).toBe(90);
+    expect(d.source).toEqual({ scheme: 'rtsp', host: '192.168.1.100', port: 554, path: '/main' });
+    expect(d.capabilities.substreams).toBe(true);
+    expect(d.capabilities.imaging).toEqual(['irCut']);
+    expect(d.media).toEqual({ codec: 'h265', substreamPath: '/sub' });
+  });
+
+  it('drops an out-of-enum role/mount instead of feeding the dropdowns an invalid value', () => {
+    const d = draftFromEntry({
+      ...entry,
+      role: 'made-up',
+      placement: { mount: 'nowhere' },
+    } as unknown as ICameraEntry);
+    expect(d.role).toBeUndefined();
+    expect(d.mount).toBeUndefined();
+  });
+
+  it('tolerates a minimal entry (no source/capabilities) without crashing the form', () => {
+    const d = draftFromEntry({ id: 'x', name: 'X', enabled: true } as ICameraEntry);
+    expect(d.source).toEqual({ scheme: 'rtsp', host: '' });
+    expect(d.capabilities.ptz).toBe(false);
+    expect(d.media).toBeUndefined();
+  });
+});
+
+describe('mergeEdit (edit flow)', () => {
+  // Mirrors the runtime object fetchCameras returns, including fields the web app doesn't model
+  // (calibration, safetyCritical) that an edit must NEVER destroy.
+  const existing = {
+    id: 'foredeck',
+    name: 'My Foredeck',
+    enabled: true,
+    role: 'security',
+    source: { scheme: 'rtsp', host: '192.168.1.100', port: 554, path: '/main' },
+    placement: { mount: 'mast', bearingRelativeDeg: 90, heightM: 4 },
+    calibration: { pan: { offset: 0, scalePerDeg: 0.01 } },
+    safetyCritical: true,
+    capabilities: { ptz: true, absolutePtz: true, substreams: true },
+    media: { codec: 'h265', substreamPath: '/sub', projection: 'equirect' },
+    device: { manufacturer: 'REOLINK' },
+  } as unknown as ICameraEntry;
+
+  it('applies the edited fields and preserves everything the form does not edit', () => {
+    const body = mergeEdit(existing, {
+      ...draftFromEntry(existing),
+      name: 'Foredeck PTZ',
+      enabled: false,
+      role: 'docking',
+      mount: 'bow',
+      bearingRelativeDeg: 10,
+      source: { scheme: 'rtsp', host: '10.0.0.5', port: 554, path: '/main' },
+    });
+    // Edited:
+    expect(body.name).toBe('Foredeck PTZ');
+    expect(body.enabled).toBe(false);
+    expect(body.role).toBe('docking');
+    expect(body.source.host).toBe('10.0.0.5');
+    // heightM isn't on the form, so it survives alongside the new mount/bearing.
+    expect(body.placement).toEqual({ mount: 'bow', bearingRelativeDeg: 10, heightM: 4 });
+    // Preserved verbatim (capabilities, media incl. projection, device, unmodeled fields):
+    expect(body.capabilities).toEqual({ ptz: true, absolutePtz: true, substreams: true });
+    expect(body.media).toEqual({ codec: 'h265', substreamPath: '/sub', projection: 'equirect' });
+    expect(body.device).toEqual({ manufacturer: 'REOLINK' });
+    expect((body as unknown as Record<string, unknown>).calibration).toEqual({
+      pan: { offset: 0, scalePerDeg: 0.01 },
+    });
+    expect((body as unknown as Record<string, unknown>).safetyCritical).toBe(true);
+    // The body never carries the id — the caller PUTs to the existing id.
+    expect(body).not.toHaveProperty('id');
+  });
+
+  it('clears role and placement when the form empties them', () => {
+    const body = mergeEdit({ ...existing, placement: { mount: 'mast' } } as ICameraEntry, {
+      ...draftFromEntry(existing),
+      role: undefined,
+      mount: undefined,
+      bearingRelativeDeg: undefined,
+    });
+    expect(body.role).toBeUndefined();
+    expect(body.placement).toBeUndefined();
+  });
+
+  it('keeps the stored enabled state when the draft does not carry one', () => {
+    const d = draftFromEntry(existing);
+    delete (d as { enabled?: boolean }).enabled;
+    expect(mergeEdit(existing, d).enabled).toBe(true);
   });
 });
 
