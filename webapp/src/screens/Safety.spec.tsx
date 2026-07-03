@@ -87,4 +87,73 @@ describe('Safety / MOB console', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Arm man overboard' }));
     await waitFor(() => expect(screen.getByText(/Sign in to Signal K/)).toBeTruthy());
   });
+
+  it('flags a failed, saturated, or unsolvable aim per camera — never a silent pending', async () => {
+    mockApi({
+      status: {
+        active: true,
+        targetSource: 'datum',
+        aimedCameras: 1,
+        capableCameras: 4,
+        aimedCameraIds: ['bow'],
+        cameraAims: [
+          { id: 'bow', outcome: 'aimed' },
+          { id: 'stern', outcome: 'at-limit' },
+          { id: 'mast', outcome: 'no-solution' },
+          { id: 'port', outcome: 'command-failed' },
+        ],
+        armedAt: 1,
+        lastReaimAt: 2,
+      },
+      cameras: {
+        bow: { name: 'Bow', enabled: true, capabilities: { absolutePtz: true } },
+        stern: { name: 'Stern', enabled: true, capabilities: { absolutePtz: true } },
+        mast: { name: 'Mast', enabled: true, capabilities: { absolutePtz: true } },
+        port: { name: 'Port', enabled: true, capabilities: { absolutePtz: true } },
+      },
+    });
+    render(<Safety />);
+    await waitFor(() => expect(screen.getByText('✓ aimed')).toBeTruthy());
+    expect(screen.getByText(/at pan limit — not on target/)).toBeTruthy();
+    expect(screen.getByText(/no aim solution/)).toBeTruthy();
+    expect(screen.getByText(/aim command failed/)).toBeTruthy();
+  });
+
+  it('badges the visual-refine assist NOT safety-rated, and only when enabled', async () => {
+    mockApi({
+      status: {
+        active: true,
+        targetSource: 'datum',
+        aimedCameras: 0,
+        capableCameras: 0,
+        aimedCameraIds: [],
+        cameraAims: [],
+        armedAt: 1,
+        lastReaimAt: 2,
+        visualRefine: { enabled: true, active: true },
+      },
+    });
+    render(<Safety />);
+    await waitFor(() =>
+      expect(screen.getByText(/Visual refine active · NOT safety-rated/)).toBeTruthy(),
+    );
+  });
+
+  it('never shows a refine badge when the assist is not enabled', async () => {
+    mockApi({
+      status: {
+        active: true,
+        targetSource: 'datum',
+        aimedCameras: 0,
+        capableCameras: 0,
+        aimedCameraIds: [],
+        armedAt: 1,
+        lastReaimAt: 2,
+        visualRefine: { enabled: false, active: false },
+      },
+    });
+    render(<Safety />);
+    await waitFor(() => expect(screen.getByText(/Man overboard/)).toBeTruthy());
+    expect(screen.queryByText(/Visual refine/)).toBeNull();
+  });
 });

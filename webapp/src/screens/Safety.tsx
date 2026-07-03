@@ -164,6 +164,8 @@ export function Safety({ onMobChange }: { onMobChange?: (s: IMobStatus) => void 
   const target = targetLine(status);
   const capable = status.capableCameras || capablePtz.length;
   const aimedIds = new Set(status.aimedCameraIds ?? []);
+  const aimOutcomes = new Map((status.cameraAims ?? []).map((a) => [a.id, a.outcome] as const));
+  const refine = status.visualRefine;
   // The featured aimed camera for the reticle view: prefer a commanded one, else the first capable PTZ.
   const primaryId = status.aimedCameraIds?.[0] ?? capablePtz[0]?.id;
   const primary = cams.find((c) => c.id === primaryId);
@@ -197,6 +199,14 @@ export function Safety({ onMobChange }: { onMobChange?: (s: IMobStatus) => void 
         <span className="chip chip--neutral">
           <b>{status.aimedCameras}</b>&nbsp;of {capable} cameras aimed
         </span>
+        {refine?.enabled && (
+          <span
+            className="chip chip--caution"
+            title="Experimental camera-nudge assist. It can lock onto a wake or whitecap and reverts to position-based aim on track loss — never rely on it."
+          >
+            Visual refine {refine.active ? 'active' : 'standby'} · NOT safety-rated
+          </span>
+        )}
         <button type="button" className="btn" onClick={slewAll}>
           Slew all to AIS cue
         </button>
@@ -228,15 +238,23 @@ export function Safety({ onMobChange }: { onMobChange?: (s: IMobStatus) => void 
             <div className="muted">No calibrated PTZ camera to aim.</div>
           )}
           {capablePtz.map((c) => {
-            const aimed = aimedIds.has(c.id);
             const offline = c.enabled === false;
+            const outcome = aimOutcomes.get(c.id) ?? (aimedIds.has(c.id) ? 'aimed' : null);
+            // A failed/limited aim is flagged explicitly — never folded into a silent "…".
+            const chip = offline
+              ? { text: 'offline', cls: 'chip--caution' }
+              : outcome === 'aimed'
+                ? { text: '✓ aimed', cls: 'chip--neutral mob__ok' }
+                : outcome === 'at-limit'
+                  ? { text: 'at pan limit — not on target', cls: 'chip--caution' }
+                  : outcome === 'no-solution'
+                    ? { text: 'no aim solution (calibrate)', cls: 'chip--caution' }
+                    : outcome === 'command-failed'
+                      ? { text: 'aim command failed', cls: 'chip--caution' }
+                      : { text: '…', cls: 'chip--neutral' };
             return (
               <div className="mob__cam" role="listitem" key={c.id}>
-                <span
-                  className={`chip ${offline ? 'chip--caution' : aimed ? 'chip--neutral mob__ok' : 'chip--neutral'}`}
-                >
-                  {offline ? 'offline' : aimed ? '✓ aimed' : '…'}
-                </span>
+                <span className={`chip ${chip.cls}`}>{chip.text}</span>
                 <span className="mob__camname">{c.name}</span>
               </div>
             );

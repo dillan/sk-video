@@ -57,6 +57,13 @@ export function fetchStatus(signal?: AbortSignal): Promise<IPluginStatus> {
   return getJson<IPluginStatus>('/status', 'status', signal);
 }
 
+/**
+ * Per-camera MOB aim outcome: `aimed` (commanded at the target), `at-limit` (bearing beyond the pan
+ * range — pointing at its mechanical limit, not the casualty), `no-solution` (no calibration or
+ * heading), `command-failed` (the PTZ dispatch was rejected).
+ */
+export type TAimOutcome = 'aimed' | 'at-limit' | 'no-solution' | 'command-failed';
+
 /** Read-only man-overboard status, mirrors the plugin's `IMobStatus`. Drives the safety strip. */
 export interface IMobStatus {
   active: boolean;
@@ -66,10 +73,14 @@ export interface IMobStatus {
   capableCameras: number;
   /** Ids of the cameras commanded at the target on the most recent re-aim. */
   aimedCameraIds: string[];
+  /** Per capable camera, the outcome of the most recent re-aim; empty while idle. */
+  cameraAims?: Array<{ id: string; outcome: TAimOutcome }>;
   /** Epoch ms the event was armed, or null when idle. */
   armedAt: number | null;
   /** Epoch ms of the most recent re-aim (the heartbeat), or null when idle. */
   lastReaimAt: number | null;
+  /** The experimental visual-refine assist: shown only when enabled, always NOT safety-rated. */
+  visualRefine?: { enabled: boolean; active: boolean };
 }
 
 /**

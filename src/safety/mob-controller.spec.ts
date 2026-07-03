@@ -67,6 +67,7 @@ describe('MobController', () => {
       aimedCameras: 0,
       capableCameras: 1,
       aimedCameraIds: [],
+      cameraAims: [],
       armedAt: null,
       lastReaimAt: null,
     });
@@ -85,6 +86,7 @@ describe('MobController', () => {
       aimedCameras: 0,
       capableCameras: 1,
       aimedCameraIds: [],
+      cameraAims: [],
       armedAt: null,
       lastReaimAt: null,
     });

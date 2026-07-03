@@ -42,6 +42,20 @@ export interface IMobCamera {
   aimConfig: ICameraAimConfig;
 }
 
+/**
+ * The honest per-camera aim trail: `aimed` = commanded at the target with an in-range solution;
+ * `at-limit` = the bearing is beyond the camera's pan range, so it points at its mechanical limit
+ * (still dispatched — the best it can do — but NOT at the casualty); `no-solution` = no calibration
+ * or no heading reference, nothing could be computed; `command-failed` = the PTZ dispatch rejected
+ * (flaky camera / auth), reflected as soon as the rejection lands.
+ */
+export type TAimOutcome = 'aimed' | 'at-limit' | 'no-solution' | 'command-failed';
+
+export interface ICameraAim {
+  id: string;
+  outcome: TAimOutcome;
+}
+
 export interface IMobControllerDeps {
   /** Current own-ship position + heading, or null when unknown. */
   getOwnShip: () => IOwnShip | null;
@@ -49,7 +63,8 @@ export interface IMobControllerDeps {
   getBeaconTarget: () => ILatLon | null;
   /** Enabled cameras with their PTZ capability + aim config. */
   getCameras: () => IMobCamera[];
-  aimCamera: (id: string, pan: number, tilt: number) => void;
+  /** Dispatch an absolute aim. A returned promise's rejection marks the camera `command-failed`. */
+  aimCamera: (id: string, pan: number, tilt: number) => void | Promise<void>;
   raiseNotification: (message: string, position: ILatLon | null) => void;
   clearNotification: () => void;
   emitMarker: (target: ILatLon) => void;
@@ -84,6 +99,8 @@ export interface IMobStatus {
   capableCameras: number;
   /** The ids of the cameras commanded at the target on the most recent re-aim. */
   aimedCameraIds: string[];
+  /** Per capable camera, the outcome of the most recent re-aim; empty while idle. */
+  cameraAims: ICameraAim[];
   /** Epoch ms the event was armed, or null when idle. */
   armedAt: number | null;
   /** Epoch ms of the most recent re-aim (the heartbeat), or null when idle. */
@@ -97,6 +114,8 @@ export class MobController {
   // count without itself re-aiming (which would send camera commands on every status poll).
   private lastAimed = 0;
   private lastAimedIds: string[] = [];
+  // Per-camera outcome of the most recent re-aim, in getCameras() order (capable cameras only).
+  private lastAims = new Map<string, TAimOutcome>();
   private armedAt: number | null = null;
   private lastReaimAt: number | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
@@ -174,6 +193,7 @@ export class MobController {
     this.datum = null;
     this.lastAimed = 0;
     this.lastAimedIds = [];
+    this.lastAims.clear();
     this.armedAt = null;
     this.lastReaimAt = null;
     this.deps.stopRecording?.();
@@ -196,6 +216,9 @@ export class MobController {
       aimedCameras: this.active ? this.lastAimed : 0,
       capableCameras: this.capableCount(),
       aimedCameraIds: this.active ? [...this.lastAimedIds] : [],
+      cameraAims: this.active
+        ? [...this.lastAims.entries()].map(([id, outcome]) => ({ id, outcome }))
+        : [],
       armedAt: this.armedAt,
       lastReaimAt: this.lastReaimAt,
     };
@@ -212,6 +235,7 @@ export class MobController {
 
   private dispatchAim(): number {
     this.lastAimedIds = [];
+    this.lastAims.clear();
     if (!this.active) {
       return 0;
     }
@@ -227,18 +251,47 @@ export class MobController {
       }
       const aim = computeAim(ship, target, camera.aimConfig);
       if (!aim) {
+        this.lastAims.set(camera.id, 'no-solution');
         continue;
       }
       // Dispatch even a clamped aim (the camera goes to its limit — the best it can do), but do NOT
       // count it as aimed at the target: a saturated camera points at its mechanical limit, not the
       // casualty. The honest count drives the operator-facing notification.
-      this.deps.aimCamera(camera.id, aim.pan, aim.tilt);
+      this.dispatch(camera.id, aim.pan, aim.tilt);
       if (!aim.panClamped) {
         commanded += 1;
         this.lastAimedIds.push(camera.id);
+        this.lastAims.set(camera.id, 'aimed');
+      } else {
+        this.lastAims.set(camera.id, 'at-limit');
       }
     }
     return commanded;
+  }
+
+  /** Dispatch one aim; an async rejection retro-marks the camera `command-failed` for status reads. */
+  private dispatch(id: string, pan: number, tilt: number): void {
+    let result: void | Promise<void>;
+    try {
+      result = this.deps.aimCamera(id, pan, tilt);
+    } catch {
+      this.markCommandFailed(id);
+      return;
+    }
+    if (result && typeof result.then === 'function') {
+      result.then(undefined, () => this.markCommandFailed(id));
+    }
+  }
+
+  private markCommandFailed(id: string): void {
+    if (!this.lastAims.has(id)) {
+      return; // a newer re-aim already replaced this cycle's trail
+    }
+    if (this.lastAims.get(id) === 'aimed') {
+      this.lastAimed = Math.max(0, this.lastAimed - 1);
+      this.lastAimedIds = this.lastAimedIds.filter((x) => x !== id);
+    }
+    this.lastAims.set(id, 'command-failed');
   }
 
   /**
