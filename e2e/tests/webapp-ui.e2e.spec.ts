@@ -148,6 +148,23 @@ test.describe('SK Video webapp — Settings theme', () => {
     const cfg = await request.get(plugin('/operational-config')).then((r) => r.json());
     expect(cfg.frigate.mqttHost).toBe('10.0.0.42');
     expect(cfg.frigate.labels).toBe('person');
+
+    // Restore an unconfigured Frigate: the saved broker persists in plugin-config-data, and the
+    // Frigate-unconfigured contract tests (safety.e2e) depend on a clean stack. PUT replaces the
+    // WHOLE config (the settings form always sends everything), so send the full doc back.
+    // GET decorates frigate with the read-only mqttPasswordSet flag; PUT validation rejects it.
+    const { mqttPasswordSet, ...frigateWritable } = cfg.frigate ?? {};
+    void mqttPasswordSet; // read-only decoration — excluded from the write, not used
+    const restore = await request.put(plugin('/operational-config'), {
+      data: { ...cfg, frigate: { ...frigateWritable, mqttHost: '' } },
+    });
+    expect(restore.ok()).toBeTruthy();
+    await pollJson(
+      request,
+      plugin('/operational-config'),
+      (c: { frigate?: { mqttHost?: string } }) => (c.frigate?.mqttHost ?? '') === '',
+      30_000,
+    );
   });
 
   test('switches density and persists it', async ({ page }) => {
@@ -178,14 +195,20 @@ test.describe('SK Video webapp — Live Wall + Camera Focus', () => {
     await expect(page.getByRole('button', { name: 'Back to Live' })).toBeVisible();
   });
 
-  test('shows the sub/full-res toggle only when the camera has a substream', async ({ page }) => {
+  test('offers the sub variant in the stream menu only when the camera has one', async ({
+    page,
+  }) => {
     await page.goto(`${APP}#/live/subcam`);
-    await expect(page.getByRole('button', { name: 'Full res' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Sub' })).toBeVisible();
+    await page.getByRole('button', { name: 'Stream variant' }).click();
+    await expect(page.getByRole('menuitemradio', { name: /^Main/ })).toBeVisible();
+    await expect(page.getByRole('menuitemradio', { name: /^Sub/ })).toBeVisible();
 
     await page.goto(`${APP}#/live/${CAMERA}`);
+    await page.reload(); // hash-only nav keeps the menu's open state; a fresh load resets it
     await expect(page.locator('.player')).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Full res' })).toHaveCount(0);
+    await page.getByRole('button', { name: 'Stream variant' }).click();
+    await expect(page.getByRole('menuitemradio', { name: /^Main/ })).toBeVisible();
+    await expect(page.getByRole('menuitemradio', { name: /^Sub/ })).toHaveCount(0);
   });
 
   test('shows every tile on a crowded wall (mosaic does not clip past 5 cameras)', async ({

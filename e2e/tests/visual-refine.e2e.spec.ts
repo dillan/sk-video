@@ -18,11 +18,12 @@ let original: Record<string, unknown> = { hardwareTier: 'x86' };
 test.beforeAll(async ({ request }) => {
   await ensureCamera(request);
   original = (await getPluginConfig(request)).configuration ?? { hardwareTier: 'x86' };
-  // Enable the experimental refine with a dead Frigate broker: the refine engages on MOB but no
-  // detection ever arrives, so the loss timer must fire and revert to position-based aim.
+  // Enable the experimental refine with a dead Frigate broker (nothing listens on port 1): the
+  // refine engages on MOB but no detection ever arrives, so the loss timer must fire and revert
+  // to position-based aim. Uses the operational-config shape (frigate.mqttHost/mqttPort).
   await setPluginConfig(request, {
     ...original,
-    frigateMqttUrl: 'mqtt://127.0.0.1:1',
+    frigate: { mqttHost: '127.0.0.1', mqttPort: 1 },
     mobVisualRefine: true,
   });
 });
@@ -64,20 +65,22 @@ test.describe('visual MOB refine fail-safe (A1)', () => {
     expect(cleared, 'the fail-safe banner should clear when MOB is deactivated').toBeTruthy();
   });
 
-  test('exposes the experimental toggle as off by default in the plugin schema', async ({
+  test('keeps the refine toggle OFF by default, owned by the operational config (admin schema empty)', async ({
     request,
   }) => {
-    // The schema must advertise the option honestly (not safety-rated) and default it OFF.
-    // The plugins listing carries the full JSON schema the admin UI renders.
+    // Operational config moved out of the SK admin into the web app: the admin schema is
+    // intentionally EMPTY, and the experimental toggle lives in GET/PUT /operational-config —
+    // off unless the operator explicitly enables it (the settings UI carries the
+    // "NOT safety-rated" honesty copy, pinned by its unit tests).
     const list = await (await request.get(`${BASE}/skServer/plugins`)).json();
     const manifest = (list as { id: string; schema?: unknown }[]).find((p) => p.id === 'sk-video');
-    expect(manifest).toBeTruthy();
-    const schema = manifest!.schema as {
-      properties: Record<string, { default?: unknown; title?: string }>;
-    };
-    const opt = schema.properties.mobVisualRefine;
-    expect(opt, 'the experimental refine toggle must be exposed').toBeTruthy();
-    expect(opt.default).toBe(false);
-    expect(String(opt.title)).toMatch(/not safety-rated/i);
+    if (manifest && manifest.schema) {
+      const schema = manifest.schema as { properties?: Record<string, unknown> };
+      expect(Object.keys(schema.properties ?? {})).toEqual([]);
+    }
+    // This suite's own beforeAll enables the refine, so assert the untouched config it captured:
+    // the harness never opts in — absent/false is the shipped default (also unit-pinned in the
+    // operational-config validation).
+    expect((original as { mobVisualRefine?: boolean }).mobVisualRefine ?? false).toBe(false);
   });
 });
