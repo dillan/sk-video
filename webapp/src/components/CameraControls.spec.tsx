@@ -152,16 +152,21 @@ describe('CameraControls', () => {
     ).toBe(false);
   });
 
-  it('disables the aim + zoom on a still-refresh feed and explains it', () => {
+  it('keeps discrete nudge + zoom usable on a still-refresh feed, blocking only continuous pan', () => {
+    // Continuous drag against a ~1 fps feed is dangerous (you steer blind between frames), but a
+    // one-shot nudge is safe — and it drives the fast MJPEG refresh, which is unreachable if all
+    // PTZ is disabled on this rung.
     mockApi();
     render(<CameraControls {...base} camera={camera()} delayed rung="mjpeg" />);
     expect((screen.getByRole('button', { name: 'Zoom in' }) as HTMLButtonElement).disabled).toBe(
-      true,
+      false,
     );
-    expect(screen.getByText(/still-refresh ~1 fps — PTZ paused/)).toBeTruthy();
+    expect(screen.getByText(/still-refresh ~1 fps — tap to nudge/)).toBeTruthy();
+    // The hard STOP stays available while degraded.
+    expect(screen.getByRole('button', { name: 'Stop camera movement' })).toBeTruthy();
   });
 
-  it('phone layout drops STOP and folds vision + capabilities into the "…" menu', async () => {
+  it('phone layout keeps the always-present hard STOP and folds vision + capabilities into the "…" menu', async () => {
     mockApi();
     render(
       <CameraControls
@@ -171,7 +176,7 @@ describe('CameraControls', () => {
         padSize={88}
       />,
     );
-    expect(screen.queryByRole('button', { name: 'Stop camera movement' })).toBeNull(); // no STOP on phone
+    expect(screen.getByRole('button', { name: 'Stop camera movement' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'More controls' }));
     expect(await screen.findByRole('menuitemradio', { name: /Auto/ })).toBeTruthy(); // vision folded in
     expect(screen.getByText('Listen')).toBeTruthy(); // capability folded in
