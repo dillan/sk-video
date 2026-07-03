@@ -32,8 +32,9 @@ Camera definitions are managed through the standard Signal K Resources API at `/
 | `GET` | `/cameras/:id/stream.m3u8` | HLS master playlist. | `200`, `404`, `502` |
 | `GET` | `/cameras/:id/hls/:resource` | HLS media playlist / segments / init segment. | `200`, `404`, `502` |
 | `GET` | `/cameras/:id/frame.jpeg` | A single JPEG still from the stream (served `no-store`). | `200`, `404`, `502` |
-| `GET` | `/cameras/:id/health` | Diagnostic: negotiated codecs, online/producer/consumer counts (source URLs **redacted**). | `200`, `502` |
+| `GET` | `/cameras/:id/health` | Diagnostic: negotiated codecs, online/producer/consumer counts (source URLs **redacted**), plus `lastGoodAt`/`trackedSince` so went-dark and never-seen read apart. | `200`, `502` |
 | `GET` | `/cameras/:id/transport` | The recommended transport-fallback walk (`webrtc → hls → mjpeg`, codec-aware). | `200`, `502` |
+| `GET` | `/cameras` | Aggregate wall projection: every camera's definition (**no source/network address**), health (+last-good), server transport walk, and layout hints in one response — the Live Wall's single read. | `200`, `503` |
 | `POST` | `/cameras/:id/talk` | Two-way audio backchannel (WebRTC SDP with a talk track). Gated on the camera reporting a speaker. | `200`, `404`, `502` |
 
 ## PTZ & imaging (ONVIF)
@@ -42,6 +43,7 @@ Camera definitions are managed through the standard Signal K Resources API at `/
 | --- | --- | --- | --- |
 | `POST` | `/cameras/:id/ptz` | Relative pan/tilt/zoom move (velocity-clamped). | `204`, `404`, `502`, `503` |
 | `POST` | `/cameras/:id/ptz/stop` | Stop the current move. | `204`, `404`, `502`, `503` |
+| `GET` | `/cameras/:id/ptz/position` | Current PTZ position in normalized ONVIF space (the calibration wizard pairs it with an observed bearing). | `200`, `404`, `502`, `503` |
 | `GET` | `/cameras/:id/ptz/presets` | List the camera's saved presets. | `200`, `404`, `502`, `503` |
 | `POST` | `/cameras/:id/ptz/preset` | Go to a preset by token. | `204`, `404`, `502`, `503` |
 | `GET` | `/cameras/:id/imaging` | Current imaging settings + the presets/controls the camera supports. | `200`, `404`, `502`, `503` |
