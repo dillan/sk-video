@@ -71,4 +71,26 @@ describe('CameraTile', () => {
     act(() => vi.advanceTimersByTime(10_500));
     expect(screen.getByText('No signal')).toBeTruthy();
   });
+
+  it('starts lazily: no player (and no No-signal aging) until the tile scrolls into view', () => {
+    // Stub an IntersectionObserver so the tile takes the lazy path jsdom otherwise skips.
+    let trigger: ((entries: Array<{ isIntersecting: boolean }>) => void) | null = null;
+    class FakeIO {
+      constructor(cb: (entries: Array<{ isIntersecting: boolean }>) => void) {
+        trigger = cb;
+      }
+      observe() {}
+      disconnect() {}
+    }
+    vi.stubGlobal('IntersectionObserver', FakeIO);
+    vi.useFakeTimers();
+    render(<CameraTile camera={enabledSub} onOpen={vi.fn()} />);
+    expect(screen.queryByTestId('player')).toBeNull(); // off-screen: nothing negotiates
+    act(() => vi.advanceTimersByTime(20_000));
+    expect(screen.queryByText('No signal')).toBeNull(); // and it never ages into a fake fault
+    act(() => trigger?.([{ isIntersecting: true }]));
+    expect(screen.getByTestId('player')).toBeTruthy(); // visible → the walk starts
+    act(() => trigger?.([{ isIntersecting: false }]));
+    expect(screen.queryByTestId('player')).toBeNull(); // scrolled away → player unmounts
+  });
 });

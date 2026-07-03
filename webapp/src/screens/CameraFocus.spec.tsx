@@ -66,19 +66,19 @@ describe('CameraFocus', () => {
     await waitFor(() => expect(screen.getByText('Camera not found.')).toBeTruthy());
   });
 
-  it('renders the PTZ pad but disables the aim + zoom on a still-refresh feed, and says why', async () => {
-    // The pad is the primary control, but continuous PTZ is unsafe/laggy at ~1 fps, so on the MJPEG
-    // still-refresh rung the aim group + zoom are disabled, the full-frame drag surface is gone, and
-    // an honest caption explains it.
+  it('keeps nudge + zoom on a still-refresh feed but drops the drag surface, and says why', async () => {
+    // Continuous PTZ is unsafe at ~1 fps (steering blind between frames), so on the MJPEG rung the
+    // full-frame drag surface is gone — but one-shot nudges + zoom stay usable (they also kick the
+    // fast frame refresh), and an honest caption explains the degraded mode.
     mockApi({ cameras: { bow: { name: 'Foredeck', enabled: true, capabilities: { ptz: true } } } });
     const { container } = render(<CameraFocus cameraId="bow" onBack={() => undefined} />);
     await screen.findByText('Foredeck');
     expect(container.querySelector('ptz-pad-variant')).toBeTruthy();
     expect(container.querySelector('.focus__gestures')).toBeNull();
     expect((screen.getByRole('button', { name: 'Zoom in' }) as HTMLButtonElement).disabled).toBe(
-      true,
+      false,
     );
-    expect(screen.getByText(/still-refresh ~1 fps — PTZ paused/)).toBeTruthy();
+    expect(screen.getByText(/still-refresh ~1 fps — tap to nudge/)).toBeTruthy();
   });
 
   it('surfaces the server’s actionable hint (not "try again") when a camera action fails', async () => {

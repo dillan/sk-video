@@ -36,7 +36,8 @@ interface Props {
   formFactor: 'phone' | 'tablet';
   padSize: number;
   rung: TTransport;
-  /** Still-refresh (~1 fps): continuous PTZ is unsafe/laggy, so the pad + zoom are disabled with a why. */
+  /** Still-refresh (~1 fps): continuous pan is blocked (steering blind between frames); discrete
+   *  nudges + zoom stay usable — they're one-shot, and a nudge kicks the fast frame refresh. */
   delayed: boolean;
   variant: TStreamVariant;
   hasSub: boolean;
@@ -396,7 +397,6 @@ export function CameraControls(props: Props) {
         type="button"
         className="zoompill__btn"
         aria-label="Zoom in"
-        disabled={delayed}
         onClick={() => zoomStep(1)}
       >
         {svg(ICON.plus, 17, 'currentColor', 2)}
@@ -406,7 +406,6 @@ export function CameraControls(props: Props) {
         type="button"
         className="zoompill__btn"
         aria-label="Zoom out"
-        disabled={delayed}
         onClick={() => zoomStep(-1)}
       >
         {svg(ICON.minus, 17, 'currentColor', 2)}
@@ -414,22 +413,27 @@ export function CameraControls(props: Props) {
     </div>
   );
 
+  // Still-refresh (~1 fps): continuous drag steers blind between frames, so only one-shot events
+  // pass — a discrete step (which also kicks the fast MJPEG refresh) and the safety panend/stop.
+  const onPad = delayed
+    ? (d: IPtzDetail): void => {
+        if (d.type === 'step' || d.type === 'panend') onPtzPad(d);
+      }
+    : onPtzPad;
   const aimGroup = ptz && (
-    <div className={`aim${delayed ? ' aim--off' : ''}`}>
+    <div className={`aim${delayed ? ' aim--degraded' : ''}`}>
       {zoomPill}
-      <div className="aim__housing" aria-disabled={delayed}>
-        <PtzPad size={padSize} onPtz={delayed ? () => undefined : onPtzPad} />
+      <div className="aim__housing">
+        <PtzPad size={padSize} onPtz={onPad} />
       </div>
-      {!phone && (
-        <button
-          type="button"
-          className="stopbtn"
-          onClick={stopAll}
-          aria-label="Stop camera movement"
-        >
-          STOP
-        </button>
-      )}
+      <button
+        type="button"
+        className={`stopbtn${phone ? ' stopbtn--phone' : ''}`}
+        onClick={stopAll}
+        aria-label="Stop camera movement"
+      >
+        STOP
+      </button>
     </div>
   );
 
@@ -480,7 +484,9 @@ export function CameraControls(props: Props) {
   );
 
   const delayNote = delayed && ptz && (
-    <div className="cluster__note chip chip--caution">still-refresh ~1 fps — PTZ paused</div>
+    <div className="cluster__note chip chip--caution">
+      still-refresh ~1 fps — tap to nudge (continuous pan off)
+    </div>
   );
   const subNote = variant === 'sub' && mainIsHevc && (
     <div className="cluster__note chip chip--caution">H.264 sub · main is H.265</div>

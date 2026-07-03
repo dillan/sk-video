@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ICameraEntry, IStreamHealth, ITransportHints, TTransport } from '../api';
 import {
   cameraSubtitle,
@@ -43,6 +43,22 @@ export function CameraTile({ camera, transport, health, hero, onOpen, onState }:
   const [rung, setRung] = useState<TTransport>('mjpeg');
   const [active, setActive] = useState(false);
   const [signalLost, setSignalLost] = useState(false);
+  // Lazy start: only a visible tile negotiates a stream; scrolling it off-screen unmounts the
+  // player (closing its PeerConnection / stopping the still-refresh). Environments without
+  // IntersectionObserver (jsdom) start every tile — the observer is an optimisation, not a gate.
+  const rootRef = useRef<HTMLElement | null>(null);
+  const [visible, setVisible] = useState(() => typeof IntersectionObserver === 'undefined');
+  useEffect(() => {
+    if (typeof IntersectionObserver === 'undefined') return;
+    const el = rootRef.current;
+    if (!el) return;
+    const io = new IntersectionObserver(
+      (entries) => setVisible(entries.some((e) => e.isIntersecting)),
+      { rootMargin: '120px' }, // pre-start just before the tile scrolls in, so it feels instant
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
   // Prefer the captured H.264 sub-stream for the grid; fall back to main for a camera without one.
   const variant = camera.capabilities?.substreams && camera.media?.substreamPath ? 'sub' : 'main';
   // The sub-stream is H.264 by selection, so its walk is the H.264 one; a main-variant tile follows
@@ -50,14 +66,15 @@ export function CameraTile({ camera, transport, health, hero, onOpen, onState }:
   const walk = variant === 'main' && transport ? transport.recommended : H264_TRANSPORTS;
 
   // Arm the "No signal" grace timer while connecting; a frame (active) or a source change resets it.
+  // An off-screen (lazily paused) tile is not connecting, so it must never age into "No signal".
   useEffect(() => {
-    if (!camera.enabled || active) {
+    if (!camera.enabled || active || !visible) {
       setSignalLost(false);
       return;
     }
     const t = setTimeout(() => setSignalLost(true), SIGNAL_GRACE_MS);
     return () => clearTimeout(t);
-  }, [camera.enabled, camera.id, variant, active]);
+  }, [camera.enabled, camera.id, variant, active, visible]);
 
   // Report the coarse state up so the Live Wall header can tally it.
   const category = tileCategory(camera, active, signalLost, rung);
@@ -70,7 +87,7 @@ export function CameraTile({ camera, transport, health, hero, onOpen, onState }:
   const label = `${camera.name}${subtitle ? ` — ${subtitle}` : ''} — ${status.label}`;
   const body = (
     <>
-      {camera.enabled ? (
+      {camera.enabled && visible ? (
         <VideoPlayer
           cameraId={camera.id}
           transports={walk}
@@ -102,6 +119,7 @@ export function CameraTile({ camera, transport, health, hero, onOpen, onState }:
     return (
       <button
         type="button"
+        ref={rootRef as React.RefObject<HTMLButtonElement>}
         className={className}
         aria-label={label}
         onClick={() => onOpen(camera.id)}
@@ -111,7 +129,7 @@ export function CameraTile({ camera, transport, health, hero, onOpen, onState }:
     );
   }
   return (
-    <div className={className} aria-label={label}>
+    <div ref={rootRef as React.RefObject<HTMLDivElement>} className={className} aria-label={label}>
       {body}
     </div>
   );

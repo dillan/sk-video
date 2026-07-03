@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { frameUrl, hlsUrl, whepUrl, type TTransport, type TStreamVariant } from '../api';
 import { nextTransport, trackStall, upgradeDelayMs } from '../lib/transport';
+import { tryAcquireWebrtc, releaseWebrtc } from '../lib/webrtc-budget';
 
 /**
  * Same-origin player driven by the server's transport walk (webrtc → hls → mjpeg, reordered for
@@ -93,6 +94,26 @@ async function negotiateWhep(
   }
 }
 
+/**
+ * Snapshot the current video frame as a data-url poster, so a reconnect shows the last real view
+ * (clearly stamped stale) instead of a black box. Same-origin media (WHEP MediaStream / proxied
+ * HLS) never taints the canvas; anything unexpected just returns null and the poster stays as-is.
+ */
+function capturePosterFrom(video: HTMLVideoElement): string | null {
+  if (video.readyState < 2 || video.videoWidth === 0) {
+    return null;
+  }
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext('2d')?.drawImage(video, 0, 0);
+    return canvas.toDataURL('image/jpeg', 0.6);
+  } catch {
+    return null;
+  }
+}
+
 export function VideoPlayer({
   cameraId,
   transports,
@@ -179,6 +200,7 @@ export function VideoPlayer({
     if (!video || (rung !== 'hls' && rung !== 'webrtc')) return;
     let cancelled = false;
     let pc: RTCPeerConnection | null = null;
+    let slot = false;
 
     if (rung === 'hls') {
       if (video.canPlayType('application/vnd.apple.mpegurl')) {
@@ -189,7 +211,12 @@ export function VideoPlayer({
       }
     } else if (typeof RTCPeerConnection === 'undefined') {
       advance();
+    } else if (!tryAcquireWebrtc()) {
+      // Over the concurrent-PeerConnection budget (a many-camera wall on a Pi): fall down the
+      // walk now, and climb back via the normal upgrade path once a slot frees up.
+      advance();
     } else {
+      slot = true;
       negotiateWhep(cameraId, video, variant)
         .then((conn) => {
           if (cancelled) conn.close();
@@ -202,7 +229,11 @@ export function VideoPlayer({
 
     return () => {
       cancelled = true;
+      // Keep the last real frame as a stale-stamped poster so the switch never blanks the tile.
+      const last = capturePosterFrom(video);
+      if (last) setPoster(last);
       if (pc) pc.close();
+      if (slot) releaseWebrtc();
       video.srcObject = null;
       video.removeAttribute('src');
     };
@@ -260,9 +291,18 @@ export function VideoPlayer({
               advance();
             }}
           />
-          {/* Keep the last frame on screen while the video rung negotiates, so an upgrade never blanks. */}
+          {/* Keep the last frame on screen while the video rung negotiates, so an upgrade never
+              blanks — clearly stamped stale so it can never read as live. */}
           {!playing && poster && (
-            <img className="player__media player__poster" src={poster} alt="" aria-hidden="true" />
+            <>
+              <img
+                className="player__media player__poster"
+                src={poster}
+                alt=""
+                aria-hidden="true"
+              />
+              <span className="player__stale chip chip--caution">last frame · reconnecting</span>
+            </>
           )}
         </>
       )}
