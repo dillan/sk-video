@@ -250,3 +250,61 @@ describe('MobController', () => {
     expect(calls.aims.length).toBe(before);
   });
 });
+
+describe('per-camera aim outcomes (the honest per-camera trail)', () => {
+  const limitCam = (id: string): IMobCamera => ({
+    id,
+    hasAbsolutePtz: true,
+    // A huge pan offset saturates rawPan past ±1, so the camera points at its limit, not the target.
+    aimConfig: {
+      mountBearingDeg: 0,
+      calibration: {
+        pan: { offset: 5, scalePerDeg: 0.01 },
+        tilt: { offset: 0, scalePerDeg: 0.01 },
+      },
+    },
+  });
+  const uncalibratedPtz = (id: string): IMobCamera => ({
+    id,
+    hasAbsolutePtz: true,
+    aimConfig: {}, // absolute PTZ but never calibrated -> no geo solution
+  });
+
+  it('reports aimed / at-limit / no-solution per capable camera', () => {
+    const { mob } = setup({
+      getCameras: () => [ptzCam('bow'), limitCam('stern'), uncalibratedPtz('mast')],
+    });
+    const status = mob.activate();
+    expect(status.cameraAims).toEqual([
+      { id: 'bow', outcome: 'aimed' },
+      { id: 'stern', outcome: 'at-limit' },
+      { id: 'mast', outcome: 'no-solution' },
+    ]);
+    expect(status.aimedCameras).toBe(1); // at-limit and no-solution never count as aimed
+  });
+
+  it('flips a camera to command-failed when its aim dispatch rejects, and drops it from the count', async () => {
+    const { mob } = setup({
+      getCameras: () => [ptzCam('bow'), ptzCam('stern')],
+      aimCamera: (id) => (id === 'stern' ? Promise.reject(new Error('camera 401')) : undefined),
+    });
+    mob.activate();
+    await Promise.resolve(); // let the rejection land
+    await Promise.resolve();
+    const status = mob.status();
+    expect(status.cameraAims).toEqual([
+      { id: 'bow', outcome: 'aimed' },
+      { id: 'stern', outcome: 'command-failed' },
+    ]);
+    expect(status.aimedCameras).toBe(1);
+    expect(status.aimedCameraIds).toEqual(['bow']);
+  });
+
+  it('reports no outcomes while idle', () => {
+    const { mob } = setup();
+    expect(mob.status().cameraAims).toEqual([]);
+    mob.activate();
+    mob.deactivate();
+    expect(mob.status().cameraAims).toEqual([]);
+  });
+});
