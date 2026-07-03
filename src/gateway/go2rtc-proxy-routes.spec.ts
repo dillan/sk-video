@@ -107,6 +107,8 @@ function setup(over: Partial<IProxyContext> = {}) {
     fetchImpl,
     gate: over.gate,
     allowedCandidateHosts: over.allowedCandidateHosts,
+    noteHealth: over.noteHealth,
+    lastGood: over.lastGood,
   });
   return { handlers, apiPort, hasCamera, hasSubstream, hasBackchannel, fetchImpl };
 }
@@ -621,6 +623,42 @@ describe('registerProxyRoutes', () => {
         hlsRes,
       );
       expect(hlsRes.headers['Cache-Control']).toBeUndefined();
+    });
+  });
+
+  describe('per-camera last-good tracking (went-dark vs never-seen)', () => {
+    const STREAMS = JSON.stringify({
+      foredeck: { producers: [{ url: 'rtsp://cam/main' }], consumers: [] },
+    });
+    const healthUpstream = () =>
+      vi.fn().mockResolvedValue({
+        status: 200,
+        json: () => Promise.resolve(JSON.parse(STREAMS)),
+        headers: { get: () => null },
+      });
+
+    it('GET /health stamps the tracker and returns lastGoodAt + trackedSince', async () => {
+      const noteHealth = vi.fn();
+      const lastGood = vi.fn(() => ({ lastGoodAt: 1111, trackedSince: 1000 }));
+      const { handlers } = setup({ fetchImpl: healthUpstream(), noteHealth, lastGood });
+      const res = makeRes();
+      await handlers.get('GET /cameras/:id/health')!(
+        fakeReq({ params: { id: 'foredeck' } as never }),
+        res,
+      );
+      expect(noteHealth).toHaveBeenCalledWith('foredeck', true);
+      expect(res.body).toMatchObject({ online: true, lastGoodAt: 1111, trackedSince: 1000 });
+    });
+
+    it('GET /transport also stamps the tracker (it reads health anyway)', async () => {
+      const noteHealth = vi.fn();
+      const { handlers } = setup({ fetchImpl: healthUpstream(), noteHealth });
+      const res = makeRes();
+      await handlers.get('GET /cameras/:id/transport')!(
+        fakeReq({ params: { id: 'foredeck' } as never }),
+        res,
+      );
+      expect(noteHealth).toHaveBeenCalledWith('foredeck', true);
     });
   });
 
