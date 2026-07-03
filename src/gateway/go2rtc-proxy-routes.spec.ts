@@ -622,4 +622,74 @@ describe('registerProxyRoutes', () => {
       expect(hlsRes.headers['Cache-Control']).toBeUndefined();
     });
   });
+
+  describe('SDP ICE candidate scrubbing (same-origin invariant)', () => {
+    // A go2rtc answer advertises a host candidate for EVERY interface it binds (loopback, docker
+    // bridges, VPN internals). Candidates a remote browser can never reach leak host topology and
+    // slow ICE; the proxy must scrub them before the answer reaches the RTCPeerConnection.
+    const ANSWER = [
+      'v=0',
+      'o=- 1 2 IN IP4 127.0.0.1',
+      'a=candidate:1 1 UDP 2130706431 192.168.1.10 8555 typ host',
+      'a=candidate:2 1 UDP 2130706430 127.0.0.1 8555 typ host',
+      'a=candidate:3 1 UDP 2130706429 169.254.7.9 8555 typ host',
+      'a=candidate:4 1 UDP 2130706428 fe80::abcd 8555 typ host',
+      'a=end-of-candidates',
+    ].join('\r\n');
+
+    it('drops loopback and link-local host candidates for a remote (LAN) client', async () => {
+      const fetchImpl = vi.fn().mockResolvedValue(upstreamRes({ status: 201, text: ANSWER }));
+      const { handlers } = setup({ fetchImpl });
+      const res = makeRes();
+      await handlers.get('POST /cameras/:id/whep')!(
+        fakeReq({
+          params: { id: 'foredeck' } as never,
+          body: 'v=0',
+          socket: { remoteAddress: '192.168.1.50' } as never,
+        }),
+        res,
+      );
+      const sent = String(res.sent);
+      expect(sent).toContain('192.168.1.10 8555');
+      expect(sent).not.toContain('127.0.0.1 8555');
+      expect(sent).not.toContain('169.254.7.9');
+      expect(sent).not.toContain('fe80::abcd');
+      expect(sent).toContain('a=end-of-candidates');
+    });
+
+    it('keeps loopback candidates when the client itself is local (dev / same host)', async () => {
+      const fetchImpl = vi.fn().mockResolvedValue(upstreamRes({ status: 201, text: ANSWER }));
+      const { handlers } = setup({ fetchImpl });
+      const res = makeRes();
+      await handlers.get('POST /cameras/:id/whep')!(
+        fakeReq({
+          params: { id: 'foredeck' } as never,
+          body: 'v=0',
+          socket: { remoteAddress: '127.0.0.1' } as never,
+        }),
+        res,
+      );
+      const sent = String(res.sent);
+      expect(sent).toContain('127.0.0.1 8555');
+      expect(sent).toContain('192.168.1.10 8555');
+    });
+
+    it('scrubs the talk answer the same way', async () => {
+      const fetchImpl = vi.fn().mockResolvedValue(upstreamRes({ status: 201, text: ANSWER }));
+      const { handlers } = setup({ fetchImpl });
+      const res = makeRes();
+      await handlers.get('POST /cameras/:id/talk')!(
+        fakeReq({
+          params: { id: 'foredeck' } as never,
+          body: 'v=0',
+          socket: { remoteAddress: '10.0.0.7' } as never,
+        }),
+        res,
+      );
+      const sent = String(res.sent);
+      expect(sent).not.toContain('127.0.0.1 8555');
+      expect(sent).not.toContain('fe80::abcd');
+      expect(sent).toContain('192.168.1.10 8555');
+    });
+  });
 });
