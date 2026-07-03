@@ -2,6 +2,7 @@ import type { IRouter, Request, Response } from 'express';
 import { go2rtcApiUrl, go2rtcVariantUrl, go2rtcHlsUrl } from './go2rtc-proxy';
 import { fetchStreamHealth } from './stream-health';
 import { transportHints } from './transport-hints';
+import { scrubSdpCandidates, isLocalClientAddress } from './sdp-scrub';
 import type { AuthGate } from '../security/request-auth';
 
 export interface IProxyContext {
@@ -19,6 +20,11 @@ export interface IProxyContext {
    * the existing ungated GET hls/frame paths; gating only whep would be security theatre.
    */
   gate?: AuthGate;
+  /**
+   * Hosts of operator-configured explicit WebRTC candidates (SKVIDEO_GO2RTC_CANDIDATES) — these
+   * always survive ICE scrubbing because the operator asserted they are reachable.
+   */
+  allowedCandidateHosts?: () => readonly string[];
   fetchImpl?: typeof fetch;
 }
 
@@ -64,6 +70,14 @@ function readRawBody(req: Request): Promise<string> {
 export function registerProxyRoutes(router: IRouter, ctx: IProxyContext): void {
   const doFetch = ctx.fetchImpl ?? fetch;
 
+  // The same-origin invariant, client side: never relay ICE candidates the browser can't reach
+  // (loopback for a remote client, link-local always) — they leak host topology and slow ICE.
+  const scrubAnswer = (req: Request, answer: string): string =>
+    scrubSdpCandidates(answer, {
+      clientIsLocal: isLocalClientAddress(req.socket?.remoteAddress ?? undefined),
+      allowHosts: ctx.allowedCandidateHosts?.() ?? [],
+    });
+
   // WHEP: POST an SDP offer, return go2rtc's SDP answer. `?variant=sub` selects the low-res substream.
   router.post('/cameras/:id/whep', async (req: Request, res: Response) => {
     const id = String(req.params.id);
@@ -86,7 +100,10 @@ export function registerProxyRoutes(router: IRouter, ctx: IProxyContext): void {
         signal: loopbackSignal(),
       });
       const answer = await upstream.text();
-      res.status(upstream.status).set('Content-Type', 'application/sdp').send(answer);
+      res
+        .status(upstream.status)
+        .set('Content-Type', 'application/sdp')
+        .send(scrubAnswer(req, answer));
     } catch {
       res.status(502).json({ error: 'gateway unavailable' });
     }
@@ -117,7 +134,10 @@ export function registerProxyRoutes(router: IRouter, ctx: IProxyContext): void {
         signal: loopbackSignal(),
       });
       const answer = await upstream.text();
-      res.status(upstream.status).set('Content-Type', 'application/sdp').send(answer);
+      res
+        .status(upstream.status)
+        .set('Content-Type', 'application/sdp')
+        .send(scrubAnswer(req, answer));
     } catch {
       res.status(502).json({ error: 'gateway unavailable' });
     }

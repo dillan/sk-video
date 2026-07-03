@@ -106,6 +106,7 @@ function setup(over: Partial<IProxyContext> = {}) {
     hasBackchannel,
     fetchImpl,
     gate: over.gate,
+    allowedCandidateHosts: over.allowedCandidateHosts,
   });
   return { handlers, apiPort, hasCamera, hasSubstream, hasBackchannel, fetchImpl };
 }
@@ -672,6 +673,23 @@ describe('registerProxyRoutes', () => {
       const sent = String(res.sent);
       expect(sent).toContain('127.0.0.1 8555');
       expect(sent).toContain('192.168.1.10 8555');
+    });
+
+    it('keeps operator-configured candidates for a remote client (explicit reachability)', async () => {
+      const fetchImpl = vi.fn().mockResolvedValue(upstreamRes({ status: 201, text: ANSWER }));
+      const { handlers } = setup({ fetchImpl, allowedCandidateHosts: () => ['127.0.0.1'] });
+      const res = makeRes();
+      await handlers.get('POST /cameras/:id/whep')!(
+        fakeReq({
+          params: { id: 'foredeck' } as never,
+          body: 'v=0',
+          socket: { remoteAddress: '192.168.1.50' } as never,
+        }),
+        res,
+      );
+      const sent = String(res.sent);
+      expect(sent).toContain('127.0.0.1 8555'); // the e2e harness's published-port candidate
+      expect(sent).not.toContain('fe80::abcd'); // link-local still never survives
     });
 
     it('scrubs the talk answer the same way', async () => {

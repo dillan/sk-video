@@ -27,6 +27,7 @@ import { Go2rtcBinaryManager } from './gateway/go2rtc-binary-manager';
 import { Go2rtcProcess } from './gateway/go2rtc-process';
 import { Go2rtcGateway } from './gateway/go2rtc-gateway';
 import { registerProxyRoutes } from './gateway/go2rtc-proxy-routes';
+import { candidateHost } from './gateway/sdp-scrub';
 import { StreamWatchdog } from './gateway/stream-watchdog';
 import { fetchStreamHealth } from './gateway/stream-health';
 import { PtzManager } from './onvif/ptz-manager';
@@ -1166,6 +1167,14 @@ export = function (app: ServerAPI): Plugin {
         hasSubstream: (id: string) => !!cameras?.get(id)?.media?.substreamPath,
         hasBackchannel: (id: string) => cameras?.get(id)?.capabilities?.audioBackchannel === true,
         gate: unauthorized,
+        // Operator-configured explicit candidates always survive ICE scrubbing (they asserted
+        // reachability — the e2e harness's published loopback port relies on this).
+        allowedCandidateHosts: () =>
+          (process.env.SKVIDEO_GO2RTC_CANDIDATES ?? '')
+            .split(',')
+            .map((c) => c.trim())
+            .filter(Boolean)
+            .map(candidateHost),
       });
 
       // Read-only role/placement layout hints for the widget to auto-arrange feeds by area.
