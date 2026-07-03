@@ -36,6 +36,9 @@ const base = {
   hasSub: false,
   mainIsHevc: false,
   onVariant: vi.fn(),
+  forcedTransport: null,
+  onForceTransport: vi.fn(),
+  continuousPan: false,
   onBack: vi.fn(),
   live: true,
   flash: vi.fn(),
@@ -201,5 +204,16 @@ describe('CameraControls', () => {
     expect((chip.querySelector('.cchip__dot') as HTMLElement).style.background).toBe(
       'var(--status-dark)',
     );
+  });
+
+  it('offers a manual transport pin in the stream menu (Auto = server walk)', async () => {
+    const onForceTransport = vi.fn();
+    mockApi();
+    render(
+      <CameraControls {...base} camera={camera()} onForceTransport={onForceTransport} />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Stream variant' }));
+    fireEvent.click(await screen.findByRole('menuitemradio', { name: /Transport · WebRTC/ }));
+    expect(onForceTransport).toHaveBeenCalledWith('webrtc');
   });
 });

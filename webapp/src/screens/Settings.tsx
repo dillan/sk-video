@@ -1,5 +1,7 @@
+import { useState } from 'react';
 import { THEMES, THEME_LABELS, type Theme } from '../lib/theme';
 import { DENSITIES, DENSITY_LABELS, type Density } from '../lib/density';
+import { loadContinuousPtz, saveContinuousPtz } from '../lib/ptz-prefs';
 import { SafetyAlerts } from './SafetyAlerts';
 import { OperationalSettings } from './OperationalSettings';
 
@@ -16,6 +18,12 @@ interface Props {
  * is the one thing that shapes the console itself; it persists per device.
  */
 export function Settings({ theme, onTheme, density, onDensity }: Props) {
+  const [continuousPtz, setContinuousPtz] = useState(() => loadContinuousPtz());
+  const toggleContinuous = (): void => {
+    const next = !continuousPtz;
+    setContinuousPtz(next);
+    saveContinuousPtz(next);
+  };
   return (
     <div className="settings">
       <header className="page-head">
@@ -66,6 +74,23 @@ export function Settings({ theme, onTheme, density, onDensity }: Props) {
             </button>
           ))}
         </div>
+      </section>
+
+      <section className="panel">
+        <h2 className="panel__title">Camera controls</h2>
+        <p className="muted">
+          PTZ defaults to discrete nudge taps — a one-shot move can’t run away from you, and the
+          hard STOP is always present. Press-and-hold continuous pan (pad drag and full-frame drag)
+          is an opt-in for this device; it stays off on a still-refresh feed either way.
+        </p>
+        <button
+          type="button"
+          className={`iconbtn iconbtn--wide${continuousPtz ? ' iconbtn--on' : ''}`}
+          aria-pressed={continuousPtz}
+          onClick={toggleContinuous}
+        >
+          {continuousPtz ? 'Continuous PTZ: on' : 'Continuous PTZ: off'}
+        </button>
       </section>
 
       <SafetyAlerts />

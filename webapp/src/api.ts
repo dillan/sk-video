@@ -226,8 +226,16 @@ export interface ITransportHints {
 export const fetchHealth = (id: string, signal?: AbortSignal): Promise<IStreamHealth> =>
   getJson<IStreamHealth>(`/cameras/${encodeURIComponent(id)}/health`, 'health', signal);
 
-export const fetchTransport = (id: string, signal?: AbortSignal): Promise<ITransportHints> =>
-  getJson<ITransportHints>(`/cameras/${encodeURIComponent(id)}/transport`, 'transport', signal);
+export const fetchTransport = (
+  id: string,
+  signal?: AbortSignal,
+  variant: TStreamVariant = 'main',
+): Promise<ITransportHints> =>
+  getJson<ITransportHints>(
+    `/cameras/${encodeURIComponent(id)}/transport${variant === 'sub' ? '?variant=sub' : ''}`,
+    'transport',
+    signal,
+  );
 
 /** Stream variant: the full-res main, or the low-res H.264 `_sub` (browser-decodable when main is H.265). */
 export type TStreamVariant = 'main' | 'sub';

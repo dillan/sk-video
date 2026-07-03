@@ -10,6 +10,7 @@ import {
   type TStreamVariant,
 } from '../api';
 import { ptzDelayed, isHevc, transportsForVariant } from '../lib/transport';
+import { loadContinuousPtz } from '../lib/ptz-prefs';
 import { actionMessage, type IMsg } from '../lib/camera-messages';
 import { VideoPlayer } from '../components/VideoPlayer';
 import { usePtzGestures } from '../components/usePtzGestures';
@@ -46,6 +47,12 @@ export function CameraFocus({ cameraId, onBack }: Props) {
   const [msg, setMsg] = useState<IMsg | null>(null);
   // Operator override of the auto sub/main choice (null = auto). Reset when the camera changes.
   const [override, setOverride] = useState<TStreamVariant | null>(null);
+  // Server walk for the sub variant (its own codecs -> its own order); null until fetched.
+  const [subHints, setSubHints] = useState<ITransportHints | null>(null);
+  // Manual transport pin (null = auto walk with fallback). Reset when the camera changes.
+  const [forced, setForced] = useState<TTransport | null>(null);
+  // Continuous press-and-hold PTZ is a per-device opt-in; discrete nudges are the default.
+  const continuousPtz = loadContinuousPtz();
   // Whether the operator is listening to camera audio (unmutes the player); off by default.
   const [listening, setListening] = useState(false);
   const msgTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -61,6 +68,8 @@ export function CameraFocus({ cameraId, onBack }: Props) {
   useEffect(() => {
     const ctrl = new AbortController();
     setOverride(null); // a new camera starts on its auto sub/main choice
+    setSubHints(null);
+    setForced(null);
     setActive(false);
     setListening(false);
     fetchCameras(ctrl.signal)
@@ -101,7 +110,7 @@ export function CameraFocus({ cameraId, onBack }: Props) {
   // to nudge the camera without reaching for the control. Continuous PTZ is unsafe on a 1 fps still-
   // refresh feed (you can't see where you're aiming for 1–2 s), so it's live-feed only.
   const gestures = usePtzGestures({
-    enabled: ptz && !delayed,
+    enabled: ptz && !delayed && continuousPtz,
     onMove: (v) => {
       bumpPtzActive();
       void ptzNudge(cameraId, v).catch((err: unknown) =>
@@ -110,6 +119,31 @@ export function CameraFocus({ cameraId, onBack }: Props) {
     },
     onStop: () => void ptzStop(cameraId).catch(() => undefined),
   });
+
+  // The browser can't decode an H.265 main stream live, so when the camera has an H.264 substream we
+  // play that instead. We treat the main as H.265 if onboarding recorded it OR go2rtc negotiated HEVC.
+  const mainIsHevc = camera?.media?.codec === 'h265' || isHevc(hints?.codecs ?? []);
+  // A sub is selectable only when the server actually serves `?variant=sub` from a stored substreamPath.
+  const hasSub = !!camera?.media?.substreamPath && camera?.capabilities?.substreams === true;
+  const variant: TStreamVariant = override ?? (hasSub && mainIsHevc ? 'sub' : 'main');
+  // A pinned transport plays exactly that rung (no automatic fallback — that's the point of a pin);
+  // auto plays the server walk for the variant, with the H.264 order as the sub's fetch-time fallback.
+  const autoWalk =
+    variant === 'sub'
+      ? (subHints?.recommended ??
+        (hints ? transportsForVariant(true, hints.recommended) : ['webrtc', 'hls', 'mjpeg']))
+      : (hints?.recommended ?? []);
+  const transports = forced ? [forced] : (autoWalk as TTransport[]);
+
+  // The sub walk is server-driven too: fetch /transport?variant=sub once the sub is playing.
+  useEffect(() => {
+    if (variant !== 'sub' || subHints !== null) return;
+    const ctrl = new AbortController();
+    fetchTransport(cameraId, ctrl.signal, 'sub')
+      .then(setSubHints)
+      .catch(() => undefined); // fall back to the client H.264 order
+    return () => ctrl.abort();
+  }, [variant, subHints, cameraId]);
 
   if (notFound) {
     return (
@@ -121,14 +155,6 @@ export function CameraFocus({ cameraId, onBack }: Props) {
       </div>
     );
   }
-
-  // The browser can't decode an H.265 main stream live, so when the camera has an H.264 substream we
-  // play that instead. We treat the main as H.265 if onboarding recorded it OR go2rtc negotiated HEVC.
-  const mainIsHevc = camera?.media?.codec === 'h265' || isHevc(hints?.codecs ?? []);
-  // A sub is selectable only when the server actually serves `?variant=sub` from a stored substreamPath.
-  const hasSub = !!camera?.media?.substreamPath && camera?.capabilities?.substreams === true;
-  const variant: TStreamVariant = override ?? (hasSub && mainIsHevc ? 'sub' : 'main');
-  const transports = hints ? transportsForVariant(variant === 'sub', hints.recommended) : [];
 
   return (
     <div className="focus">
@@ -176,6 +202,9 @@ export function CameraFocus({ cameraId, onBack }: Props) {
             hasSub={hasSub}
             mainIsHevc={mainIsHevc}
             onVariant={setOverride}
+            forcedTransport={forced}
+            onForceTransport={setForced}
+            continuousPan={continuousPtz}
             onBack={onBack}
             live={active}
             flash={flash}

@@ -55,14 +55,17 @@ const LOOPBACK_TIMEOUT_MS = 5000;
 export async function fetchStreamHealth(opts: {
   apiPort: number;
   cameraId: string;
+  /** `sub` reads the `<id>_sub` go2rtc stream — its own producer, codec, and health. */
+  variant?: 'main' | 'sub';
   fetchImpl?: typeof fetch;
 }): Promise<IStreamHealth> {
   const doFetch = opts.fetchImpl ?? fetch;
-  const upstream = await doFetch(go2rtcStreamsUrl(opts.apiPort, opts.cameraId), {
+  const variant = opts.variant ?? 'main';
+  const upstream = await doFetch(go2rtcStreamsUrl(opts.apiPort, opts.cameraId, variant), {
     signal: AbortSignal.timeout(LOOPBACK_TIMEOUT_MS),
   });
   const data: unknown = await upstream.json();
-  return parseStreamHealth(data, opts.cameraId);
+  return parseStreamHealth(data, variant === 'sub' ? `${opts.cameraId}_sub` : opts.cameraId);
 }
 
 /**

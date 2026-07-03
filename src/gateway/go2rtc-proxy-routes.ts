@@ -200,16 +200,24 @@ export function registerProxyRoutes(router: IRouter, ctx: IProxyContext): void {
   });
 
   // Adaptive transport contract (A5): the recommended transport walk for the widget to fall back on.
+  // `?variant=sub` computes the walk from the `<id>_sub` stream's own negotiated codecs (H.264 by
+  // selection → WebRTC-first), so the sub ordering is server-driven rather than a client override.
   router.get('/cameras/:id/transport', async (req: Request, res: Response) => {
     const id = String(req.params.id);
     if (!ctx.hasCamera(id)) {
       res.status(404).json({ error: 'unknown camera' });
       return;
     }
+    const wantSub = req.query.variant === 'sub';
+    if (wantSub && !(ctx.hasSubstream?.(id) ?? false)) {
+      res.status(404).json({ error: 'no substream for this camera' });
+      return;
+    }
     try {
       const health = await fetchStreamHealth({
         apiPort: ctx.apiPort(),
         cameraId: id,
+        variant: wantSub ? 'sub' : 'main',
         fetchImpl: doFetch,
       });
       ctx.noteHealth?.(id, health.online);

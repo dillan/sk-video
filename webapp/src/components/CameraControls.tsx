@@ -17,6 +17,7 @@ import {
   type TTransport,
 } from '../api';
 import { codecLabel, transportLabel } from '../lib/transport';
+import { allowPadEvent } from '../lib/ptz-prefs';
 import { actionMessage, type IMsg } from '../lib/camera-messages';
 import { GlassMenu, type IMenuRow } from './GlassMenu';
 import { PtzPad, type IPtzDetail } from './PtzPad';
@@ -43,6 +44,11 @@ interface Props {
   hasSub: boolean;
   mainIsHevc: boolean;
   onVariant: (v: TStreamVariant) => void;
+  /** Manual transport pin (null = auto walk). A pinned rung never falls back — that's the point. */
+  forcedTransport: TTransport | null;
+  onForceTransport: (t: TTransport | null) => void;
+  /** Per-device opt-in for continuous press-and-hold pan; discrete nudges are the default. */
+  continuousPan: boolean;
   onBack: () => void;
   live: boolean;
   flash: (m: IMsg) => void;
@@ -96,6 +102,7 @@ export function CameraControls(props: Props) {
   const { cameraId, camera, formFactor, padSize, rung, delayed, variant, hasSub, onVariant } =
     props;
   const { mainIsHevc, onBack, live, flash, onPtzActivity, listening, onListen } = props;
+  const { forcedTransport, onForceTransport, continuousPan } = props;
   const ptz = camera.capabilities?.ptz === true;
   const hasAudio = camera.capabilities?.audio === true;
   const hasBackchannel = camera.capabilities?.audioBackchannel === true;
@@ -255,6 +262,24 @@ export function CameraControls(props: Props) {
       active: variant === 'sub',
       dot: variant === 'sub' && live ? DOT_LIVE : DOT_IDLE,
       onSelect: () => onVariant('sub'),
+    });
+  }
+  // Manual transport pin: auto is the server walk with fallback; a pinned rung plays exactly that
+  // transport (useful to force low-latency WebRTC while docking, or to hold HLS on a weak link).
+  streamRows.push({
+    key: 't-auto',
+    label: 'Transport · Auto',
+    sub: 'server-recommended walk with fallback',
+    active: forcedTransport === null,
+    onSelect: () => onForceTransport(null),
+  });
+  for (const t of ['webrtc', 'hls', 'mjpeg'] as TTransport[]) {
+    streamRows.push({
+      key: `t-${t}`,
+      label: `Transport · ${transportLabel(t)}`,
+      sub: 'pinned — no automatic fallback',
+      active: forcedTransport === t,
+      onSelect: () => onForceTransport(t),
     });
   }
 
@@ -419,13 +444,11 @@ export function CameraControls(props: Props) {
     </div>
   );
 
-  // Still-refresh (~1 fps): continuous drag steers blind between frames, so only one-shot events
-  // pass — a discrete step (which also kicks the fast MJPEG refresh) and the safety panend/stop.
-  const onPad = delayed
-    ? (d: IPtzDetail): void => {
-        if (d.type === 'step' || d.type === 'panend') onPtzPad(d);
-      }
-    : onPtzPad;
+  // Discrete steps + the safety stop always pass; continuous drag needs the per-device opt-in AND
+  // a live feed (dragging a ~1 fps still-refresh steers blind between frames).
+  const onPad = (d: IPtzDetail): void => {
+    if (allowPadEvent(d.type, { continuous: continuousPan, delayed })) onPtzPad(d);
+  };
   const aimGroup = ptz && (
     <div className={`aim${delayed ? ' aim--degraded' : ''}`}>
       {zoomPill}

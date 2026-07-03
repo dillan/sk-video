@@ -49,11 +49,16 @@ export function go2rtcVariantUrl(
  * Builds the loopback go2rtc /api/streams introspection URL for a camera, validating the id so a
  * client-supplied src can never be injected.
  */
-export function go2rtcStreamsUrl(apiPort: number, cameraId: string): string {
+export function go2rtcStreamsUrl(
+  apiPort: number,
+  cameraId: string,
+  variant: 'main' | 'sub' = 'main',
+): string {
   if (!isValidCameraId(cameraId)) {
     throw new Error(`invalid camera id: ${cameraId}`);
   }
-  return `http://127.0.0.1:${apiPort}/api/streams?src=${cameraId}`;
+  const src = variant === 'sub' ? `${cameraId}_sub` : cameraId;
+  return `http://127.0.0.1:${apiPort}/api/streams?src=${src}`;
 }
 
 /** The loopback go2rtc URL for ALL streams — one read serves the whole camera wall. */

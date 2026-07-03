@@ -519,6 +519,46 @@ describe('registerProxyRoutes', () => {
     });
   });
 
+  describe('GET /cameras/:id/transport?variant=sub (server-driven sub walk)', () => {
+    it('computes the walk from the _sub stream (H.264 by selection -> WebRTC first)', async () => {
+      const fetchImpl = vi.fn().mockResolvedValue({
+        status: 200,
+        json: () =>
+          Promise.resolve({
+            foredeck_sub: {
+              producers: [{ url: 'rtsp://cam/sub', medias: [{ codecs: [{ name: 'H264' }] }] }],
+              consumers: [],
+            },
+          }),
+        headers: { get: () => null },
+      });
+      const { handlers } = setup({ fetchImpl });
+      const res = makeRes();
+      await handlers.get('GET /cameras/:id/transport')!(
+        fakeReq({ params: { id: 'foredeck' } as never, query: { variant: 'sub' } as never }),
+        res,
+      );
+      expect(fetchImpl).toHaveBeenCalledWith(
+        'http://127.0.0.1:1984/api/streams?src=foredeck_sub',
+        expect.anything(),
+      );
+      const body = res.body as { recommended: string[] };
+      expect(body.recommended[0]).toBe('webrtc');
+    });
+
+    it('404s ?variant=sub when the camera has no substream, and never fetches', async () => {
+      const fetchImpl = vi.fn();
+      const { handlers } = setup({ fetchImpl, hasSubstream: () => false });
+      const res = makeRes();
+      await handlers.get('GET /cameras/:id/transport')!(
+        fakeReq({ params: { id: 'foredeck' } as never, query: { variant: 'sub' } as never }),
+        res,
+      );
+      expect(res.statusCode).toBe(404);
+      expect(fetchImpl).not.toHaveBeenCalled();
+    });
+  });
+
   describe('GET passthrough routes (frame.jpeg / stream.m3u8)', () => {
     const cases: Array<{ name: string; key: string; expectedUrl: string; subUrl: string }> = [
       {

@@ -40,4 +40,21 @@ describe('Settings', () => {
     // The Safety alerts panel is here too.
     expect(screen.getByRole('heading', { name: 'Safety alerts' })).toBeTruthy();
   });
+
+  it('offers the continuous-PTZ opt-in, defaulting off and persisting per device', () => {
+    // This jsdom setup exposes no working localStorage (the prefs lib guards with try/catch);
+    // stub an in-memory one so persistence is observable.
+    const store = new Map<string, string>();
+    vi.stubGlobal('localStorage', {
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => void store.set(k, v),
+    });
+    render(<Settings {...props} />);
+    const toggle = screen.getByRole('button', { name: 'Continuous PTZ: off' });
+    expect(toggle.getAttribute('aria-pressed')).toBe('false');
+    fireEvent.click(toggle);
+    expect(screen.getByRole('button', { name: 'Continuous PTZ: on' })).toBeTruthy();
+    expect(store.get('sk-video.ptz-continuous')).toBe('true');
+    vi.unstubAllGlobals();
+  });
 });
