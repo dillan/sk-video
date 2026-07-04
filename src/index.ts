@@ -1651,11 +1651,14 @@ export = function (app: ServerAPI): Plugin {
       );
 
       // Uploaded video library: store + Range-served playback.
+      // NB: uploads are deliberately NOT put behind the 20/min sensitive-route limiter — that
+      // budget suits enumeration oracles (credential/connection probes), but a legitimate bulk
+      // import of a trip's worth of clips would stall against it. The disk-exhaustion vector the
+      // upload review raised is bounded structurally instead: max concurrent sessions + an
+      // aggregate staged-byte cap in ResumableUploadStore, plus the per-file magic-byte/quota
+      // checks. (The route still accepts a `throttle` if a dedicated upload limit is ever wanted.)
       registerUploadRoutes(router, () => videos, unauthorized, {
         getResumable: () => resumableUploads,
-        // Same brute-force guard as the other sensitive routes: session spawning and one-shot
-        // uploads share the 20/min budget (appends are bounded by the session caps).
-        throttle: tooManyRequests,
         // A committed upload bypasses the Resources API — announce it so every client's library
         // converges without polling.
         onAdded: (asset) => bridge?.emitResource('videos', asset.id, asset),
