@@ -37,6 +37,8 @@ import {
   zonesForThresholds,
   buildCameraHealthTeardown,
 } from './signalk/camera-meta';
+import { buildCameraPutControls } from './signalk/camera-put-controls';
+import { classifyAuxCommands } from './onvif/aux-commands';
 import { fetchStreamHealth, fetchAllStreamsHealth } from './gateway/stream-health';
 import { registerCamerasProjectionRoute } from './cameras/cameras-projection-routes';
 import { PtzManager } from './onvif/ptz-manager';
@@ -812,6 +814,59 @@ export = function (app: ServerAPI): Plugin {
         for (const id of Object.keys(cameras?.list() ?? {})) {
           emitCameraHealthMeta(id);
         }
+        // Writable camera controls as standard Signal K PUT paths (spotlight/recording/preset),
+        // discoverable via meta.supportsPut — a KIP switch widget can flip the spotlight with no
+        // sk-video-specific code. Handlers registered once per path per start; the server's own
+        // PUT auth applies. Values validated in camera-put-controls before reaching ONVIF.
+        const putControlPaths = new Set<string>();
+        const registerCameraPutControls = (id: string): void => {
+          const camera = cameras?.get(id);
+          if (!camera?.enabled) return;
+          const controls = buildCameraPutControls(
+            id,
+            camera.name,
+            {
+              spotlight:
+                classifyAuxCommands(camera.capabilities?.auxCommands ?? []).spotlight !== null,
+              recording: recordings !== null,
+              presets: camera.capabilities?.ptz === true,
+            },
+            {
+              setSpotlight: async (cameraId, on) => {
+                const tokens = cameras?.get(cameraId)?.capabilities?.auxCommands ?? [];
+                const command = classifyAuxCommands(tokens).spotlight;
+                if (!command || !ptz) throw new Error('spotlight unavailable');
+                const controller = await ptz.controllerFor(cameraId);
+                await controller.sendAux(on ? command.on : command.off);
+              },
+              setRecording: (cameraId, on) => {
+                if (!recordings) return false;
+                if (!on) {
+                  recordings.stop(cameraId);
+                  return true;
+                }
+                return recordings.start(cameraId);
+              },
+              gotoPreset: async (cameraId, token) => {
+                if (!ptz) throw new Error('PTZ unavailable');
+                const controller = await ptz.controllerFor(cameraId);
+                await controller.gotoPreset(token);
+              },
+            },
+          );
+          for (const control of controls) {
+            if (!putControlPaths.has(control.path)) {
+              putControlPaths.add(control.path);
+              skBridge.registerAction(control.path, control.handler);
+            }
+          }
+          if (controls.length > 0) {
+            skBridge.emitMeta(controls.map((control) => control.meta));
+          }
+        };
+        for (const id of Object.keys(cameras?.list() ?? {})) {
+          registerCameraPutControls(id);
+        }
         watchdog = new StreamWatchdog({
           getMonitoredCameras: () =>
             Object.entries(cameras?.list() ?? {})
@@ -992,6 +1047,7 @@ export = function (app: ServerAPI): Plugin {
           await base.setResource(id, value);
           ptz?.invalidate(id);
           emitCameraHealthMeta(id); // a rename/enable must refresh the health-path labels
+          registerCameraPutControls(id); // a newly added camera gets its PUT controls right away
           scheduleSync();
         };
         app.registerResourceProvider({
