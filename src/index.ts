@@ -40,6 +40,7 @@ import {
 import { buildCameraPutControls } from './signalk/camera-put-controls';
 import { classifyAuxCommands } from './onvif/aux-commands';
 import { statusLine } from './web/status-line';
+import { buildOpenApiDoc } from './web/openapi';
 import { fetchStreamHealth, fetchAllStreamsHealth } from './gateway/stream-health';
 import { registerCamerasProjectionRoute } from './cameras/cameras-projection-routes';
 import { PtzManager } from './onvif/ptz-manager';
@@ -407,6 +408,9 @@ export = function (app: ServerAPI): Plugin {
       type: 'object',
       properties: {},
     }),
+
+    // Published under Admin UI → Documentation → OpenAPI, alongside the server's own APIs.
+    getOpenApi: () => buildOpenApiDoc(),
 
     start(options?: IOperationalConfig, restart?: (cfg: object) => void) {
       currentConfig = options ?? {};
