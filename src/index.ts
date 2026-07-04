@@ -760,6 +760,8 @@ export = function (app: ServerAPI): Plugin {
             )) {
               try {
                 incidentStore.delete(id);
+                // Pruning bypasses the Resources API — announce the tombstone ourselves.
+                skBridge.emitResource('incidents', id, null);
               } catch {
                 // one un-deletable bundle must not halt pruning of the rest (disk would fill)
               }
@@ -1170,7 +1172,12 @@ export = function (app: ServerAPI): Plugin {
               },
               { assertHostAllowed: (host) => assertHostAllowed(host, ssrfOptions, lookup) },
             ),
-          save: (id, camera) => persistCamera(id, camera as unknown as Record<string, unknown>),
+          save: async (id, camera) => {
+            await persistCamera(id, camera as unknown as Record<string, unknown>);
+            // The firmware-change auto re-scan bypasses the Resources API — announce the
+            // refreshed camera document ourselves so every client's list converges.
+            skBridge.emitResource('cameras', id, cameras?.get(id) ?? null);
+          },
           log: (message) => app.debug?.(message),
         }).catch(() => undefined);
       } catch (err) {
@@ -1512,6 +1519,8 @@ export = function (app: ServerAPI): Plugin {
             }
             // Re-validate the whole record through the store (closed field-set + clamps) before saving.
             store.set(id, { ...camera, calibration });
+            // Calibration writes bypass the Resources API — announce the change ourselves.
+            bridge?.emitResource('cameras', id, store.get(id) ?? null);
           },
         },
         unauthorized,

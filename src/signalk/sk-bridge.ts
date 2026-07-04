@@ -56,7 +56,7 @@ export type ActionHandler = (value: unknown) => IActionResult | Promise<IActionR
  * optional so the bridge can feature-detect and keep working on older or partial servers.
  */
 export interface ISignalKApp {
-  handleMessage?(id: string, msg: IDeltaMessage): void;
+  handleMessage?(id: string, msg: IDeltaMessage, skVersion?: 'v1' | 'v2'): void;
   getSelfPath?(path: string): unknown;
   registerPutHandler?(
     context: string,
@@ -227,6 +227,26 @@ export class SignalKBridge {
       this.log(`setDefaultMetadata(${path}) threw: ${errMessage(err)}`);
       return false;
     }
+  }
+
+  /**
+   * Announce an internal resource mutation exactly the way the server announces Resources-API
+   * writes: path `resources.<type>.<id>`, the document as the value (null tombstone on delete),
+   * as a v2 delta — resources deliberately stay out of the v1 full model. Only needed for writes
+   * that bypass the Resources API (discovery merges, calibration, sweeps); API writes are
+   * announced by the server itself.
+   */
+  emitResource(resourceType: string, resourceId: string, value: unknown): boolean {
+    if (typeof this.app.handleMessage !== 'function') {
+      this.log('handleMessage unavailable; resource delta dropped');
+      return false;
+    }
+    this.app.handleMessage(
+      this.pluginId,
+      { updates: [{ values: [{ path: `resources.${resourceType}.${resourceId}`, value }] }] },
+      'v2',
+    );
+    return true;
   }
 
   /** Snapshot of vessel self-state, each field normalised to a value plus optional age. */
