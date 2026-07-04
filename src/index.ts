@@ -77,6 +77,7 @@ import { registerSlewRoutes } from './awareness/slew-routes';
 import { slewOwnShipFromSelfState } from './awareness/slew-wiring';
 import { parseAisTargets } from './awareness/ais-targets';
 import { AssetStore } from './uploads/asset-store';
+import { ResumableUploadStore } from './uploads/resumable-store';
 import {
   createFileAssetStore,
   FileAssetIndexPersistence,
@@ -203,6 +204,7 @@ export = function (app: ServerAPI): Plugin {
   let ptz: PtzManager | null = null;
   let discovery: DiscoveryService | null = null;
   let videos: AssetStore | null = null;
+  let resumableUploads: ResumableUploadStore | null = null;
   let hardware: IHardwareInfo | null = null;
   let bridge: SignalKBridge | null = null;
   let snapshots: SnapshotService | null = null;
@@ -476,6 +478,10 @@ export = function (app: ServerAPI): Plugin {
           probes: [createWsDiscoveryProbe(), createMdnsProbe(), createSsdpProbe()],
         });
         videos = createFileAssetStore(dataDir);
+        // Resumable-upload staging survives restarts on purpose: a half-sent 300 MB file over
+        // marina wifi resumes where it died. Stale partials are swept on every start.
+        resumableUploads = new ResumableUploadStore(dataDir);
+        resumableUploads.sweep();
 
         // The durable activity feed: every notification raised through the bridge (MOB, incident,
         // anchor drag, camera-offline) is tapped into an append-only log so the console can
@@ -1292,6 +1298,7 @@ export = function (app: ServerAPI): Plugin {
       ptz = null;
       discovery = null;
       videos = null;
+      resumableUploads = null;
       hardware = null;
       bridge = null;
       snapshots = null;
@@ -1609,7 +1616,9 @@ export = function (app: ServerAPI): Plugin {
       );
 
       // Uploaded video library: store + Range-served playback.
-      registerUploadRoutes(router, () => videos, unauthorized);
+      registerUploadRoutes(router, () => videos, unauthorized, {
+        getResumable: () => resumableUploads,
+      });
       registerSnapshotReadRoutes(router, () => snapshotStore);
       registerEventLogRoutes(router, () => eventLog);
       registerPushRoutes(

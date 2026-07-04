@@ -7,6 +7,7 @@ import {
   isValidAssetId,
   type AssetStore,
 } from './asset-store';
+import { ResumableUploadError, type ResumableUploadStore } from './resumable-store';
 import type { AuthGate } from '../security/request-auth';
 import { parseRange } from './range';
 
@@ -15,15 +16,22 @@ type StreamFactory = (path: string, opts?: { start: number; end: number }) => Re
 export interface IUploadRouteOptions {
   /** Injectable for tests; defaults to fs.createReadStream. */
   streamFactory?: StreamFactory;
+  /** The resumable-upload staging store; the resumable routes 503 until it exists. */
+  getResumable?: () => ResumableUploadStore | null;
 }
 
 /**
  * Registers the video upload/library endpoints, keyed by an opaque id:
- *   POST   /videos       — upload a video (validated by magic bytes; quota-enforced)
- *   GET    /videos       — list stored videos
- *   GET    /videos/:id   — stream a video with HTTP Range support
- *   DELETE /videos/:id   — remove a stored video
- * The store is resolved live (created in start()), returning 503 until the plugin is started.
+ *   POST   /videos                        — one-shot upload (magic-byte validated; quota-enforced)
+ *   POST   /videos/uploads                — open a resumable session ({name, size})
+ *   GET    /videos/uploads/:id            — probe {offset} (the resume handshake)
+ *   PATCH  /videos/uploads/:id            — append bytes at X-Upload-Offset
+ *   POST   /videos/uploads/:id/complete   — finalize through sniff + quota + atomic commit
+ *   DELETE /videos/uploads/:id            — discard a partial (idempotent)
+ *   GET    /videos                        — list stored videos
+ *   GET    /videos/:id                    — stream a video with HTTP Range support
+ *   DELETE /videos/:id                    — remove a stored video
+ * Stores are resolved live (created in start()), returning 503 until the plugin is started.
  */
 export function registerUploadRoutes(
   router: IRouter,
@@ -41,6 +49,113 @@ export function registerUploadRoutes(
     }
     return store;
   };
+
+  // ---- Resumable uploads (registered before /videos/:id so express never shadows them) ----
+  // A client declares the size, appends bytes in order, and finalizes; a dropped connection
+  // resumes from the offset the server reports — even across a plugin or server restart.
+
+  const requireResumable = (res: Response): ResumableUploadStore | null => {
+    const resumable = options.getResumable?.() ?? null;
+    if (!resumable) {
+      res.status(503).json({ error: 'plugin not started' });
+      return null;
+    }
+    return resumable;
+  };
+
+  const resumableError = (err: unknown, res: Response): void => {
+    if (err instanceof ResumableUploadError) {
+      if (err.code === 'unknown') {
+        res.status(404).json({ error: 'unknown upload' });
+      } else if (err.code === 'offset-mismatch' || err.code === 'incomplete') {
+        res.status(409).json({ error: err.message, offset: err.currentOffset ?? 0 });
+      } else {
+        res.status(400).json({ error: err.message });
+      }
+      return;
+    }
+    if (err instanceof AssetRejectedError) {
+      res.status(415).json({ error: err.message });
+    } else if (err instanceof AssetQuotaError) {
+      res.status(413).json({ error: err.message });
+    } else if (err instanceof AssetUploadError) {
+      res.status(400).json({ error: err.message });
+    } else {
+      res.status(500).json({ error: 'upload failed' });
+    }
+  };
+
+  router.post('/videos/uploads', (req: Request, res: Response) => {
+    if (gate(req, res)) return;
+    const resumable = requireResumable(res);
+    if (!resumable) return;
+    const body = (req.body ?? {}) as { name?: unknown; size?: unknown };
+    const size = Number(body.size);
+    if (!Number.isInteger(size) || size <= 0) {
+      res.status(400).json({ error: 'a positive integer size is required' });
+      return;
+    }
+    try {
+      const up = resumable.create(typeof body.name === 'string' ? body.name : undefined, size);
+      res.status(201).json({ id: up.id, name: up.name, size: up.size, offset: up.offset });
+    } catch (err) {
+      if (err instanceof ResumableUploadError && err.code === 'overflow') {
+        res.status(413).json({ error: err.message });
+        return;
+      }
+      resumableError(err, res);
+    }
+  });
+
+  router.get('/videos/uploads/:id', (req: Request, res: Response) => {
+    if (gate(req, res)) return;
+    const resumable = requireResumable(res);
+    if (!resumable) return;
+    const up = resumable.get(String(req.params.id));
+    if (!up) {
+      res.status(404).json({ error: 'unknown upload' });
+      return;
+    }
+    res.json({ id: up.id, name: up.name, size: up.size, offset: up.offset });
+  });
+
+  router.patch('/videos/uploads/:id', (req: Request, res: Response) => {
+    if (gate(req, res)) return;
+    const resumable = requireResumable(res);
+    if (!resumable) return;
+    const offset = Number(req.headers['x-upload-offset']);
+    if (!Number.isInteger(offset) || offset < 0) {
+      res.status(400).json({ error: 'X-Upload-Offset must be a non-negative integer' });
+      return;
+    }
+    void resumable
+      .append(String(req.params.id), offset, req)
+      .then((newOffset) => {
+        res.setHeader('X-Upload-Offset', String(newOffset));
+        res.status(204).end();
+      })
+      .catch((err: unknown) => resumableError(err, res));
+  });
+
+  router.post('/videos/uploads/:id/complete', (req: Request, res: Response) => {
+    if (gate(req, res)) return;
+    const resumable = requireResumable(res);
+    if (!resumable) return;
+    const store = requireStore(res);
+    if (!store) return;
+    void resumable
+      .complete(String(req.params.id), store)
+      .then((asset) => res.status(201).json(asset))
+      .catch((err: unknown) => resumableError(err, res));
+  });
+
+  router.delete('/videos/uploads/:id', (req: Request, res: Response) => {
+    if (gate(req, res)) return;
+    const resumable = requireResumable(res);
+    if (!resumable) return;
+    resumable.discard(String(req.params.id)); // idempotent by design
+    res.status(204).end();
+  });
 
   router.post('/videos', (req: Request, res: Response) => {
     if (gate(req, res)) return;
