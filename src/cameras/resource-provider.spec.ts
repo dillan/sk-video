@@ -50,4 +50,15 @@ describe('createCameraResourceMethods', () => {
     expect(store.get('foredeck')).toBeNull();
     await expect(methods.deleteResource('foredeck')).rejects.toThrow();
   });
+
+  it('drills into a property with dot notation (GET /resources/cameras/<id>/source/scheme)', async () => {
+    await methods.setResource('foredeck', cam);
+    await expect(methods.getResource('foredeck', 'source.scheme')).resolves.toEqual({
+      value: 'rtsp',
+    });
+    await expect(methods.getResource('foredeck', 'name')).resolves.toEqual({
+      value: 'Foredeck',
+    });
+    await expect(methods.getResource('foredeck', 'no.such.property')).rejects.toThrow();
+  });
 });

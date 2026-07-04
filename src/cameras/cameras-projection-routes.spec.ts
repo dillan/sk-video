@@ -17,6 +17,7 @@ function makeRes() {
   const res = {
     statusCode: 200,
     body: undefined as unknown,
+    headers: {} as Record<string, string>,
     status(code: number) {
       this.statusCode = code;
       return this;
@@ -25,8 +26,16 @@ function makeRes() {
       this.body = payload;
       return this;
     },
+    setHeader(name: string, value: string) {
+      this.headers[name] = value;
+      return this;
+    },
   };
-  return res as unknown as Response & { statusCode: number; body: unknown };
+  return res as unknown as Response & {
+    statusCode: number;
+    body: unknown;
+    headers: Record<string, string>;
+  };
 }
 
 const CAMS: Record<string, ICamera> = {
@@ -113,5 +122,30 @@ describe('GET /cameras (aggregate projection)', () => {
     const res = makeRes();
     await handlers.get('GET /cameras')!({} as Request, res);
     expect(res.statusCode).toBe(503);
+  });
+
+  it('carries a per-camera capability manifest derived from the stored definition', async () => {
+    const { handlers } = setup();
+    const res = makeRes();
+    await handlers.get('GET /cameras')!({} as Request, res);
+    const body = res.body as { cameras: Array<Record<string, unknown>> };
+    const foredeck = body.cameras.find((c) => c.id === 'foredeck')!;
+    const manifest = foredeck.manifest as {
+      supportedFeatures: string[];
+      controls: { id: string }[];
+      streams: Record<string, string>;
+    };
+    expect(manifest.supportedFeatures).toContain('ptz');
+    expect(manifest.streams.hls).toBe('/plugins/sk-video/cameras/foredeck/stream.m3u8');
+    expect(manifest.controls.some((c) => c.id === 'activePreset')).toBe(true);
+    // The manifest is projection-only, source-free like everything else here.
+    expect(JSON.stringify(manifest)).not.toContain('10.0.0.');
+  });
+
+  it('marks live state uncacheable (device state can change at any time)', async () => {
+    const { handlers } = setup();
+    const res = makeRes();
+    await handlers.get('GET /cameras')!({} as Request, res);
+    expect(res.headers['Cache-Control']).toBe('no-cache');
   });
 });

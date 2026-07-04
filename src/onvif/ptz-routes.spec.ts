@@ -348,4 +348,40 @@ describe('registerPtzRoutes', () => {
     expect(res.statusCode).toBe(502);
     expect(res.body).toMatchObject({ detail: 'PTZ command failed' });
   });
+
+  /**
+   * Capability gate (radar-API idiom): a camera the plugin KNOWS has no PTZ answers 501 with the
+   * v2 {state:'FAILED'} envelope, instead of timing out against ONVIF and returning a 502. An
+   * unknown capability (no hasPtz answer) keeps the old behavior — attempt the command.
+   */
+  describe('501 for a known non-PTZ camera', () => {
+    const gated = (hasPtz: boolean | null) => {
+      const controller = makeController();
+      const { router, handlers } = fakeRouter();
+      registerPtzRoutes(router, () => makeManager(controller), ALLOW, {
+        hasPtz: () => hasPtz,
+      });
+      return { handlers, controller };
+    };
+
+    it('answers 501 FAILED on every PTZ route without touching ONVIF', async () => {
+      const { handlers, controller } = gated(false);
+      for (const key of ROUTE_KEYS) {
+        const res = await invoke(handlers.get(key)!);
+        expect(res.statusCode, key).toBe(501);
+        expect(res.body).toMatchObject({ state: 'FAILED', statusCode: 501 });
+      }
+      expect(controller.move).not.toHaveBeenCalled();
+      expect(controller.getPresets).not.toHaveBeenCalled();
+    });
+
+    it('proceeds normally when the camera has PTZ or the capability is unknown', async () => {
+      const yes = gated(true);
+      expect((await invoke(yes.handlers.get('POST /cameras/:id/ptz/stop')!)).statusCode).toBe(204);
+      const unknown = gated(null);
+      expect((await invoke(unknown.handlers.get('POST /cameras/:id/ptz/stop')!)).statusCode).toBe(
+        204,
+      );
+    });
+  });
 });
