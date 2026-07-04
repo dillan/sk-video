@@ -1441,13 +1441,21 @@ export = function (app: ServerAPI): Plugin {
           return healths;
         },
         lastGood: (id) => lastGood.get(id),
+        recordingAvailable: () => (hardware?.capabilities.maxRecordingChannels ?? 0) > 0,
       });
 
       // Read-only role/placement layout hints for the widget to auto-arrange feeds by area.
       registerLayoutRoute(router, () => (cameras ? cameras.list() : null));
 
-      // ONVIF PTZ control.
-      registerPtzRoutes(router, () => ptz, unauthorized);
+      // ONVIF PTZ control. The capability gate answers 501 for a camera the plugin KNOWS has no
+      // PTZ (same source of truth as the manifest); unknown cameras fall through to a 404/attempt.
+      registerPtzRoutes(router, () => ptz, unauthorized, {
+        hasPtz: (id) => {
+          const camera = cameras?.get(id);
+          if (!camera) return null; // unknown here → the ONVIF path reports unknown-camera itself
+          return camera.capabilities?.ptz === true;
+        },
+      });
 
       // ONVIF auxiliary-command controls (spotlight / alarm), capability-gated on the tokens the camera
       // advertised at onboarding. Untested on real hardware — implemented to spec, validated by tests.

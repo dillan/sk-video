@@ -1,6 +1,7 @@
 import type { IRouter, Request, Response } from 'express';
 import type { ICamera } from './camera-validation';
 import { computeLayoutHints, type ILayoutHints } from './layout-hints';
+import { buildCameraManifest, type ICameraManifest } from './camera-manifest';
 import type { IStreamHealth } from '../gateway/stream-health';
 import { transportHints, type ITransportHints } from '../gateway/transport-hints';
 import type { ILastGood } from '../gateway/last-good';
@@ -28,6 +29,8 @@ export interface ICameraProjectionEntry {
   health: (IStreamHealth & ILastGood) | null;
   /** The server-recommended transport walk; null while the gateway is down. */
   transport: ITransportHints | null;
+  /** Radar-style capability manifest: features, typed controls, relative stream URLs. */
+  manifest: ICameraManifest;
 }
 
 export interface ICamerasProjection {
@@ -43,6 +46,8 @@ export interface ICamerasProjectionDeps {
   /** One bulk go2rtc read for every listed camera id; throws when the gateway is down. */
   fetchAllHealth: (ids: string[]) => Promise<Record<string, IStreamHealth>>;
   lastGood: (id: string) => ILastGood;
+  /** Whether this install can record at all (tier/channel budget) — drives control availability. */
+  recordingAvailable?: () => boolean;
 }
 
 export function registerCamerasProjectionRoute(
@@ -50,6 +55,8 @@ export function registerCamerasProjectionRoute(
   deps: ICamerasProjectionDeps,
 ): void {
   router.get('/cameras', async (_req: Request, res: Response) => {
+    // Live device state changes at any time (the radar routes set the same header).
+    res.setHeader('Cache-Control', 'no-cache');
     const cams = deps.listCameras();
     if (cams === null) {
       res.status(503).json({ error: 'not ready' });
@@ -75,6 +82,9 @@ export function registerCamerasProjectionRoute(
         device: c.device,
         health: health ? { ...health, ...deps.lastGood(id) } : null,
         transport: health ? transportHints(health) : null,
+        manifest: buildCameraManifest(id, c, {
+          recordingAvailable: deps.recordingAvailable?.() ?? false,
+        }),
       };
     });
     const projection: ICamerasProjection = {

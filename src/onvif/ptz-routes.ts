@@ -19,6 +19,14 @@ function handleError(err: unknown, res: Response): void {
   });
 }
 
+export interface IPtzRouteOptions {
+  /**
+   * Capability gate: true = has PTZ, false = known non-PTZ (answer 501 without touching ONVIF,
+   * the radar-API idiom for unsupported operations), null/undefined = unknown (attempt it).
+   */
+  hasPtz?: (id: string) => boolean | null;
+}
+
 /**
  * Registers ONVIF PTZ routes. The manager is resolved live (it is created in start(), which may run
  * after registerWithRouter), returning 503 until the plugin is started.
@@ -27,6 +35,7 @@ export function registerPtzRoutes(
   router: IRouter,
   getPtz: () => PtzManager | null,
   gate: AuthGate,
+  options: IPtzRouteOptions = {},
 ): void {
   const withController = async (
     req: Request,
@@ -36,6 +45,14 @@ export function registerPtzRoutes(
     const ptz = getPtz();
     if (!ptz) {
       res.status(503).json({ error: 'plugin not started' });
+      return;
+    }
+    if (options.hasPtz?.(String(req.params.id)) === false) {
+      res.status(501).json({
+        state: 'FAILED',
+        statusCode: 501,
+        message: 'camera does not support PTZ',
+      });
       return;
     }
     try {

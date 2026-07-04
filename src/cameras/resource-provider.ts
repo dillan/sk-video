@@ -18,12 +18,24 @@ export function createCameraResourceMethods(store: CameraStore): ICameraResource
     async listResources() {
       return store.list();
     },
-    async getResource(id: string) {
+    async getResource(id: string, property?: string) {
       const camera = store.get(id);
       if (!camera) {
         throw new Error(`camera "${id}" not found`);
       }
-      return camera;
+      if (property === undefined || property === '') {
+        return camera;
+      }
+      // Dot-notation drill-down (GET /resources/cameras/<id>/source/scheme) per the
+      // ResourceProvider contract; unknown properties reject like unknown ids do.
+      let value: unknown = camera;
+      for (const segment of property.split('.')) {
+        if (!value || typeof value !== 'object' || !(segment in (value as object))) {
+          throw new Error(`camera "${id}" has no property "${property}"`);
+        }
+        value = (value as Record<string, unknown>)[segment];
+      }
+      return { value };
     },
     async setResource(id: string, value: Record<string, unknown>) {
       store.set(id, value);
