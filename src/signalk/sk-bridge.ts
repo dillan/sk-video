@@ -83,6 +83,8 @@ export interface ISignalKApp {
     clear?(id: string): void;
     /** Shared ack (sets status.acknowledged); throws when the alarm has canAcknowledge=false. */
     acknowledge?(id: string): void;
+    /** Look up active notifications by their full path — how server-raised (zone) alarms are found. */
+    getPath?(path: string): Record<string, unknown> | undefined;
   };
   /** Bacon-style self-path delta stream; present on full servers, absent on partial ones. */
   streambundle?: {
@@ -270,7 +272,9 @@ export class SignalKBridge {
   ackNotification(key: string): boolean {
     const options = this.notificationOptions.get(key);
     if (options === undefined) {
-      return false; // never raised (or already cleared) — nothing to ack
+      // Not raised by us — but a server-raised alarm (e.g. a zones-enabled camera's) may live at
+      // the same path. Look it up by path and acknowledge through the server's API.
+      return this.ackServerNotification(key);
     }
     const n = this.app.notifications;
     const id = this.notificationIds.get(key);
@@ -283,6 +287,37 @@ export class SignalKBridge {
       }
     }
     return this.emit(this.notificationDelta(key, options, { silenced: true }));
+  }
+
+  /** Acknowledge a notification the SERVER raised (zone alarms) by getPath lookup. */
+  private ackServerNotification(key: string): boolean {
+    const n = this.app.notifications;
+    if (!n?.getPath || !n.acknowledge) {
+      return false;
+    }
+    for (const candidate of [`notifications.${key}`, key]) {
+      let found: Record<string, unknown> | undefined;
+      try {
+        found = n.getPath(candidate);
+      } catch {
+        continue;
+      }
+      const ids = Object.keys(found ?? {});
+      if (ids.length === 0) {
+        continue;
+      }
+      let acked = false;
+      for (const id of ids) {
+        try {
+          n.acknowledge(id);
+          acked = true;
+        } catch (err) {
+          this.log(`notifications.acknowledge(${key} → ${id}) refused: ${errMessage(err)}`);
+        }
+      }
+      return acked;
+    }
+    return false;
   }
 
   /** Clear a previously raised notification keyed by `key`. */

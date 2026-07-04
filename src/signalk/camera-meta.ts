@@ -31,6 +31,37 @@ export interface ICameraHealthMetaOptions {
   zones?: ICameraHealthZone[];
 }
 
+/** Map the user's two thresholds onto contiguous warn + alarm zones with human messages. */
+export function zonesForThresholds(
+  name: string,
+  thresholds: { warnAfterSeconds: number; alarmAfterSeconds: number },
+): ICameraHealthZone[] {
+  return [
+    {
+      lower: thresholds.warnAfterSeconds,
+      upper: thresholds.alarmAfterSeconds,
+      state: 'warn',
+      message: `${name} feed is stalling`,
+    },
+    { lower: thresholds.alarmAfterSeconds, state: 'alarm', message: `${name} has gone dark` },
+  ];
+}
+
+/**
+ * What a zones-enabled camera must emit BEFORE its resource is deleted: a final in-normal-zone
+ * gauge value (so the server clears any active zone notification) and then a zones-clearing meta
+ * (so the watcher disarms). Skipping this orphans a server-raised alarm the plugin cannot clear.
+ */
+export function buildCameraHealthTeardown(id: string): {
+  finalValue: { path: string; value: number };
+  clearZonesMeta: IMetaEntry;
+} {
+  return {
+    finalValue: { path: feedOutagePath(id), value: 0 },
+    clearZonesMeta: { path: feedOutagePath(id), value: { zones: null } },
+  };
+}
+
 export function buildCameraHealthMeta(options: ICameraHealthMetaOptions): IMetaEntry[] {
   const { id, name, pollSeconds, zones } = options;
   return [

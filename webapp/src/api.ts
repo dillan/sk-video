@@ -919,11 +919,18 @@ export interface IFrigatePublicConfig {
   /** Whether a broker password is stored (the value itself is never sent to the client). */
   mqttPasswordSet: boolean;
 }
+/** Per-camera server-evaluated health-alarm thresholds (presence = zones enabled). */
+export interface ICameraHealthZonesConfig {
+  warnAfterSeconds: number;
+  alarmAfterSeconds: number;
+}
+
 export interface IOperationalConfigPublic {
   hardwareTier?: string;
   autoTriggerPath?: string;
   anchorWatchPath?: string;
   mobVisualRefine?: boolean;
+  cameraHealthZones?: Record<string, ICameraHealthZonesConfig>;
   frigate: IFrigatePublicConfig;
 }
 

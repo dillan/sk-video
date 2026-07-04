@@ -2,16 +2,23 @@ import { useEffect, useState } from 'react';
 import {
   fetchOperationalConfig,
   saveOperationalConfig,
+  fetchCameras,
+  type ICameraEntry,
   type IOperationalConfigPublic,
 } from '../api';
 
 const TIERS = ['auto', 'minimal', 'pi4', 'accelerated', 'x86'];
+
+/** One camera's health-alarm row: enabled = the server (not the plugin) raises the alarm. */
+type HealthZoneRow = { enabled: boolean; warn: string; alarm: string };
+const DEFAULT_ZONE_ROW: HealthZoneRow = { enabled: false, warn: '45', alarm: '120' };
 
 type Form = {
   hardwareTier: string;
   anchorWatchPath: string;
   autoTriggerPath: string;
   mobVisualRefine: boolean;
+  healthZones: Record<string, HealthZoneRow>;
   mqttHost: string;
   mqttPort: string;
   mqttTls: boolean;
@@ -30,6 +37,12 @@ function toForm(c: IOperationalConfigPublic): Form {
     anchorWatchPath: c.anchorWatchPath ?? '',
     autoTriggerPath: c.autoTriggerPath ?? '',
     mobVisualRefine: c.mobVisualRefine ?? false,
+    healthZones: Object.fromEntries(
+      Object.entries(c.cameraHealthZones ?? {}).map(([id, z]) => [
+        id,
+        { enabled: true, warn: String(z.warnAfterSeconds), alarm: String(z.alarmAfterSeconds) },
+      ]),
+    ),
     mqttHost: f.mqttHost ?? '',
     mqttPort: f.mqttPort != null ? String(f.mqttPort) : '',
     mqttTls: f.mqttTls ?? false,
@@ -60,6 +73,14 @@ function toPayload(f: Form): unknown {
     anchorWatchPath: f.anchorWatchPath,
     autoTriggerPath: f.autoTriggerPath,
     mobVisualRefine: f.mobVisualRefine,
+    cameraHealthZones: Object.fromEntries(
+      Object.entries(f.healthZones)
+        .filter(([, row]) => row.enabled)
+        .map(([id, row]) => [
+          id,
+          { warnAfterSeconds: Number(row.warn), alarmAfterSeconds: Number(row.alarm) },
+        ]),
+    ),
     frigate,
   };
 }
@@ -72,6 +93,7 @@ function toPayload(f: Form): unknown {
  */
 export function OperationalSettings() {
   const [form, setForm] = useState<Form | null>(null);
+  const [cameraRows, setCameraRows] = useState<ICameraEntry[]>([]);
   const [passwordSet, setPasswordSet] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ kind: 'info' | 'caution'; text: string } | null>(null);
@@ -88,11 +110,28 @@ export function OperationalSettings() {
           text: e instanceof Error ? e.message : 'could not load settings',
         }),
       );
+    // Best-effort: the health-alarm rows need the camera names; the rest of the form loads anyway.
+    fetchCameras()
+      .then((cams) => setCameraRows(cams.filter((c) => c.enabled)))
+      .catch(() => setCameraRows([]));
   };
   useEffect(load, []);
 
   const set = <K extends keyof Form>(k: K, v: Form[K]) =>
     setForm((f) => (f ? { ...f, [k]: v } : f));
+
+  const setZoneRow = (id: string, patch: Partial<HealthZoneRow>) =>
+    setForm((f) =>
+      f
+        ? {
+            ...f,
+            healthZones: {
+              ...f.healthZones,
+              [id]: { ...(f.healthZones[id] ?? DEFAULT_ZONE_ROW), ...patch },
+            },
+          }
+        : f,
+    );
 
   const save = async () => {
     if (!form) return;
@@ -218,6 +257,57 @@ export function OperationalSettings() {
           />
         </label>
       </div>
+
+      {cameraRows.length > 0 && (
+        <>
+          <h3 className="cfg__group">Camera health alarms</h3>
+          <p className="muted">
+            Normally the plugin raises a camera-dark alarm itself. Ticking a camera hands that
+            alarm to the Signal K server’s zone watcher instead: the thresholds below become
+            standard zone metadata, so any instrument (KIP included) shows the warn/alarm state —
+            the alarm still appears in the same place either way.
+          </p>
+          {cameraRows.map((cam) => {
+            const row = form.healthZones[cam.id] ?? DEFAULT_ZONE_ROW;
+            return (
+              <div className="cfg__grid" key={cam.id}>
+                <label className="field cfg__check">
+                  <input
+                    type="checkbox"
+                    checked={row.enabled}
+                    onChange={(e) => setZoneRow(cam.id, { enabled: e.target.checked })}
+                  />
+                  {cam.name}
+                </label>
+                {row.enabled && (
+                  <>
+                    <label className="field">
+                      Warn after (seconds)
+                      <input
+                        type="number"
+                        min="1"
+                        aria-label={`${cam.name} warn after seconds`}
+                        value={row.warn}
+                        onChange={(e) => setZoneRow(cam.id, { warn: e.target.value })}
+                      />
+                    </label>
+                    <label className="field">
+                      Alarm after (seconds)
+                      <input
+                        type="number"
+                        min="2"
+                        aria-label={`${cam.name} alarm after seconds`}
+                        value={row.alarm}
+                        onChange={(e) => setZoneRow(cam.id, { alarm: e.target.value })}
+                      />
+                    </label>
+                  </>
+                )}
+              </div>
+            );
+          })}
+        </>
+      )}
 
       <h3 className="cfg__group">Automation</h3>
       <div className="cfg__grid">

@@ -31,7 +31,12 @@ import { registerProxyRoutes } from './gateway/go2rtc-proxy-routes';
 import { candidateHost } from './gateway/sdp-scrub';
 import { LastGoodTracker, loadLastGoodSnapshot, saveLastGoodSnapshot } from './gateway/last-good';
 import { StreamWatchdog } from './gateway/stream-watchdog';
-import { feedOutagePath, buildCameraHealthMeta } from './signalk/camera-meta';
+import {
+  feedOutagePath,
+  buildCameraHealthMeta,
+  zonesForThresholds,
+  buildCameraHealthTeardown,
+} from './signalk/camera-meta';
 import { fetchStreamHealth, fetchAllStreamsHealth } from './gateway/stream-health';
 import { registerCamerasProjectionRoute } from './cameras/cameras-projection-routes';
 import { PtzManager } from './onvif/ptz-manager';
@@ -785,16 +790,22 @@ export = function (app: ServerAPI): Plugin {
         // safetyCritical. The alarm lives at notifications.cameras.<id>.feedOutage — mirroring the
         // gauge path — so a later zones handover raises the very same notification.
         const cameraDisplayName = (id: string): string => cameras?.get(id)?.name ?? id;
-        // Declare what the health paths mean (displayName/units/timeout) so clients can label and
-        // stale-flag them without knowing sk-video. Re-emitted when a camera definition changes.
+        // Per-camera server-zone opt-in: an entry hands the camera's feed-outage alarm to the
+        // server's zones watcher (we publish thresholds as meta.zones and suppress our own raise).
+        const healthZones = options?.cameraHealthZones ?? {};
+        // Declare what the health paths mean (displayName/units/timeout, plus zones when the user
+        // opted in) so clients can label and stale-flag them without knowing sk-video. Re-emitted
+        // when a camera definition changes.
         const emitCameraHealthMeta = (id: string): void => {
           const camera = cameras?.get(id);
           if (!camera?.enabled) return;
+          const thresholds = healthZones[id];
           skBridge.emitMeta(
             buildCameraHealthMeta({
               id,
               name: camera.name,
               pollSeconds: WATCHDOG_POLL_MS / 1000,
+              zones: thresholds ? zonesForThresholds(camera.name, thresholds) : undefined,
             }),
           );
         };
@@ -806,7 +817,10 @@ export = function (app: ServerAPI): Plugin {
             Object.entries(cameras?.list() ?? {})
               .filter(([, camera]) => camera.enabled)
               .map(([id]) => id),
-          isAlarmEligible: (id) => cameras?.get(id)?.safetyCritical === true,
+          // Single alarm authority: safety-critical cameras alarm via our watchdog UNLESS the user
+          // handed this camera to server zones — then the server raises on the same path.
+          isAlarmEligible: (id) =>
+            cameras?.get(id)?.safetyCritical === true && healthZones[id] === undefined,
           fetchHealth: async (id) => {
             const health = await fetchStreamHealth({
               apiPort: gateway?.apiPort ?? 1984,
@@ -986,6 +1000,14 @@ export = function (app: ServerAPI): Plugin {
             ...base,
             setResource: persistCamera,
             async deleteResource(id: string) {
+              // A zones-enabled camera deleted mid-alarm would leave a server-raised notification
+              // nobody can clear: drive the gauge back into the normal zone, then disarm the zones,
+              // BEFORE the camera disappears.
+              if (healthZones[id]) {
+                const teardown = buildCameraHealthTeardown(id);
+                skBridge.emit(teardown.finalValue);
+                skBridge.emitMeta(teardown.clearZonesMeta);
+              }
               await base.deleteResource(id);
               // Drop the camera's stored credentials too, so a deleted camera never leaves an
               // orphaned secret behind (and a later camera reusing the id can't inherit it).

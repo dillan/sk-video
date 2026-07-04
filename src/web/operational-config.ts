@@ -22,11 +22,25 @@ export interface IFrigateOperationalConfig {
   zones?: string;
 }
 
+/**
+ * Per-camera server-evaluated health-alarm thresholds. An entry hands the camera's feed-outage
+ * alarm to Signal K's own zones watcher: the plugin publishes zones meta on the gauge and stops
+ * raising its own watchdog notification for that camera (single alarm authority).
+ */
+export interface ICameraHealthZonesConfig {
+  /** Seconds of feed outage where the warn zone begins. */
+  warnAfterSeconds: number;
+  /** Seconds where the alarm zone begins (also the warn zone's exclusive upper bound). */
+  alarmAfterSeconds: number;
+}
+
 export interface IOperationalConfig {
   hardwareTier?: string;
   autoTriggerPath?: string;
   anchorWatchPath?: string;
   mobVisualRefine?: boolean;
+  /** Keyed by camera id; presence of an entry = zones enabled for that camera. */
+  cameraHealthZones?: Record<string, ICameraHealthZonesConfig>;
   frigate?: IFrigateOperationalConfig;
 }
 
@@ -49,8 +63,14 @@ const TOP_KEYS = new Set([
   'autoTriggerPath',
   'anchorWatchPath',
   'mobVisualRefine',
+  'cameraHealthZones',
   'frigate',
 ]);
+
+// Same slug rule as camera ids: these keys become Signal K meta paths (cameras.<id>.feedOutage),
+// so a dotted/path-ish key must never pass through.
+const ZONE_CAMERA_ID_RE = /^[A-Za-z0-9-]+$/;
+const ZONE_KEYS = new Set(['warnAfterSeconds', 'alarmAfterSeconds']);
 const FRIGATE_KEYS = new Set([
   'mqttHost',
   'mqttPort',
@@ -101,6 +121,41 @@ export function validateOperationalConfig(input: unknown): IValidation<IOperatio
   if (o.mobVisualRefine !== undefined) {
     if (typeof o.mobVisualRefine !== 'boolean') errors.push('mobVisualRefine must be a boolean');
     else value.mobVisualRefine = o.mobVisualRefine;
+  }
+
+  if (o.cameraHealthZones !== undefined) {
+    const zonesMap = asObject(o.cameraHealthZones);
+    if (!zonesMap) {
+      errors.push('cameraHealthZones must be an object keyed by camera id');
+    } else {
+      const out: Record<string, ICameraHealthZonesConfig> = {};
+      for (const [id, raw] of Object.entries(zonesMap)) {
+        if (!ZONE_CAMERA_ID_RE.test(id)) {
+          errors.push(`cameraHealthZones: "${id}" is not a valid camera id`);
+          continue;
+        }
+        const entry = asObject(raw);
+        if (!entry) {
+          errors.push(`cameraHealthZones.${id} must be an object`);
+          continue;
+        }
+        for (const k of Object.keys(entry)) {
+          if (!ZONE_KEYS.has(k)) errors.push(`unexpected cameraHealthZones.${id} field "${k}"`);
+        }
+        const warn = Number(entry.warnAfterSeconds);
+        const alarm = Number(entry.alarmAfterSeconds);
+        if (!Number.isFinite(warn) || warn <= 0) {
+          errors.push(`cameraHealthZones.${id}.warnAfterSeconds must be a positive number`);
+        } else if (!Number.isFinite(alarm) || alarm <= 0) {
+          errors.push(`cameraHealthZones.${id}.alarmAfterSeconds must be a positive number`);
+        } else if (warn >= alarm) {
+          errors.push(`cameraHealthZones.${id}: warnAfterSeconds must be below alarmAfterSeconds`);
+        } else {
+          out[id] = { warnAfterSeconds: warn, alarmAfterSeconds: alarm };
+        }
+      }
+      value.cameraHealthZones = out;
+    }
   }
 
   if (o.frigate !== undefined) {
