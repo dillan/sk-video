@@ -364,7 +364,9 @@ describe('CameraWizard edit mode', () => {
     const calls = mockApi();
     const onDone = vi.fn();
     render(<CameraWizard onDone={onDone} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Paste a stream URL (rtsp:// or rtmp://…)' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Paste a stream URL (rtsp:// or rtmp://…)' }),
+    );
     fireEvent.change(screen.getByPlaceholderText('rtsp://192.168.1.50:554/stream1'), {
       target: { value: 'rtsp://admin:pw@192.168.1.60:554/stream1' },
     });
@@ -415,7 +417,9 @@ describe('CameraWizard edit mode', () => {
   it('onboards a plain RTMP camera: scheme-aware placeholders and a saved rtmp source', async () => {
     const calls = mockApi();
     render(<CameraWizard onDone={vi.fn()} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Paste a stream URL (rtsp:// or rtmp://…)' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Paste a stream URL (rtsp:// or rtmp://…)' }),
+    );
     // Paste an RTMP URL — the structured fields parse out of it.
     fireEvent.change(screen.getByPlaceholderText('rtsp://192.168.1.50:554/stream1'), {
       target: { value: 'rtmp://10.0.0.9:1935/live/boat' },
@@ -454,7 +458,9 @@ describe('CameraWizard edit mode', () => {
   it('suggests known vendor paths from the make/model hint and applies them (incl. the substream)', async () => {
     const calls = mockApi();
     render(<CameraWizard onDone={vi.fn()} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Paste a stream URL (rtsp:// or rtmp://…)' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Paste a stream URL (rtsp:// or rtmp://…)' }),
+    );
     fireEvent.change(screen.getByPlaceholderText('192.168.1.50'), {
       target: { value: '192.168.1.61' },
     });

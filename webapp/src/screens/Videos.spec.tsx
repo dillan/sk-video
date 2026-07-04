@@ -40,7 +40,12 @@ const pick = (...files: File[]) => fireEvent.change(fileInput(), { target: { fil
 
 /** An uploadVideo mock the test settles by hand, with access to each call's onBytes callback. */
 function controllableUploads() {
-  const started: { name: string; onBytes?: (sent: number) => void; resolve: () => void; reject: (e: unknown) => void }[] = [];
+  const started: {
+    name: string;
+    onBytes?: (sent: number) => void;
+    resolve: () => void;
+    reject: (e: unknown) => void;
+  }[] = [];
   uploadMock.mockImplementation(
     (file: File, opts?: { onBytes?: (sent: number) => void }) =>
       new Promise((resolve, reject) => {
@@ -48,7 +53,13 @@ function controllableUploads() {
           name: file.name,
           onBytes: opts?.onBytes,
           resolve: () =>
-            resolve({ id: file.name, name: file.name, contentType: 'video/mp4', size: file.size, createdAt: 0 }),
+            resolve({
+              id: file.name,
+              name: file.name,
+              contentType: 'video/mp4',
+              size: file.size,
+              createdAt: 0,
+            }),
           reject,
         });
       }),
