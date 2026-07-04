@@ -20,6 +20,8 @@ import {
   draftFromIntrospect,
   draftFromEntry,
   draftFromHint,
+  parseStreamUrl,
+  plainStreamDraft,
   toResourceBody,
   mergeEdit,
   isValidSlug,
@@ -32,7 +34,7 @@ import {
 } from '../lib/onboard';
 import { codecLabel } from '../lib/transport';
 
-type Step = 'scan' | 'connect' | 'device' | 'guide' | 'details';
+type Step = 'scan' | 'connect' | 'device' | 'guide' | 'stream' | 'details';
 interface Msg {
   kind: 'caution' | 'info';
   text: string;
@@ -70,6 +72,13 @@ export function CameraWizard({ onDone, edit, hasStoredLogin = false }: Props) {
   const [hints, setHints] = useState<IDeviceHint[] | null>(null);
   const [hint, setHint] = useState<IDeviceHint | null>(null);
   const [probe, setProbe] = useState<ITestResult | null>(null);
+
+  // plain-stream path (a known rtsp:// URL, or an ONVIF-less camera)
+  const [streamUrl, setStreamUrl] = useState('');
+  const [hintText, setHintText] = useState('');
+  const [credsFromUrl, setCredsFromUrl] = useState(false);
+  // which step the details form returns to (each path enters details from a different place)
+  const [returnStep, setReturnStep] = useState<Step>('connect');
 
   // details step
   const [draft, setDraft] = useState<ICameraDraft | null>(edit ? draftFromEntry(edit) : null);
@@ -137,10 +146,58 @@ export function CameraWizard({ onDone, edit, hasStoredLogin = false }: Props) {
     setBusy(true);
     setMsg(null);
     setProbe(null);
-    testCamera({ source: draft.source })
+    testCamera({
+      source: draft.source,
+      username: username || undefined,
+      password: password || undefined,
+      hint: hintText || undefined,
+    })
       .then(setProbe)
       .catch((err: unknown) => fail(err, 'test the stream'))
       .finally(() => setBusy(false));
+  };
+
+  // The plain-stream path: a camera without (working) ONVIF, or a known stream URL from the manual.
+  const plainStream = (fromHost = ''): void => {
+    setHint(null);
+    setProbe(null);
+    setStreamUrl('');
+    setHintText('');
+    setCredsFromUrl(false);
+    setDraft(plainStreamDraft({ scheme: 'rtsp', host: fromHost }));
+    setMsg(null);
+    setStep('stream');
+  };
+
+  const pasteUrl = (raw: string): void => {
+    setStreamUrl(raw);
+    const parsed = parseStreamUrl(raw);
+    if (!parsed) return;
+    setDraft(plainStreamDraft(parsed.source));
+    setProbe(null);
+    // Credentials embedded in a URL are stripped here: they go to the write-only store at save,
+    // never into the shared camera resource.
+    if (parsed.username || parsed.password) {
+      setUsername(parsed.username ?? '');
+      setPassword(parsed.password ?? '');
+      setCredsFromUrl(true);
+    }
+  };
+
+  const applySuggestion = (paths: { main: string; sub?: string }): void => {
+    if (!draft) return;
+    setDraft({
+      ...draft,
+      source: { ...draft.source, path: paths.main },
+      // A known vendor sub-stream rides along like introspection would record it.
+      ...(paths.sub
+        ? {
+            capabilities: { ...draft.capabilities, substreams: true },
+            media: { ...draft.media, substreamPath: paths.sub },
+          }
+        : {}),
+    });
+    setProbe(null); // the path changed — the previous probe result no longer applies
   };
 
   const connect = (): void => {
@@ -158,13 +215,14 @@ export function CameraWizard({ onDone, edit, hasStoredLogin = false }: Props) {
     })
       .then((r) => {
         setDraft(draftFromIntrospect(r, host.trim()));
+        setReturnStep('connect');
         setStep('details');
       })
       .catch((err: unknown) => {
         if (err instanceof ApiError && err.status === 502) {
           setMsg({
             kind: 'caution',
-            text: 'Couldn’t reach or read that camera — check the login.',
+            text: 'Couldn’t reach or read that camera over ONVIF — check the login, or add it as a plain stream below.',
           });
         } else {
           fail(err, 'read the camera');
@@ -233,6 +291,9 @@ export function CameraWizard({ onDone, edit, hasStoredLogin = false }: Props) {
             </button>
             <button type="button" className="btn btn--ghost" onClick={actionCamera}>
               Action camera (GoPro / Insta360)
+            </button>
+            <button type="button" className="btn btn--ghost" onClick={() => plainStream()}>
+              Paste a stream URL (rtsp://…)
             </button>
           </div>
           {candidates && candidates.length === 0 && (
@@ -380,6 +441,155 @@ export function CameraWizard({ onDone, edit, hasStoredLogin = false }: Props) {
               disabled={!draft.source.host.trim()}
               onClick={() => {
                 setMsg(null);
+                setReturnStep('guide');
+                setStep('details');
+              }}
+            >
+              Continue
+            </button>
+          </div>
+        </div>
+      )}
+
+      {step === 'stream' && draft && (
+        <div className="panel wizard__step">
+          <p className="muted">
+            Add a camera by its stream directly — no ONVIF needed. Paste a full URL, or fill in the
+            fields; test it before saving so a wrong address never persists.
+          </p>
+          <label className="field">
+            <span>Stream URL</span>
+            <input
+              value={streamUrl}
+              onChange={(e) => pasteUrl(e.target.value)}
+              placeholder="rtsp://192.168.1.50:554/stream1"
+              autoComplete="off"
+            />
+          </label>
+          {credsFromUrl && (
+            <p className="muted">
+              The login embedded in that URL was moved to the fields below — it will be stored
+              write-only, never in the shared camera record.
+            </p>
+          )}
+          <label className="field">
+            <span>Stream</span>
+            <select
+              value={draft.source.scheme}
+              onChange={(e) =>
+                setDraft({ ...draft, source: { ...draft.source, scheme: e.target.value } })
+              }
+            >
+              <option value="rtsp">rtsp</option>
+              <option value="rtsps">rtsps</option>
+              <option value="rtmp">rtmp</option>
+              <option value="http">http</option>
+              <option value="https">https</option>
+            </select>
+          </label>
+          <label className="field">
+            <span>Address</span>
+            <input
+              value={draft.source.host}
+              onChange={(e) =>
+                setDraft({ ...draft, source: { ...draft.source, host: e.target.value } })
+              }
+              placeholder="192.168.1.50"
+            />
+          </label>
+          <label className="field">
+            <span>Port</span>
+            <input
+              value={draft.source.port ?? ''}
+              inputMode="numeric"
+              onChange={(e) => {
+                const n = e.target.value === '' ? undefined : Number(e.target.value);
+                setDraft({
+                  ...draft,
+                  source: { ...draft.source, port: Number.isFinite(n) ? n : undefined },
+                });
+              }}
+              placeholder="554"
+            />
+          </label>
+          <label className="field">
+            <span>Stream path</span>
+            <input
+              value={draft.source.path ?? ''}
+              onChange={(e) =>
+                setDraft({
+                  ...draft,
+                  source: { ...draft.source, path: e.target.value || undefined },
+                })
+              }
+              placeholder="/stream1"
+            />
+          </label>
+          <label className="field">
+            <span>Make / model (optional)</span>
+            <input
+              value={hintText}
+              onChange={(e) => setHintText(e.target.value)}
+              placeholder="e.g. Hikvision, Reolink, Dahua — suggests known stream paths"
+            />
+          </label>
+          <label className="field">
+            <span>Camera username</span>
+            <input
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              autoComplete="off"
+              placeholder="only if the stream needs one"
+            />
+          </label>
+          <label className="field">
+            <span>Camera password</span>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="off"
+            />
+          </label>
+          {probe && (
+            <div className={`chip chip--${probe.ok ? 'info' : 'caution'}`}>
+              {probe.ok ? (probe.message ?? 'Stream reachable.') : (probe.message ?? 'No stream.')}
+            </div>
+          )}
+          {probe?.suggestedPaths && (
+            <p className="muted">
+              Known {hintText || 'vendor'} paths:{' '}
+              <button
+                type="button"
+                className="btn btn--ghost"
+                onClick={() => applySuggestion(probe.suggestedPaths!)}
+              >
+                use {probe.suggestedPaths.main}
+              </button>{' '}
+              — then test again.
+            </p>
+          )}
+          <div className="wizard__actions">
+            <button type="button" className="btn btn--ghost" onClick={() => setStep('scan')}>
+              Back
+            </button>
+            <button type="button" className="btn btn--ghost" onClick={runProbe} disabled={busy}>
+              {busy ? 'Testing…' : 'Test the stream'}
+            </button>
+            <button
+              type="button"
+              className="btn"
+              disabled={!draft.source.host.trim()}
+              onClick={() => {
+                setMsg(null);
+                setReturnStep('stream');
+                // Fields typed directly (no URL paste) leave the identity empty — default it from
+                // the host so the details step never fails slug validation out of the gate.
+                setDraft({
+                  ...draft,
+                  id: draft.id || slugify(draft.source.host),
+                  name: draft.name || draft.source.host,
+                });
                 setStep('details');
               }}
             >
@@ -437,6 +647,14 @@ export function CameraWizard({ onDone, edit, hasStoredLogin = false }: Props) {
             <button type="button" className="btn" onClick={connect} disabled={busy}>
               {busy ? 'Reading…' : 'Connect & read'}
             </button>
+            {/* The escape hatch for cameras without (working) ONVIF: same host, no introspection. */}
+            <button
+              type="button"
+              className="btn btn--ghost"
+              onClick={() => plainStream(host.trim())}
+            >
+              No ONVIF? Add as a plain stream
+            </button>
           </div>
         </div>
       )}
@@ -445,7 +663,8 @@ export function CameraWizard({ onDone, edit, hasStoredLogin = false }: Props) {
         <div className="panel wizard__step">
           {!editing && (
             <p className="muted">
-              {hint ? 'Source' : 'Read from the camera'}: <b>{draft.name}</b> ·{' '}
+              {returnStep === 'connect' ? 'Read from the camera' : 'Source'}: <b>{draft.name}</b>{' '}
+              ·{' '}
               <span className="mono">
                 {draft.source.scheme}://{draft.source.host}
                 {draft.source.port ? `:${draft.source.port}` : ''}
@@ -622,11 +841,7 @@ export function CameraWizard({ onDone, edit, hasStoredLogin = false }: Props) {
           )}
           <div className="wizard__actions">
             {!editing && (
-              <button
-                type="button"
-                className="btn btn--ghost"
-                onClick={() => setStep(hint ? 'guide' : 'connect')}
-              >
+              <button type="button" className="btn btn--ghost" onClick={() => setStep(returnStep)}>
                 Back
               </button>
             )}

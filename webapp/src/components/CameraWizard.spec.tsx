@@ -63,6 +63,15 @@ function mockApi(opts: { introspectOk?: boolean; introspect?: unknown } = {}) {
         });
       }
       if (u.includes('/cameras/test')) {
+        const body = JSON.parse(String(init?.body ?? '{}'));
+        // Mirror the server: with a make/model hint and a failing path, suggest known vendor paths.
+        if (body.hint && !body.source?.path) {
+          return ok({
+            ok: false,
+            message: 'Reached the camera, but no video stream answered at that path.',
+            suggestedPaths: { main: '/h264Preview_01_main', sub: '/h264Preview_01_sub' },
+          });
+        }
         return ok({ ok: true, message: 'Stream reachable — video found.' });
       }
       if (u.includes('/cameras/discover')) {
@@ -349,5 +358,103 @@ describe('CameraWizard edit mode', () => {
       // The 360 geometry rides along so clients know to render a spherical view.
       expect(body.media).toMatchObject({ projection: 'equirectangular' });
     });
+  });
+
+  it('onboards a plain RTSP camera from a pasted URL: creds stripped write-only, tested, saved', async () => {
+    const calls = mockApi();
+    const onDone = vi.fn();
+    render(<CameraWizard onDone={onDone} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Paste a stream URL (rtsp://…)' }));
+    fireEvent.change(screen.getByPlaceholderText('rtsp://192.168.1.50:554/stream1'), {
+      target: { value: 'rtsp://admin:pw@192.168.1.60:554/stream1' },
+    });
+    // The URL's embedded login moved into the write-only fields, with the honest note.
+    expect(screen.getByText(/stored\s+write-only, never in the shared camera record/)).toBeTruthy();
+    expect((screen.getByPlaceholderText('only if the stream needs one') as HTMLInputElement).value).toBe(
+      'admin',
+    );
+    // Structured fields were parsed out of the URL.
+    expect((screen.getByPlaceholderText('192.168.1.50') as HTMLInputElement).value).toBe(
+      '192.168.1.60',
+    );
+    expect((screen.getByPlaceholderText('/stream1') as HTMLInputElement).value).toBe('/stream1');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Test the stream' }));
+    await waitFor(() => expect(screen.getByText(/Stream reachable/)).toBeTruthy());
+    const probe = calls.find((c) => c.url.includes('/cameras/test'));
+    const probeBody = JSON.parse(String(probe!.init?.body));
+    expect(probeBody.source).toMatchObject({ scheme: 'rtsp', host: '192.168.1.60', port: 554 });
+    expect(probeBody.username).toBe('admin'); // creds ride the one-shot probe…
+
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Save camera' }));
+    await waitFor(() => {
+      const put = calls.find(
+        (c) => c.url.includes('/resources/cameras/') && c.init?.method === 'PUT',
+      );
+      expect(put).toBeTruthy();
+      const body = JSON.parse(String(put!.init?.body));
+      // …but the resource itself never carries them.
+      expect(JSON.stringify(body)).not.toContain('admin');
+      expect(JSON.stringify(body)).not.toContain('pw');
+      expect(body.source).toEqual({ scheme: 'rtsp', host: '192.168.1.60', port: 554, path: '/stream1' });
+      expect(body.capabilities.ptz).toBe(false); // nothing introspected — never guessed
+      const creds = calls.find((c) => c.url.includes('/credentials') && c.init?.method === 'POST');
+      expect(creds).toBeTruthy();
+    });
+    expect(onDone).toHaveBeenCalledWith(true);
+    // The ONVIF introspection path is never touched on this route.
+    expect(calls.some((c) => c.url.includes('/discover/introspect'))).toBe(false);
+  });
+
+  it('suggests known vendor paths from the make/model hint and applies them (incl. the substream)', async () => {
+    const calls = mockApi();
+    render(<CameraWizard onDone={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Paste a stream URL (rtsp://…)' }));
+    fireEvent.change(screen.getByPlaceholderText('192.168.1.50'), {
+      target: { value: '192.168.1.61' },
+    });
+    fireEvent.change(screen.getByPlaceholderText(/Hikvision, Reolink, Dahua/), {
+      target: { value: 'Reolink' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Test the stream' }));
+    await waitFor(() => expect(screen.getByText(/no video stream answered/)).toBeTruthy());
+    const probe = calls.find((c) => c.url.includes('/cameras/test'));
+    expect(JSON.parse(String(probe!.init?.body)).hint).toBe('Reolink');
+
+    fireEvent.click(screen.getByRole('button', { name: 'use /h264Preview_01_main' }));
+    expect((screen.getByPlaceholderText('/stream1') as HTMLInputElement).value).toBe(
+      '/h264Preview_01_main',
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Save camera' }));
+    await waitFor(() => {
+      const put = calls.find(
+        (c) => c.url.includes('/resources/cameras/') && c.init?.method === 'PUT',
+      );
+      const body = JSON.parse(String(put!.init?.body));
+      expect(body.source.path).toBe('/h264Preview_01_main');
+      // The vendor's known sub-stream rides along, like introspection would record it.
+      expect(body.media).toMatchObject({ substreamPath: '/h264Preview_01_sub' });
+      expect(body.capabilities.substreams).toBe(true);
+    });
+  });
+
+  it('offers the plain-stream escape when ONVIF introspection fails, carrying the host over', async () => {
+    mockApi({ introspectOk: false });
+    render(<CameraWizard onDone={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Enter address manually' }));
+    fireEvent.change(screen.getByPlaceholderText('192.168.1.100'), {
+      target: { value: '192.168.1.62' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Connect & read' }));
+    await waitFor(() =>
+      expect(screen.getByText(/add it as a plain stream below/)).toBeTruthy(),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'No ONVIF? Add as a plain stream' }));
+    // The address carries over — the user doesn't retype what they already entered.
+    expect((screen.getByPlaceholderText('192.168.1.50') as HTMLInputElement).value).toBe(
+      '192.168.1.62',
+    );
   });
 });

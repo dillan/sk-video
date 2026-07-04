@@ -135,6 +135,58 @@ test.describe('SK Video webapp — action-camera guided onboarding', () => {
   });
 });
 
+test.describe('SK Video webapp — plain-stream (RTSP URL) onboarding', () => {
+  test.afterAll(async ({ request }) => {
+    await request.delete(`${CAMERAS_URL}/pasted-cam`).catch(() => undefined);
+  });
+
+  test('pastes an rtsp:// URL, tests it against the REAL stream, and saves a working camera', async ({
+    page,
+    request,
+  }) => {
+    await page.goto(`${APP}#/cameras`);
+    await page.getByRole('button', { name: 'Add a camera' }).click();
+    await page.getByRole('button', { name: 'Paste a stream URL (rtsp://…)' }).click();
+
+    // The harness camera is a real RTSP source — the Test button runs a real server-side ffprobe.
+    await page.getByPlaceholder('rtsp://192.168.1.50:554/stream1').fill('rtsp://mediamtx:8554/cam');
+    // The probe shares the sensitive-route rate limiter (20/min) with the credential-presence reads
+    // the other suites fire, so a full run can hit the honest "Rate-limited" chip — wait it out.
+    for (let attempt = 0; attempt < 4; attempt++) {
+      await page.getByRole('button', { name: 'Test the stream' }).click();
+      const outcome = await Promise.race([
+        page
+          .getByText(/reachable/i)
+          .first()
+          .waitFor({ timeout: 20_000 })
+          .then(() => 'ok' as const),
+        page
+          .getByText(/Rate-limited/)
+          .first()
+          .waitFor({ timeout: 20_000 })
+          .then(() => 'limited' as const),
+      ]);
+      if (outcome === 'ok') break;
+      await page.waitForTimeout(20_000); // let the rolling window drain
+    }
+    await expect(page.getByText(/reachable/i).first()).toBeVisible();
+
+    await page.getByRole('button', { name: 'Continue' }).click();
+    // Identity defaulted from the host; set a deterministic id (for cleanup) and a visible name.
+    const idField = page.locator('label', { hasText: 'Id' }).locator('input');
+    await idField.fill('pasted-cam');
+    const nameField = page.locator('label', { hasText: 'Name' }).locator('input');
+    await nameField.fill('Pasted Cam');
+    await page.getByRole('button', { name: 'Save camera' }).click();
+
+    // The saved camera is a real resource: it appears on the manage list by its name…
+    await expect(page.getByText('Pasted Cam').first()).toBeVisible({ timeout: 15_000 });
+    // …and the resource carries the exact source, with no credentials anywhere near it.
+    const saved = await request.get(`${CAMERAS_URL}/pasted-cam`).then((r) => r.json());
+    expect(saved.source).toMatchObject({ scheme: 'rtsp', host: 'mediamtx', port: 8554 });
+  });
+});
+
 test.describe('SK Video webapp — Settings theme', () => {
   test('switches to Night-Red and persists across a reload', async ({ page }) => {
     await page.goto(`${APP}#/settings`);

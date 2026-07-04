@@ -489,16 +489,18 @@ export const fetchOnboardingHints = async (signal?: AbortSignal): Promise<IDevic
   return body.hints ?? [];
 };
 
-/** Connection-test an UNSAVED source (ffprobe on the server, SSRF-guarded) — nothing persists. */
+/** Connection-test an UNSAVED source (ffprobe on the server, SSRF-guarded) — nothing persists.
+ *  With a make/model `hint`, the server also suggests known vendor stream paths to try. */
 export interface ITestResult {
   ok: boolean;
   message?: string;
-  suggestedPaths?: string[];
+  suggestedPaths?: { main: string; sub?: string } | null;
 }
 export const testCamera = async (input: {
   source: { scheme: string; host: string; port?: number; path?: string };
   username?: string;
   password?: string;
+  hint?: string;
 }): Promise<ITestResult> => {
   const res = await send('/cameras/test', { method: 'POST', body: JSON.stringify(input) }, 'test');
   return (await res.json()) as ITestResult;
