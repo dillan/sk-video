@@ -2,12 +2,12 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, waitFor, cleanup, fireEvent } from '@testing-library/react';
 import type { IVideoAsset } from '../api';
 
-// uploadVideo is XHR-based (fetch cannot report upload progress), so it is mocked at the module
+// Uploads ride the resumable transport (XHR + resume + retries), so it is mocked at the module
 // seam; list/delete keep flowing through fetch stubs below.
 const uploadMock = vi.hoisted(() => vi.fn());
-vi.mock('../api', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../api')>()),
-  uploadVideo: uploadMock,
+vi.mock('../lib/resumable-upload', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/resumable-upload')>()),
+  uploadVideoResumable: uploadMock,
 }));
 
 import { Videos } from './Videos';
@@ -160,6 +160,41 @@ describe('Videos', () => {
     await waitFor(() => expect(started).toHaveLength(1));
     started[0].resolve();
     await waitFor(() => expect(screen.getByText(/Uploaded new\.mp4\./)).toBeTruthy());
+  });
+
+  it('starts a batch from files dragged and dropped anywhere on the screen', async () => {
+    mockApi(V);
+    const started = controllableUploads();
+    const { container } = render(<Videos />);
+    await screen.findByText('clip.mp4');
+
+    const zone = container.firstElementChild as HTMLElement;
+    fireEvent.dragOver(zone, { dataTransfer: { files: [] } });
+    fireEvent.drop(zone, { dataTransfer: { files: [mkFile('dropped.mp4', 500)] } });
+
+    await waitFor(() => expect(started).toHaveLength(1));
+    expect(started[0].name).toBe('dropped.mp4');
+    expect(screen.getByRole('progressbar', { name: /upload progress/i })).toBeTruthy();
+    started[0].resolve();
+    await waitFor(() => expect(screen.getByText(/Uploaded dropped\.mp4\./)).toBeTruthy());
+  });
+
+  it('offers Retry on a failed file and retries exactly that file', async () => {
+    mockApi(V);
+    const started = controllableUploads();
+    render(<Videos />);
+    await screen.findByText('clip.mp4');
+
+    pick(mkFile('flaky.mp4', 1000));
+    await waitFor(() => expect(started).toHaveLength(1));
+    started[0].reject(new ApiError('upload failed (network)', 0));
+    await waitFor(() => expect(screen.getByText(/Uploaded 0 of 1 — 1 failed\./)).toBeTruthy());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Retry flaky.mp4' }));
+    await waitFor(() => expect(started).toHaveLength(2));
+    expect(started[1].name).toBe('flaky.mp4');
+    started[1].resolve();
+    await waitFor(() => expect(screen.getByText(/Uploaded flaky\.mp4\./)).toBeTruthy());
   });
 
   it('deletes a video only after a confirm step', async () => {

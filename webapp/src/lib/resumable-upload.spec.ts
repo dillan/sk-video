@@ -63,6 +63,14 @@ describe('resumableUpload', () => {
     expect(calls.map((c) => c.method)).toContain('probe');
   });
 
+  it('treats a 409 offset conflict as the resume signal, not a failure', async () => {
+    // e.g. a duplicated chunk after a flaky proxy: the server refuses with the real offset.
+    const { wire, calls } = fakeWire([new ApiError('upload failed (409)', 409), 'ok']);
+    await resumableUpload(FILE, wire, fast);
+    expect(calls.map((c) => c.method)).toContain('probe');
+    expect(calls.map((c) => c.method)).toContain('complete');
+  });
+
   it('does not retry a permanent rejection (4xx) and discards the session', async () => {
     const { wire, calls } = fakeWire([new ApiError('upload failed (415)', 415)]);
     await expect(resumableUpload(FILE, wire, fast)).rejects.toMatchObject({ status: 415 });
