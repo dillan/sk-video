@@ -38,6 +38,24 @@ describe('parseStreamHealth', () => {
     });
   });
 
+  it('does not count a configured-but-unconnected producer as online', () => {
+    // go2rtc lists every CONFIGURED source as a producer entry; only a connected one carries
+    // connection detail (remote_addr / medias / id). A dead camera go2rtc keeps retrying must
+    // read offline, or the watchdog can never fire (verified against go2rtc 1.9 in the e2e).
+    const configuredOnly = { producers: [{ url: 'rtsp://mediamtx:8554/no-such-stream' }] };
+    expect(parseStreamHealth(configuredOnly, 'cam')).toMatchObject({
+      online: false,
+      producers: 0,
+    });
+    // ...but the (redacted) source URL still surfaces for diagnostics.
+    expect(parseStreamHealth(configuredOnly, 'cam').sources).toHaveLength(1);
+
+    const connected = {
+      producers: [{ url: 'rtsp://mediamtx:8554/cam', remote_addr: '172.19.0.2:8554' }],
+    };
+    expect(parseStreamHealth(connected, 'cam')).toMatchObject({ online: true, producers: 1 });
+  });
+
   it('tolerates missing/garbage JSON without throwing', () => {
     for (const raw of [
       null,
@@ -51,7 +69,8 @@ describe('parseStreamHealth', () => {
     ]) {
       expect(() => parseStreamHealth(raw, 'cam')).not.toThrow();
     }
-    expect(parseStreamHealth({ cam: { producers: [{}] } }, 'cam').online).toBe(true);
+    // An empty producer entry carries no connection evidence — configured at best, not online.
+    expect(parseStreamHealth({ cam: { producers: [{}] } }, 'cam').online).toBe(false);
   });
 });
 
@@ -70,7 +89,10 @@ describe('fetchStreamHealth', () => {
 describe('fetchAllStreamsHealth', () => {
   it('reads /api/streams once and parses every requested camera (missing ids read offline)', async () => {
     const all = {
-      cam: { producers: [{ url: 'rtsp://user:pw@10.0.0.2/main' }], consumers: [] },
+      cam: {
+        producers: [{ url: 'rtsp://user:pw@10.0.0.2/main', remote_addr: '10.0.0.2:554' }],
+        consumers: [],
+      },
       cam_sub: { producers: [], consumers: [] },
     };
     const fetchImpl = vi.fn().mockResolvedValue({ json: () => Promise.resolve(all) });

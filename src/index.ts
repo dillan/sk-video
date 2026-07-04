@@ -157,6 +157,8 @@ const INCIDENT_SWEEP_MS = 5 * 60 * 1000;
 // Overridable for the e2e harness only (SKVIDEO_WATCHDOG_POLL_MS), so outage/alarm scenarios run
 // in seconds instead of minutes; production keeps the 15s default.
 const WATCHDOG_POLL_MS = Number(process.env.SKVIDEO_WATCHDOG_POLL_MS ?? '') || 15_000;
+// Bound the watched-camera frame probe so a black-holed camera can't stall the poll loop.
+const WATCHDOG_PROBE_TIMEOUT_MS = 4_000;
 const VISUAL_REFINE_CHECK_MS = 1000; // how often the experimental MOB refine checks for track loss
 // A retention budget for the incidents subtree, independent of the DVR/upload budgets. Pinned
 // bundles are never pruned.
@@ -839,29 +841,28 @@ export = function (app: ServerAPI): Plugin {
             skBridge.emitMeta({ path: feedOutagePath(id), value: { zones: null } });
             return;
           }
-          if (skBridge.canSetDefaultMeta) {
-            // Server ≥ 2.30: suggest labels/units as merge-semantics DEFAULTS so a user-edited
-            // displayName survives every restart. Zones stay a meta delta — they are the user's
-            // authoritative thresholds from our own settings screen and must re-arm on change.
-            for (const entry of buildCameraHealthMeta({
-              id,
-              name: camera.name,
-              pollSeconds: WATCHDOG_POLL_MS / 1000,
-            })) {
-              skBridge.setDefaultMeta(entry.path, entry.value);
-            }
-            skBridge.emitMeta({ path: feedOutagePath(id), value: { zones } });
-          } else {
-            const entries = buildCameraHealthMeta({
-              id,
-              name: camera.name,
-              pollSeconds: WATCHDOG_POLL_MS / 1000,
-              zones: zones ?? undefined,
-            });
-            if (!zones) {
-              entries[0] = { path: entries[0].path, value: { ...entries[0].value, zones: null } };
-            }
-            skBridge.emitMeta(entries);
+          // One full LIVE meta delta: units/labels/timeout must be visible to clients right now
+          // (setDefaultMetadata alone persists defaults for the next server start, and a partial
+          // meta delta replaces the node) — verified against a real 2.30 server in the e2e.
+          const entries = buildCameraHealthMeta({
+            id,
+            name: camera.name,
+            pollSeconds: WATCHDOG_POLL_MS / 1000,
+            zones: zones ?? undefined,
+          });
+          if (!zones) {
+            entries[0] = { path: entries[0].path, value: { ...entries[0].value, zones: null } };
+          }
+          skBridge.emitMeta(entries);
+          // Politeness on ≥ 2.30: ALSO suggest the labels as per-field-merge defaults, so a
+          // user-edited displayName in baseDeltas survives server restarts. Zones stay out of the
+          // defaults — they are config-derived and must never linger past an opt-out.
+          for (const entry of buildCameraHealthMeta({
+            id,
+            name: camera.name,
+            pollSeconds: WATCHDOG_POLL_MS / 1000,
+          })) {
+            skBridge.setDefaultMeta(entry.path, entry.value);
           }
         };
         for (const id of Object.keys(cameras?.list() ?? {})) {
@@ -920,6 +921,25 @@ export = function (app: ServerAPI): Plugin {
         for (const id of Object.keys(cameras?.list() ?? {})) {
           registerCameraPutControls(id);
         }
+        // A camera is WATCHED when its outage should alarm someone: the operator flagged it
+        // safety-critical, or handed it to server zones. Watched cameras get the active probe
+        // and the feed-outage gauge; every enabled camera still gets producer/viewer telemetry.
+        const isWatchedCamera = (id: string): boolean =>
+          cameras?.get(id)?.safetyCritical === true || healthZones[id] !== undefined;
+        // go2rtc connects lazily, so a passive health read cannot tell an idle camera from a dead
+        // one. Force one frame: go2rtc connects to the source on demand and answers an empty body
+        // when it cannot — the honest reachability check a safety watchdog needs.
+        const probeCameraFrame = async (id: string): Promise<boolean> => {
+          try {
+            const res = await fetch(go2rtcApiUrl(gateway?.apiPort ?? 1984, 'frame', id), {
+              signal: AbortSignal.timeout(WATCHDOG_PROBE_TIMEOUT_MS),
+            });
+            if (!res.ok) return false;
+            return (await res.arrayBuffer()).byteLength > 0;
+          } catch {
+            return false;
+          }
+        };
         watchdog = new StreamWatchdog({
           getMonitoredCameras: () =>
             Object.entries(cameras?.list() ?? {})
@@ -934,6 +954,10 @@ export = function (app: ServerAPI): Plugin {
               apiPort: gateway?.apiPort ?? 1984,
               cameraId: id,
             });
+            if (!health.online && isWatchedCamera(id) && (await probeCameraFrame(id))) {
+              lastGood.note(id, true);
+              return { ...health, online: true };
+            }
             lastGood.note(id, health.online); // watchdog polls double as last-good observations
             return health;
           },
@@ -951,7 +975,10 @@ export = function (app: ServerAPI): Plugin {
               { path: `cameras.${id}.producers`, value: sample.producers },
               { path: `cameras.${id}.consumers`, value: sample.consumers },
             ];
-            if (sample.feedOutageSeconds !== null) {
+            // The gauge only means something for probed (watched) cameras — for the rest,
+            // go2rtc's lazy connect makes "idle" and "dead" indistinguishable, and a climbing
+            // gauge on a healthy idle camera would be a lie.
+            if (sample.feedOutageSeconds !== null && isWatchedCamera(id)) {
               values.unshift({ path: feedOutagePath(id), value: sample.feedOutageSeconds });
             }
             skBridge.emit(values);

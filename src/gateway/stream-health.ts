@@ -21,7 +21,11 @@ export interface IStreamHealth {
 
 export function parseStreamHealth(raw: unknown, cameraId: string): IStreamHealth {
   const stream = pickStream(raw, cameraId);
-  const producers = asArray(stream?.producers);
+  const allProducers = asArray(stream?.producers);
+  // go2rtc lists every CONFIGURED source as a producer entry ({url} only); a producer that is
+  // actually CONNECTED carries connection detail. Counting configured entries would make a dead
+  // camera read "online" forever, so only connected producers count.
+  const producers = allProducers.filter(isConnectedProducer);
   const consumers = asArray(stream?.consumers);
 
   const codecs = new Set<string>();
@@ -33,7 +37,7 @@ export function parseStreamHealth(raw: unknown, cameraId: string): IStreamHealth
   }
 
   const sources: string[] = [];
-  for (const producer of producers) {
+  for (const producer of allProducers) {
     const url = (producer as { url?: unknown }).url;
     if (typeof url === 'string' && url.length > 0) {
       sources.push(redactUrl(url));
@@ -47,6 +51,19 @@ export function parseStreamHealth(raw: unknown, cameraId: string): IStreamHealth
     codecs: [...codecs],
     sources,
   };
+}
+
+/** A producer entry with any connection evidence (go2rtc adds these only while connected). */
+function isConnectedProducer(entry: unknown): boolean {
+  if (!entry || typeof entry !== 'object') {
+    return false;
+  }
+  const p = entry as { remote_addr?: unknown; id?: unknown; medias?: unknown };
+  return (
+    p.remote_addr !== undefined ||
+    p.id !== undefined ||
+    (Array.isArray(p.medias) && p.medias.length > 0)
+  );
 }
 
 /** A stalled go2rtc must not hang the proxy handler forever — bound every loopback read. */

@@ -668,7 +668,11 @@ describe('registerProxyRoutes', () => {
 
   describe('per-camera last-good tracking (went-dark vs never-seen)', () => {
     const STREAMS = JSON.stringify({
-      foredeck: { producers: [{ url: 'rtsp://cam/main' }], consumers: [] },
+      // A CONNECTED producer (remote_addr present) — a bare {url} is merely configured.
+      foredeck: {
+        producers: [{ url: 'rtsp://cam/main', remote_addr: '10.0.0.9:554' }],
+        consumers: [],
+      },
     });
     const healthUpstream = () =>
       vi.fn().mockResolvedValue({

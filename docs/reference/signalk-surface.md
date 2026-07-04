@@ -8,7 +8,7 @@ For every **enabled** camera, under `vessels.self`:
 
 | Path | Value | Meta |
 | --- | --- | --- |
-| `cameras.<id>.feedOutage` | Seconds since the feed was last confirmed healthy. `0` while healthy; absent until first seen online (an idle camera is not a broken one). | `displayName`, `units: 's'`, `timeout`, optional `zones` |
+| `cameras.<id>.feedOutage` | Seconds since the feed was last confirmed healthy. `0` while healthy; absent until first seen online. Published only for **watched** cameras (safety-critical or zones-enabled) — those are actively probed each poll, so "idle" and "dead" read apart. | `displayName`, `units: 's'`, `timeout`, optional `zones` |
 | `cameras.<id>.producers` | Active source connections in the gateway. | `displayName` |
 | `cameras.<id>.consumers` | Clients currently pulling the stream. | `displayName` |
 
