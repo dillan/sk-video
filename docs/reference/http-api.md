@@ -75,10 +75,17 @@ Camera definitions are managed through the standard Signal K Resources API at `/
 | `POST` | `/cameras/:id/snapshot` | Capture a telemetry-stamped still. | `201`, `404`, `502`, `503` |
 | `GET` | `/snapshots` | Snapshot library: stored stills' telemetry-stamped metadata, newest-first. `?camera=` filters to one camera. | `200`, `503` |
 | `GET` | `/snapshots/:id` | Serve a stored JPEG by its opaque id (`private` cache, `nosniff`). | `200`, `400`, `404`, `503` |
-| `POST` | `/videos` | Upload a video (magic-byte validated, quota-bounded, streamed to disk). | `201`, `400`, `413`, `415`, `503` |
-| `GET` | `/videos` | List stored videos. | `200`, `503` |
+| `POST` | `/videos` | One-shot upload of a video (magic-byte validated, quota-bounded, streamed to disk). Rate-limited. | `201`, `400`, `413`, `415`, `429`, `503` |
+| `GET` | `/videos` | List stored videos. Also exposed as a read-mostly Signal K `videos` resource at `/signalk/v2/api/resources/videos`. | `200`, `503` |
 | `GET` | `/videos/:id` | Stream a stored video with HTTP Range. | `200`, `206`, `404`, `416`, `503` |
 | `DELETE` | `/videos/:id` | Delete a stored video. | `204`, `404`, `503` |
+| `POST` | `/videos/uploads` | Open a **resumable** upload session with `{name, size}`; returns `{id, offset}`. Rate-limited. | `201`, `400`, `413`, `429`, `503` |
+| `GET` | `/videos/uploads/:id` | Probe the current `{offset}` — the resume handshake after a dropped connection. | `200`, `404`, `503` |
+| `PATCH` | `/videos/uploads/:id` | Append bytes at the `X-Upload-Offset` header; the response echoes the new offset. A stale offset answers `409` with `{offset}` to resume from; too many bytes `413`. | `204`, `400`, `409`, `413`, `503` |
+| `POST` | `/videos/uploads/:id/complete` | Finalize a fully-uploaded session through the sniff + quota + atomic commit; returns the video. | `201`, `409`, `413`, `415`, `503` |
+| `DELETE` | `/videos/uploads/:id` | Discard a partial upload (idempotent). | `204`, `503` |
+
+**Resumable uploads.** For a large file over a flaky link, open a session (`POST /videos/uploads`), send the bytes with `PATCH` requests carrying `X-Upload-Offset`, then `POST …/complete`. If a connection drops, `GET /videos/uploads/:id` reports how many bytes the server durably has, and the client resumes from there — the partial survives even a plugin or server restart. The web app's Videos tab does all of this for you, with progress, retries, and per-file cancel.
 
 ## Safety & awareness
 

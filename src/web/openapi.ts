@@ -323,13 +323,38 @@ export function buildOpenApiDoc(): object {
         ),
       },
       '/videos': {
-        post: op('Videos', 'Upload a video (magic-byte validated, quota-bounded).'),
-        get: op('Videos', 'List uploaded videos.'),
+        post: op('Videos', 'One-shot upload of a video (magic-byte validated, quota-bounded).'),
+        get: op('Videos', 'List uploaded videos (also a read-mostly Signal K `videos` resource).'),
       },
       '/videos/{id}': {
         parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
         get: op('Videos', 'Play an uploaded video (HTTP Range).'),
         delete: op('Videos', 'Delete an uploaded video.'),
+      },
+      '/videos/uploads': {
+        post: op(
+          'Videos',
+          'Open a resumable upload session with {name, size}; returns {id, offset}. Rate-limited.',
+        ),
+      },
+      '/videos/uploads/{id}': {
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        get: op(
+          'Videos',
+          'Probe the current offset {offset} — the resume handshake after a dropped connection.',
+        ),
+        patch: op(
+          'Videos',
+          'Append bytes at the X-Upload-Offset header; echoes the new offset. A mismatch answers 409 with {offset} to resume from; overflow 413.',
+        ),
+        delete: op('Videos', 'Discard a partial upload (idempotent).'),
+      },
+      '/videos/uploads/{id}/complete': {
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        post: op(
+          'Videos',
+          'Finalize a fully-uploaded session through the magic-byte sniff, quota, and atomic commit; returns the video. 409 while incomplete, 415 for a non-video, 413 over quota.',
+        ),
       },
       '/frigate/clips': { get: op('Events & alerts', 'List cached Frigate detection clips.') },
       '/frigate/clips/{id}': {

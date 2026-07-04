@@ -6,6 +6,7 @@ import {
   AssetUploadError,
   isValidAssetId,
   type AssetStore,
+  type IVideoAsset,
 } from './asset-store';
 import { ResumableUploadError, type ResumableUploadStore } from './resumable-store';
 import type { AuthGate } from '../security/request-auth';
@@ -20,6 +21,8 @@ export interface IUploadRouteOptions {
   getResumable?: () => ResumableUploadStore | null;
   /** Writes a 429 and returns true when the caller is over the shared rate limit. */
   throttle?: (req: Request, res: Response) => boolean;
+  /** Notified when a video is committed (one-shot or resumable) — used to announce a resource delta. */
+  onAdded?: (asset: IVideoAsset) => void;
 }
 
 /**
@@ -158,7 +161,10 @@ export function registerUploadRoutes(
     if (!store) return;
     void resumable
       .complete(String(req.params.id), store)
-      .then((asset) => res.status(201).json(asset))
+      .then((asset) => {
+        options.onAdded?.(asset);
+        res.status(201).json(asset);
+      })
       .catch((err: unknown) => resumableError(err, res));
   });
 
@@ -184,6 +190,7 @@ export function registerUploadRoutes(
     void store
       .addFromStream(req, name)
       .then((asset) => {
+        options.onAdded?.(asset);
         res.status(201).json(asset);
       })
       .catch((err: unknown) => {

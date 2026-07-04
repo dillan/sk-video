@@ -43,8 +43,9 @@ A KIP boolean-switch widget can flip the spotlight or recording, and a multi-sta
 
 - **`cameras`** (custom type) at `/signalk/v2/api/resources/cameras` — the camera definitions, full CRUD. Never contains credentials. Property drill-down works (`GET …/cameras/<id>/source/scheme`).
 - **`incidents`** at `/signalk/v2/api/resources/incidents` — read-mostly evidence bundles.
+- **`videos`** at `/signalk/v2/api/resources/videos` — read-mostly catalog of uploaded video files (list, fetch one entry's metadata, delete). The playable bytes are Range-served at `/plugins/sk-video/videos/<id>`; uploads go through the binary upload route, not this resource.
 
-Every change — API writes _and_ internal ones (auto re-scan, calibration, pruning) — is announced as a delta on `resources.cameras.<id>` / `resources.incidents.<id>` (the document as the value, `null` when deleted), so a subscribed client's list converges without polling.
+Every change — API writes _and_ internal ones (auto re-scan, calibration, pruning, a completed upload) — is announced as a delta on `resources.cameras.<id>` / `resources.incidents.<id>` / `resources.videos.<id>` (the document as the value, `null` when deleted), so a subscribed client's list converges without polling.
 
 ## Other paths
 

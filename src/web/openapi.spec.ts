@@ -40,6 +40,9 @@ describe('buildOpenApiDoc', () => {
       '/notifications/ack',
       '/operational-config',
       '/videos',
+      '/videos/uploads',
+      '/videos/uploads/{id}',
+      '/videos/uploads/{id}/complete',
       '/mob',
     ]) {
       expect(doc.paths[path], `missing ${path}`).toBeTruthy();

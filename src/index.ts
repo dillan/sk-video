@@ -78,6 +78,7 @@ import { slewOwnShipFromSelfState } from './awareness/slew-wiring';
 import { parseAisTargets } from './awareness/ais-targets';
 import { AssetStore } from './uploads/asset-store';
 import { ResumableUploadStore } from './uploads/resumable-store';
+import { createVideoResourceMethods } from './uploads/videos-resource-provider';
 import {
   createFileAssetStore,
   FileAssetIndexPersistence,
@@ -775,6 +776,22 @@ export = function (app: ServerAPI): Plugin {
           type: 'incidents',
           methods: createIncidentResourceMethods(incidentStore),
         });
+
+        // Uploaded videos as a read-mostly Signal K resource: every client sees the same library.
+        // A delete through the resource API announces itself; uploads announce on complete (below).
+        if (videos) {
+          const videoMethods = createVideoResourceMethods(videos);
+          app.registerResourceProvider({
+            type: 'videos',
+            methods: {
+              ...videoMethods,
+              async deleteResource(id: string) {
+                await videoMethods.deleteResource(id);
+                skBridge.emitResource('videos', id, null);
+              },
+            },
+          });
+        }
 
         incidentSweep = setInterval(() => {
           try {
@@ -1639,6 +1656,9 @@ export = function (app: ServerAPI): Plugin {
         // Same brute-force guard as the other sensitive routes: session spawning and one-shot
         // uploads share the 20/min budget (appends are bounded by the session caps).
         throttle: tooManyRequests,
+        // A committed upload bypasses the Resources API — announce it so every client's library
+        // converges without polling.
+        onAdded: (asset) => bridge?.emitResource('videos', asset.id, asset),
       });
       registerSnapshotReadRoutes(router, () => snapshotStore);
       registerEventLogRoutes(router, () => eventLog);
