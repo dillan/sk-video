@@ -70,10 +70,10 @@ Everything worth keeping lives under **Library**, as tabs.
 
 **Snapshots** is a gallery of your position-stamped stills, each honest about whether it had a GPS fix.
 
-**Videos** holds clips you’ve uploaded — distinct from recordings and incidents — with inline playback and a quota readout. Upload several at once (pick them, or drag &amp; drop onto the screen); each shows live progress, speed, and time remaining, and a large file interrupted by a dropped connection resumes where it left off rather than starting over.
+**Videos** holds clips you’ve uploaded — distinct from recordings and incidents — as a grid of thumbnails labelled with filename, size, and date. Hover a thumbnail for a muted inline preview; click it for full-screen playback; the red trashcan asks before it deletes. Upload several at once (pick them, or drag &amp; drop onto the screen); each shows live progress, speed, and time remaining, and a large file interrupted by a dropped connection resumes where it left off rather than starting over.
 
 <p align="center">
-  <img src="../images/app-videos.webp" alt="The Videos tab — upload your own clips with multi-file drag-and-drop and resumable progress" width="90%">
+  <img src="../images/app-videos.webp" alt="The Videos tab — upload your own clips with multi-file drag-and-drop and resumable progress; uploaded clips appear as a thumbnail grid" width="90%">
 </p>
 
 ---
