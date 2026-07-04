@@ -21,6 +21,7 @@ import {
   draftFromEntry,
   draftFromHint,
   parseStreamUrl,
+  streamSchemeHints,
   plainStreamDraft,
   toResourceBody,
   mergeEdit,
@@ -295,7 +296,7 @@ export function CameraWizard({ onDone, edit, hasStoredLogin = false }: Props) {
               Action camera (GoPro / Insta360)
             </button>
             <button type="button" className="btn btn--ghost" onClick={() => plainStream()}>
-              Paste a stream URL (rtsp://…)
+              Paste a stream URL (rtsp:// or rtmp://…)
             </button>
           </div>
           {candidates && candidates.length === 0 && (
@@ -404,7 +405,7 @@ export function CameraWizard({ onDone, edit, hasStoredLogin = false }: Props) {
                   source: { ...draft.source, port: Number.isFinite(n) ? n : undefined },
                 });
               }}
-              placeholder={draft.source.scheme === 'rtmp' ? '1935' : '8554'}
+              placeholder={String(streamSchemeHints(draft.source.scheme).defaultPort ?? '')}
             />
           </label>
           <label className="field">
@@ -464,7 +465,7 @@ export function CameraWizard({ onDone, edit, hasStoredLogin = false }: Props) {
             <input
               value={streamUrl}
               onChange={(e) => pasteUrl(e.target.value)}
-              placeholder="rtsp://192.168.1.50:554/stream1"
+              placeholder={streamSchemeHints(draft.source.scheme).urlExample}
               autoComplete="off"
             />
           </label>
@@ -511,7 +512,7 @@ export function CameraWizard({ onDone, edit, hasStoredLogin = false }: Props) {
                   source: { ...draft.source, port: Number.isFinite(n) ? n : undefined },
                 });
               }}
-              placeholder="554"
+              placeholder={String(streamSchemeHints(draft.source.scheme).defaultPort ?? '')}
             />
           </label>
           <label className="field">
@@ -524,7 +525,7 @@ export function CameraWizard({ onDone, edit, hasStoredLogin = false }: Props) {
                   source: { ...draft.source, path: e.target.value || undefined },
                 })
               }
-              placeholder="/stream1"
+              placeholder={streamSchemeHints(draft.source.scheme).pathPlaceholder}
             />
           </label>
           <label className="field">

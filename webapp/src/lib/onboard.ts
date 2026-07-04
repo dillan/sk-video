@@ -236,6 +236,50 @@ export interface IParsedStreamUrl {
   password?: string;
 }
 
+/** Per-scheme onboarding hints so the manual/paste UI adapts (RTMP is not RTSP). */
+export interface IStreamSchemeHints {
+  /** The scheme's conventional default port, or undefined for an unknown scheme. */
+  defaultPort?: number;
+  /** A representative stream-path placeholder for this scheme. */
+  pathPlaceholder: string;
+  /** A full example URL for this scheme. */
+  urlExample: string;
+}
+
+const SCHEME_HINTS: Record<string, IStreamSchemeHints> = {
+  rtsp: {
+    defaultPort: 554,
+    pathPlaceholder: '/stream1',
+    urlExample: 'rtsp://192.168.1.50:554/stream1',
+  },
+  rtsps: {
+    defaultPort: 322,
+    pathPlaceholder: '/stream1',
+    urlExample: 'rtsps://192.168.1.50:322/stream1',
+  },
+  rtmp: {
+    defaultPort: 1935,
+    pathPlaceholder: '/live/streamKey',
+    urlExample: 'rtmp://192.168.1.50:1935/live/streamKey',
+  },
+  http: {
+    defaultPort: 80,
+    pathPlaceholder: '/video.mjpg',
+    urlExample: 'http://192.168.1.50/video.mjpg',
+  },
+  https: {
+    defaultPort: 443,
+    pathPlaceholder: '/video.mjpg',
+    urlExample: 'https://192.168.1.50/video.mjpg',
+  },
+};
+
+export function streamSchemeHints(scheme: string): IStreamSchemeHints {
+  return (
+    SCHEME_HINTS[scheme.toLowerCase()] ?? { pathPlaceholder: '/stream1', urlExample: 'rtsp://…' }
+  );
+}
+
 /**
  * Parse a full stream URL (rtsp/rtsps/rtmp/http/https) into the resource's structured source.
  * Embedded `user:pass@` credentials are STRIPPED into separate fields: the camera resource never

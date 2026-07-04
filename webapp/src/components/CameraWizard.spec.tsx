@@ -364,7 +364,7 @@ describe('CameraWizard edit mode', () => {
     const calls = mockApi();
     const onDone = vi.fn();
     render(<CameraWizard onDone={onDone} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Paste a stream URL (rtsp://…)' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Paste a stream URL (rtsp:// or rtmp://…)' }));
     fireEvent.change(screen.getByPlaceholderText('rtsp://192.168.1.50:554/stream1'), {
       target: { value: 'rtsp://admin:pw@192.168.1.60:554/stream1' },
     });
@@ -412,10 +412,49 @@ describe('CameraWizard edit mode', () => {
     expect(calls.some((c) => c.url.includes('/discover/introspect'))).toBe(false);
   });
 
+  it('onboards a plain RTMP camera: scheme-aware placeholders and a saved rtmp source', async () => {
+    const calls = mockApi();
+    render(<CameraWizard onDone={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Paste a stream URL (rtsp:// or rtmp://…)' }));
+    // Paste an RTMP URL — the structured fields parse out of it.
+    fireEvent.change(screen.getByPlaceholderText('rtsp://192.168.1.50:554/stream1'), {
+      target: { value: 'rtmp://10.0.0.9:1935/live/boat' },
+    });
+    // The port/path placeholders now follow the RTMP scheme, not RTSP.
+    expect(screen.getByPlaceholderText('1935')).toBeTruthy();
+    expect((screen.getByPlaceholderText('/live/streamKey') as HTMLInputElement).value).toBe(
+      '/live/boat',
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Test the stream' }));
+    await waitFor(() => expect(screen.getByText(/Stream reachable/)).toBeTruthy());
+    const probe = calls.find((c) => c.url.includes('/cameras/test'));
+    expect(JSON.parse(String(probe!.init?.body)).source).toMatchObject({
+      scheme: 'rtmp',
+      host: '10.0.0.9',
+      port: 1935,
+      path: '/live/boat',
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Save camera' }));
+    await waitFor(() => {
+      const put = calls.find(
+        (c) => c.url.includes('/resources/cameras/') && c.init?.method === 'PUT',
+      );
+      expect(JSON.parse(String(put!.init?.body)).source).toEqual({
+        scheme: 'rtmp',
+        host: '10.0.0.9',
+        port: 1935,
+        path: '/live/boat',
+      });
+    });
+  });
+
   it('suggests known vendor paths from the make/model hint and applies them (incl. the substream)', async () => {
     const calls = mockApi();
     render(<CameraWizard onDone={vi.fn()} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Paste a stream URL (rtsp://…)' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Paste a stream URL (rtsp:// or rtmp://…)' }));
     fireEvent.change(screen.getByPlaceholderText('192.168.1.50'), {
       target: { value: '192.168.1.61' },
     });
