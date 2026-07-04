@@ -4,7 +4,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import { ResumableUploadStore, ResumableUploadError } from './resumable-store';
-import { AssetStore, type IAssetIndexPersistence, type IBlobStore } from './asset-store';
+import {
+  AssetStore,
+  AssetQuotaError,
+  type IAssetIndexPersistence,
+  type IBlobStore,
+} from './asset-store';
 
 /** A valid minimal mp4 header (ftyp + isom) padded to a chosen size. */
 function mp4(size = 64): Uint8Array {
@@ -18,7 +23,7 @@ function mp4(size = 64): Uint8Array {
 const stream = (bytes: Uint8Array): Readable => Readable.from(Buffer.from(bytes));
 
 /** An in-memory AssetStore good enough to prove finalize goes through sniff+quota+commit. */
-function memoryAssetStore() {
+function memoryAssetStore(limits?: { maxTotalBytes?: number }) {
   const blobs = new Map<string, Uint8Array>();
   let saved = {} as ReturnType<IAssetIndexPersistence['load']>;
   const index: IAssetIndexPersistence = {
@@ -47,10 +52,31 @@ function memoryAssetStore() {
     discardStaged() {},
   };
   let n = 0;
-  return new AssetStore({ index, blobs: blobStore, idGen: () => `a-${++n}`, now: () => 42 });
+  return new AssetStore({
+    index,
+    blobs: blobStore,
+    idGen: () => `a-${++n}`,
+    now: () => 42,
+    ...(limits
+      ? {
+          limits: {
+            maxFileBytes: 2 ** 31,
+            maxTotalBytes: limits.maxTotalBytes ?? 2 ** 33,
+            maxFileCount: 100,
+          },
+        }
+      : {}),
+  });
 }
 
-function harness(opts: { now?: () => number; maxAgeMs?: number } = {}) {
+function harness(
+  opts: {
+    now?: () => number;
+    maxAgeMs?: number;
+    maxSessions?: number;
+    maxAggregateBytes?: number;
+  } = {},
+) {
   const dir = mkdtempSync(join(tmpdir(), 'sk-video-resumable-'));
   const store = new ResumableUploadStore(dir, opts);
   return { dir, store, cleanup: () => rmSync(dir, { recursive: true, force: true }) };
@@ -178,6 +204,108 @@ describe('ResumableUploadStore', () => {
       expect(h.store.get(fresh.id)).toBeNull();
       // Nothing left behind on disk either.
       expect(() => readFileSync(join(h.dir, 'videos-partial', `${fresh.id}.part`))).toThrow();
+    } finally {
+      h.cleanup();
+    }
+  });
+});
+
+describe('ResumableUploadStore — hardening (adversarial review findings)', () => {
+  it('caps concurrent sessions and the aggregate staged budget (disk-exhaustion guard)', () => {
+    const h = harness({ maxSessions: 2, maxAggregateBytes: 150 });
+    try {
+      h.store.create('a.mp4', 100);
+      // Aggregate budget: 100 already reserved, 60 more would burst 150.
+      expect(() => h.store.create('b.mp4', 60)).toThrow(ResumableUploadError);
+      const b = h.store.create('b.mp4', 40);
+      // Session cap: two live sessions is the limit.
+      expect(() => h.store.create('c.mp4', 1)).toThrow(ResumableUploadError);
+      // Freeing a session frees its reservation.
+      h.store.discard(b.id);
+      expect(() => h.store.create('c.mp4', 40)).not.toThrow();
+    } finally {
+      h.cleanup();
+    }
+  });
+
+  it('serializes transfers per session: a second concurrent append is refused, not interleaved', async () => {
+    const h = harness();
+    try {
+      const up = h.store.create('clip.mp4', 100);
+      const slow = new Readable({ read() {} }); // stays open until we push
+      const first = h.store.append(up.id, 0, slow);
+      const err = await h.store
+        .append(up.id, 0, stream(mp4(100).slice(0, 10)))
+        .catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(ResumableUploadError);
+      expect((err as ResumableUploadError).code).toBe('locked');
+      slow.push(Buffer.from(mp4(100).slice(0, 60)));
+      slow.push(null);
+      expect(await first).toBe(60); // the in-flight transfer is unharmed
+    } finally {
+      h.cleanup();
+    }
+  });
+
+  it('refuses to complete while an append is in flight', async () => {
+    const h = harness();
+    try {
+      const up = h.store.create('clip.mp4', 100);
+      const slow = new Readable({ read() {} });
+      const inflight = h.store.append(up.id, 0, slow);
+      const err = await h.store.complete(up.id, memoryAssetStore()).catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(ResumableUploadError);
+      expect((err as ResumableUploadError).code).toBe('locked');
+      slow.push(Buffer.from(mp4(100)));
+      slow.push(null);
+      await inflight;
+    } finally {
+      h.cleanup();
+    }
+  });
+
+  it('settles the append and releases the session when the client disconnects without an error', async () => {
+    const h = harness();
+    try {
+      const up = h.store.create('clip.mp4', 100);
+      const dying = new Readable({ read() {} });
+      const pending = h.store.append(up.id, 0, dying);
+      dying.push(Buffer.from(mp4(100).slice(0, 30)));
+      // A browser abort surfaces as destroy-without-error: only 'close' fires.
+      setTimeout(() => dying.destroy(), 5);
+      await expect(pending).rejects.toThrow(); // never hangs
+      // The partial keeps the durably-written bytes and the session stays resumable.
+      const after = h.store.get(up.id);
+      expect(after).not.toBeNull();
+      await h.store.append(up.id, after!.offset, stream(mp4(100).slice(after!.offset)));
+      expect(h.store.get(up.id)?.offset).toBe(100);
+    } finally {
+      h.cleanup();
+    }
+  });
+
+  it('does not resurrect a session discarded while its last meta write raced', async () => {
+    const h = harness();
+    try {
+      const up = h.store.create('clip.mp4', 100);
+      await h.store.append(up.id, 0, stream(mp4(100).slice(0, 40)));
+      h.store.discard(up.id);
+      // A late append against the discarded id must not recreate meta or a part file.
+      await expect(h.store.append(up.id, 40, stream(mp4(10)))).rejects.toThrow();
+      expect(h.store.get(up.id)).toBeNull();
+    } finally {
+      h.cleanup();
+    }
+  });
+
+  it('pre-checks the asset-store budget before finalize copies the partial', async () => {
+    const h = harness();
+    try {
+      const tiny = memoryAssetStore({ maxTotalBytes: 50 });
+      const up = h.store.create('clip.mp4', 100);
+      await h.store.append(up.id, 0, stream(mp4(100)));
+      const err = await h.store.complete(up.id, tiny).catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(AssetQuotaError); // refused BEFORE the second full copy
     } finally {
       h.cleanup();
     }
