@@ -161,11 +161,31 @@ test('camera controls are writable through standard Signal K PUT (F8)', async ({
   expect(stop.ok()).toBe(true);
 });
 
+/** The current operational config, reshaped so it can be PUT back verbatim (restore payload). */
+async function readRestorableConfig(
+  request: Parameters<typeof ensureCamera>[0],
+): Promise<Record<string, unknown>> {
+  const res = await request.get(plugin('/operational-config'));
+  const body = (await res.json()) as Record<string, unknown> & {
+    frigate?: Record<string, unknown>;
+  };
+  const frigate = { ...(body.frigate ?? {}) };
+  delete frigate.mqttPasswordSet; // read-side presence flag; the PUT schema rejects it
+  return { ...body, frigate };
+}
+
 test('zones opt-in hands the alarm to the server, which raises it from meta.zones (F7)', async ({
   request,
 }) => {
+  // Snapshot the shared harness config — the PUT replaces the WHOLE document, and later specs
+  // depend on what it holds (e.g. the hardwareTier override).
+  const before = await readRestorableConfig(request);
+
   const put = await request.put(plugin('/operational-config'), {
-    data: { cameraHealthZones: { [CAM]: { warnAfterSeconds: 4, alarmAfterSeconds: 8 } } },
+    data: {
+      ...before,
+      cameraHealthZones: { [CAM]: { warnAfterSeconds: 4, alarmAfterSeconds: 8 } },
+    },
   });
   expect(put.ok()).toBe(true);
   await waitForReady(request); // the config write restarts the plugin
@@ -186,8 +206,8 @@ test('zones opt-in hands the alarm to the server, which raises it from meta.zone
   await warmUntilHealthy(request);
   await waitForAlarmState(request, ['normal', 'cleared']);
 
-  // Hand authority back to the plugin for any later scenario.
-  const reset = await request.put(plugin('/operational-config'), { data: {} });
+  // Put the shared config back exactly as we found it (authority returns to the plugin).
+  const reset = await request.put(plugin('/operational-config'), { data: before });
   expect(reset.ok()).toBe(true);
   await waitForReady(request);
 });
