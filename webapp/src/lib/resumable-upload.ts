@@ -61,7 +61,23 @@ export async function resumableUpload(
   const backoff = options.backoffMs ?? defaultBackoff;
   const sleep = options.sleep ?? defaultSleep;
 
-  const session = await wire.create(file);
+  // Creating the session is itself over the wire — a throttled (429) or dropped create must
+  // retry, not fail the whole upload, or a rate-limited first request loses the file.
+  let session: { id: string; offset: number } | null = null;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      session = await wire.create(file);
+      break;
+    } catch (err) {
+      if (options.signal?.aborted || isPermanent(err) || attempt === attempts) {
+        throw err;
+      }
+      await sleep(backoff(attempt));
+    }
+  }
+  if (!session) {
+    throw new Error('could not open the upload session');
+  }
   let offset = session.offset;
 
   const bail = async (err: unknown): Promise<never> => {

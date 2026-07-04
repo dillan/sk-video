@@ -71,6 +71,28 @@ describe('resumableUpload', () => {
     expect(calls.map((c) => c.method)).toContain('complete');
   });
 
+  it('retries a transient failure on session creation (a throttled/dropped create resumes)', async () => {
+    const { wire, calls } = fakeWire(['ok']);
+    let createTries = 0;
+    wire.create = async (file) => {
+      createTries += 1;
+      calls.push({ method: 'create', args: [file.name] });
+      if (createTries < 3) throw new ApiError('too many requests', 429);
+      return { id: 'u1', offset: 0 };
+    };
+    const asset = await resumableUpload(FILE, wire, fast);
+    expect((asset as { id: string }).id).toBe('v1');
+    expect(createTries).toBe(3); // created after two transient rejections
+  });
+
+  it('does not retry a PERMANENT failure on session creation', async () => {
+    const { wire } = fakeWire([]);
+    wire.create = async () => {
+      throw new ApiError('upload failed (415)', 415);
+    };
+    await expect(resumableUpload(FILE, wire, fast)).rejects.toMatchObject({ status: 415 });
+  });
+
   it('does not retry a permanent rejection (4xx) and discards the session', async () => {
     const { wire, calls } = fakeWire([new ApiError('upload failed (415)', 415)]);
     await expect(resumableUpload(FILE, wire, fast)).rejects.toMatchObject({ status: 415 });
