@@ -18,7 +18,7 @@ SK Video is a free add-on (a "plugin") for the [Signal K](https://signalk.org/) 
 >
 > **Boaters:** [Getting started](docs/guides/getting-started.md) · [Adding cameras](docs/guides/cameras.md) · [Watching video](docs/guides/viewing.md) · [Snapshots & recording](docs/guides/snapshots-and-recording.md) · [Safety features](docs/guides/safety.md) · [Advanced features](docs/guides/advanced.md) · [Troubleshooting](docs/guides/troubleshooting.md)
 >
-> **Developers:** [Architecture](docs/developers/architecture.md) · [Streaming pipeline](docs/developers/streaming-pipeline.md) · [Safety flows](docs/developers/safety-and-awareness.md) · [Security model](docs/developers/security-model.md) · [HTTP API](docs/reference/http-api.md)
+> **Developers:** [Architecture](docs/developers/architecture.md) · [Streaming pipeline](docs/developers/streaming-pipeline.md) · [Safety flows](docs/developers/safety-and-awareness.md) · [Security model](docs/developers/security-model.md) · [HTTP API](docs/reference/http-api.md) · [Signal K surface](docs/reference/signalk-surface.md)
 
 ## Why you need it
 
@@ -78,6 +78,7 @@ Prefer KIP? Add a **Video** widget to a KIP dashboard and set its **Source** to 
 ## Good to know
 
 - **Cameras are saved as Signal K resources** (a custom `cameras` type), so they're shared across every device and app on the boat.
+- **Every camera reports its own health into Signal K** (`cameras.<id>.feedOutage`), and a safety-critical camera that goes dark raises its own alarm at `notifications.cameras.<id>.feedOutage` — any Signal K display shows it, no setup needed. Simple controls (spotlight, recording, PTZ presets) are ordinary Signal K PUT paths too, so a KIP switch widget can drive them. Details in the [Signal K surface reference](docs/reference/signalk-surface.md).
 - **Snapshots can include your position and boat data** (GPS, heading, speed, depth, wind) in the photo. This is a per-widget choice in KIP, and it's off unless you turn it on — a shared photo would otherwise reveal where the boat was.
 - **HEVC (H.265) cameras** are supported on a best-effort basis; H.264 cameras (or a camera's H.264 "sub-stream") give the most reliable picture across devices.
 

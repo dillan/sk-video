@@ -95,8 +95,8 @@ Each lives in its own `src/` directory and is mostly independent. The entrypoint
 
 `src/signalk/sk-bridge.ts` is the one place the plugin touches the Signal K server, so the rest of the code stays testable. It wraps:
 
-- **Deltas** (`app.handleMessage`) — publish values like `navigation.mob.position`.
-- **Notifications** (`app.notifications.raise/update/clear`) — alarms for MOB, anchor-watch, the watchdog, Frigate. It **feature-detects and degrades**: on a server with no notifications API (or one that throws), it falls back to a `notifications.*` delta instead of taking down a safety path.
+- **Deltas** (`app.handleMessage`) — publish values like `navigation.mob.position` and the per-camera health paths (`cameras.<id>.feedOutage/producers/consumers`), plus **meta** (labels, units, optional zones) and **resource-change announcements** (`resources.cameras.<id>`, sent as v2). The full published surface is in the [Signal K surface reference](../reference/signalk-surface.md).
+- **Notifications** (`app.notifications.raise/update/clear`) — alarms for MOB, anchor-watch, the camera watchdog (on the camera's own path, `notifications.cameras.<id>.feedOutage`), Frigate. It **feature-detects and degrades**: on a server with no notifications API (or one that throws), it falls back to a `notifications.*` delta instead of taking down a safety path. Acks fall back to a server-side path lookup for zone-raised alarms the bridge didn't create.
 - **Self-state reads** (`getSelfPath`/streambundle) — position, heading, SOG, COG, depth, wind — read with their data-age so the code can be honest about stale fixes.
 - **PUT/action handlers** (`registerPutHandler`) — e.g. the MOB trigger. These **inherit the server's auth**; there's no unauthenticated safety trigger.
 

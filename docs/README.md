@@ -31,6 +31,7 @@ Look-it-up tables for when you need an exact value.
 | **[Settings & configuration](reference/configuration.md)** | Every operational setting (in the app's Settings → Operational), with types and defaults. |
 | **[Camera model](reference/camera-model.md)** | Every field a camera can have (mount, role, capabilities, calibration…). |
 | **[HTTP API](reference/http-api.md)** | Every endpoint the plugin exposes, grouped by feature. |
+| **[Signal K surface](reference/signalk-surface.md)** | The camera paths, alarms, writable PUT controls, and resource deltas any Signal K client can use — no sk-video knowledge needed. |
 | **[What it is — and isn't](reference/capabilities.md)** | An honest capability ledger: the promises we keep and the ones we deliberately don't make. |
 
 ## For developers
