@@ -70,6 +70,19 @@ describe('validateCamera', () => {
     expect(
       validateCamera({ name: 'c', source: { scheme: 'rtsp', host: 'x', path: '/a b' } }).valid,
     ).toBe(false);
+    // A fragment would truncate the URL the gateway builds from the path.
+    expect(
+      validateCamera({ name: 'c', source: { scheme: 'rtsp', host: 'x', path: '/a#b' } }).valid,
+    ).toBe(false);
+  });
+
+  it('accepts a query-string stream path (Dahua-family cameras address streams this way)', () => {
+    const result = validateCamera({
+      name: 'c',
+      source: { scheme: 'rtsp', host: 'x', path: '/cam/realmonitor?channel=1&subtype=0' },
+    });
+    expect(result.valid).toBe(true);
+    expect(result.value?.source.path).toBe('/cam/realmonitor?channel=1&subtype=0');
   });
 
   it('rejects a non-boolean enabled flag', () => {

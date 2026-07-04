@@ -11,6 +11,8 @@ import {
   mergeEdit,
   isStableSerial,
   draftFromHint,
+  parseStreamUrl,
+  plainStreamDraft,
 } from './onboard';
 import type { ICandidate, IIntrospectResult, ICameraEntry } from '../api';
 
@@ -139,12 +141,20 @@ describe('draftFromIntrospect', () => {
     expect(d.media).toEqual({ substreamPath: '/sub' }); // mpeg4 isn't an allowed media.codec
   });
 
-  it('drops an unsafe substream path (query string) so the camera still saves', () => {
+  it('keeps a query-string substream path (Dahua-style) now that the validator accepts them', () => {
     const d = draftFromIntrospect(
       { ...result, codec: 'h265', substreamPath: '/sub?token=abc', substreams: true },
       'cam',
     );
-    // The path can't pass the resource validator, so we don't claim a substream at all.
+    expect(d.capabilities.substreams).toBe(true);
+    expect(d.media).toEqual({ codec: 'h265', substreamPath: '/sub?token=abc' });
+  });
+
+  it('still drops a genuinely unsafe substream path (fragment/traversal) so the camera saves', () => {
+    const d = draftFromIntrospect(
+      { ...result, codec: 'h265', substreamPath: '/sub#frag', substreams: true },
+      'cam',
+    );
     expect(d.capabilities.substreams).toBe(false);
     expect(d.media).toEqual({ codec: 'h265' });
   });
@@ -426,5 +436,57 @@ describe('draftFromHint (action-camera guided setup)', () => {
     expect(Object.values(draft.capabilities).every((v) => v === false)).toBe(true);
     expect(draft.id).toBe('gopro');
     expect(draft.name).toBe('GoPro HERO13 Black');
+  });
+});
+
+describe('parseStreamUrl (paste a stream URL)', () => {
+  it('splits a full RTSP URL into the structured source', () => {
+    expect(parseStreamUrl('rtsp://192.168.1.50:554/h264Preview_01_main')).toEqual({
+      source: { scheme: 'rtsp', host: '192.168.1.50', port: 554, path: '/h264Preview_01_main' },
+    });
+  });
+
+  it('STRIPS embedded credentials out of the URL — the resource never carries a secret', () => {
+    const parsed = parseStreamUrl('rtsp://admin:s3cret%21@cam.local/stream1?subtype=0');
+    expect(parsed).toEqual({
+      source: { scheme: 'rtsp', host: 'cam.local', path: '/stream1?subtype=0' },
+      username: 'admin',
+      password: 's3cret!',
+    });
+  });
+
+  it('handles rtmp/http(s) schemes, bare hosts, and IPv6', () => {
+    expect(parseStreamUrl('rtmp://relay:1935/gopro')?.source).toEqual({
+      scheme: 'rtmp',
+      host: 'relay',
+      port: 1935,
+      path: '/gopro',
+    });
+    expect(parseStreamUrl('rtsp://cam.local')?.source).toEqual({
+      scheme: 'rtsp',
+      host: 'cam.local',
+    });
+    expect(parseStreamUrl('rtsp://[fe80::1]:554/s1')?.source).toEqual({
+      scheme: 'rtsp',
+      host: 'fe80::1',
+      port: 554,
+      path: '/s1',
+    });
+  });
+
+  it('rejects non-stream schemes and junk', () => {
+    expect(parseStreamUrl('file:///etc/passwd')).toBeNull();
+    expect(parseStreamUrl('not a url')).toBeNull();
+    expect(parseStreamUrl('192.168.1.50/stream')).toBeNull(); // no scheme -> make the user explicit
+  });
+});
+
+describe('plainStreamDraft', () => {
+  it('defaults id/name from the host with honestly all-false capabilities', () => {
+    const draft = plainStreamDraft({ scheme: 'rtsp', host: '192.168.1.50', path: '/s1' });
+    expect(draft.id).toBe('192-168-1-50');
+    expect(draft.name).toBe('192.168.1.50');
+    expect(Object.values(draft.capabilities).every((v) => v === false)).toBe(true);
+    expect(draft.media).toBeUndefined();
   });
 });

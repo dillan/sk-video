@@ -176,7 +176,10 @@ export interface IValidationResult {
  * a list of errors. Credentials are never part of a camera resource and are rejected here.
  */
 const HOST_RE = /^[A-Za-z0-9._:-]+$/; // hostname or IP literal (IPv6 colons allowed)
-const PATH_RE = /^\/[A-Za-z0-9._~!$&'()*+,;=:@/%-]*$/; // safe absolute URL path
+// Safe absolute URL path, query string included (Dahua-family cameras address streams as
+// /cam/realmonitor?channel=1&subtype=0). '#' stays banned — a fragment would truncate the URL the
+// gateway builds — and '..' is rejected separately below.
+const PATH_RE = /^\/[A-Za-z0-9._~!$&'()*+,;=:@/%?-]*$/;
 const TOKEN_RE = /^[A-Za-z0-9_.-]{1,64}$/; // ONVIF profile token charset
 const ALLOWED_TOP_KEYS = new Set([
   'name',

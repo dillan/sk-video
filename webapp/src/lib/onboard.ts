@@ -73,7 +73,7 @@ const RESOURCE_CODECS = new Set(['h264', 'h265', 'mjpeg']);
 /** The camera-resource validator's safe-path rule (mirrors PATH_RE in camera-validation). An unsafe
  * substream path (e.g. one carrying a query string) would 400 the WHOLE save, so we drop it instead —
  * the camera still onboards, just without a substream. */
-const SAFE_PATH_RE = /^\/[A-Za-z0-9._~!$&'()*+,;=:@/%-]*$/;
+const SAFE_PATH_RE = /^\/[A-Za-z0-9._~!$&'()*+,;=:@/%?-]*$/; // query allowed; '#'/'..' are not
 const isSafeMediaPath = (p: string): boolean => SAFE_PATH_RE.test(p) && !p.includes('..');
 
 export interface ICameraDraft {
@@ -228,6 +228,64 @@ export function mergeRescan(existing: ICameraEntry, r: IIntrospectResult): ICame
  * A stored role/mount outside the closed enums falls back to unset so the dropdowns stay valid;
  * capabilities/media/device ride along for display only — {@link mergeEdit} keeps the stored ones.
  */
+/** A pasted stream URL, split into the structured source + any embedded credentials. */
+export interface IParsedStreamUrl {
+  source: { scheme: string; host: string; port?: number; path?: string };
+  /** Credentials found IN the URL — surfaced so they go to the write-only store, never the resource. */
+  username?: string;
+  password?: string;
+}
+
+/**
+ * Parse a full stream URL (rtsp/rtsps/rtmp/http/https) into the resource's structured source.
+ * Embedded `user:pass@` credentials are STRIPPED into separate fields: the camera resource never
+ * carries a secret, so a pasted URL must not smuggle one in. Returns null for anything unparsable.
+ */
+export function parseStreamUrl(raw: string): IParsedStreamUrl | null {
+  const trimmed = raw.trim();
+  const schemeMatch = /^(rtsps?|rtmp|https?):\/\//i.exec(trimmed);
+  if (!schemeMatch) return null;
+  let url: URL;
+  try {
+    url = new URL(trimmed);
+  } catch {
+    return null;
+  }
+  if (!url.hostname) return null;
+  const path = `${url.pathname}${url.search}`;
+  const parsed: IParsedStreamUrl = {
+    source: {
+      scheme: schemeMatch[1].toLowerCase(),
+      // URL brackets IPv6 hostnames; the resource host field stores them bare.
+      host: url.hostname.replace(/^\[|\]$/g, ''),
+      ...(url.port ? { port: Number(url.port) } : {}),
+      ...(path && path !== '/' ? { path } : {}),
+    },
+  };
+  if (url.username) parsed.username = decodeURIComponent(url.username);
+  if (url.password) parsed.password = decodeURIComponent(url.password);
+  return parsed;
+}
+
+/**
+ * A bare draft for a plain (non-ONVIF) stream. Nothing was introspected, so capabilities are
+ * honestly all-false and the id/name default from the host for the operator to refine.
+ */
+export function plainStreamDraft(source: IParsedStreamUrl['source']): ICameraDraft {
+  return {
+    id: source.host ? slugify(source.host) : '',
+    name: source.host || '',
+    source,
+    capabilities: {
+      ptz: false,
+      absolutePtz: false,
+      audio: false,
+      audioBackchannel: false,
+      substreams: false,
+    },
+  };
+}
+
 /**
  * Build a draft from a curated action-camera hint (GoPro / Insta360). A hint source pre-fills the
  * stream address (and the 360 projection, so the resource records the geometry); a push-only device
