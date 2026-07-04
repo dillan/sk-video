@@ -13,7 +13,7 @@ export interface ILoggedEvent {
   id: string;
   /** Epoch ms the event was logged. */
   at: number;
-  /** The notification key that produced it, e.g. `mob`, `incident`, `camera.bow.offline`. */
+  /** The notification key that produced it, e.g. `mob`, `incident`, `cameras.bow.feedOutage`. */
   type: string;
   /** Notification state at raise time (`emergency`/`alarm`/`alert`/`warn`/…), if any. */
   state?: string;

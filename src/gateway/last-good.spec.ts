@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { LastGoodTracker } from './last-good';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { LastGoodTracker, loadLastGoodSnapshot, saveLastGoodSnapshot } from './last-good';
 
 describe('LastGoodTracker', () => {
   it('reports never-seen (null) with the tracking horizon before any online reading', () => {
@@ -53,5 +56,22 @@ describe('LastGoodTracker — persistence', () => {
     expect(tracker.snapshot()).toEqual({ stern: 500, bow: 1500 });
     tracker.forget('stern');
     expect(tracker.snapshot()).toEqual({ bow: 1500 });
+  });
+
+  it('round-trips through the on-disk snapshot, tolerating a missing or corrupt file', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'sk-video-lastgood-'));
+    try {
+      expect(loadLastGoodSnapshot(dir)).toEqual({}); // first run: no file yet
+      saveLastGoodSnapshot(dir, { bow: 1500, stern: 900 });
+      expect(loadLastGoodSnapshot(dir)).toEqual({ bow: 1500, stern: 900 });
+      writeFileSync(join(dir, 'last-good.json'), 'not json', { mode: 0o600 });
+      expect(loadLastGoodSnapshot(dir)).toEqual({}); // corrupt file must never throw
+      writeFileSync(join(dir, 'last-good.json'), JSON.stringify({ bow: 'NaN?', ok: 7 }), {
+        mode: 0o600,
+      });
+      expect(loadLastGoodSnapshot(dir)).toEqual({ ok: 7 }); // non-numeric stamps are dropped
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

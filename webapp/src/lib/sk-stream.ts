@@ -53,11 +53,22 @@ export function stripNotificationId(path: string): string {
     : path;
 }
 
-/** The plugin-notification key under `notifications.sk-video.`, or null for any other path. */
+/**
+ * The plugin-notification key for a delta path, or null for foreign subtrees. Two families map:
+ * plugin-scoped keys under `notifications.sk-video.` (mob, incident, anchor) and camera-path
+ * alarms under `notifications.cameras.` — whose key is the path minus `notifications.`, matching
+ * the bridge's key for the same alarm so the shared ack round-trip works.
+ */
 export function notificationKey(path: string): string | null {
-  const prefix = 'notifications.sk-video.';
   const normalized = stripNotificationId(path);
-  return normalized.startsWith(prefix) ? normalized.slice(prefix.length) : null;
+  const pluginPrefix = 'notifications.sk-video.';
+  if (normalized.startsWith(pluginPrefix)) {
+    return normalized.slice(pluginPrefix.length);
+  }
+  if (normalized.startsWith('notifications.cameras.')) {
+    return normalized.slice('notifications.'.length);
+  }
+  return null;
 }
 
 const num = (v: unknown): number | undefined =>
@@ -161,6 +172,7 @@ const SUBSCRIBE = {
   context: 'vessels.self',
   subscribe: [
     { path: 'notifications.sk-video.*', policy: 'instant' },
+    { path: 'notifications.cameras.*', policy: 'instant' },
     { path: 'navigation.position', period: 2000 },
     { path: 'navigation.headingTrue', period: 2000 },
     { path: 'navigation.headingMagnetic', period: 2000 },

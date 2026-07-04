@@ -29,8 +29,9 @@ import { Go2rtcProcess } from './gateway/go2rtc-process';
 import { Go2rtcGateway } from './gateway/go2rtc-gateway';
 import { registerProxyRoutes } from './gateway/go2rtc-proxy-routes';
 import { candidateHost } from './gateway/sdp-scrub';
-import { LastGoodTracker } from './gateway/last-good';
+import { LastGoodTracker, loadLastGoodSnapshot, saveLastGoodSnapshot } from './gateway/last-good';
 import { StreamWatchdog } from './gateway/stream-watchdog';
+import { feedOutagePath, buildCameraHealthMeta } from './signalk/camera-meta';
 import { fetchStreamHealth, fetchAllStreamsHealth } from './gateway/stream-health';
 import { registerCamerasProjectionRoute } from './cameras/cameras-projection-routes';
 import { PtzManager } from './onvif/ptz-manager';
@@ -208,8 +209,10 @@ export = function (app: ServerAPI): Plugin {
   let watchUnsub: (() => void) | null = null;
   let watchdog: StreamWatchdog | null = null;
   let watchdogTimer: ReturnType<typeof setInterval> | null = null;
-  // Went-dark vs never-seen: every health read stamps this, the health DTO carries it.
-  const lastGood = new LastGoodTracker();
+  // Went-dark vs never-seen: every health read stamps this, the health DTO carries it. Rebuilt in
+  // start() from the persisted snapshot so an outage spanning a restart stays visible.
+  let lastGood = new LastGoodTracker();
+  let saveLastGood: (() => void) | null = null;
   let frigateClient: FrigateClient | null = null;
   let frigateMqtt: IMqttConnection | null = null;
   // Live broker-link state so the console can say "Frigate not connected" instead of implying
@@ -387,6 +390,19 @@ export = function (app: ServerAPI): Plugin {
       pluginRestart = restart ?? pluginRestart;
       try {
         const dataDir = app.getDataDirPath();
+        // Hydrate last-good from disk: a camera that died while we were down must still alarm once
+        // the outage exceeds the thresholds, instead of resetting to "never seen".
+        const lastGoodSeed = loadLastGoodSnapshot(dataDir);
+        lastGood = new LastGoodTracker(undefined, { seed: lastGoodSeed });
+        let lastGoodPersisted = '';
+        saveLastGood = () => {
+          const snapshot = lastGood.snapshot();
+          const encoded = JSON.stringify(snapshot);
+          if (encoded !== lastGoodPersisted) {
+            lastGoodPersisted = encoded;
+            saveLastGoodSnapshot(dataDir, snapshot);
+          }
+        };
         const override =
           options?.hardwareTier && options.hardwareTier !== 'auto'
             ? (options.hardwareTier as THardwareTier)
@@ -763,13 +779,34 @@ export = function (app: ServerAPI): Plugin {
           watchUnsub = skBridge.onDelta(anchorWatchPath, (delta) => watch?.onNotification(delta));
         }
 
-        // Safety-camera watchdog: poll go2rtc health for cameras the operator flagged safetyCritical
-        // and raise/clear a debounced Signal K notification when one goes dark after being live.
+        // Camera health watchdog: poll go2rtc health for every enabled camera, publish each one's
+        // telemetry into the Signal K model (cameras.<id>.feedOutage/producers/consumers), and
+        // raise/clear a debounced alarm ON THE CAMERA'S OWN PATH for cameras the operator flagged
+        // safetyCritical. The alarm lives at notifications.cameras.<id>.feedOutage — mirroring the
+        // gauge path — so a later zones handover raises the very same notification.
+        const cameraDisplayName = (id: string): string => cameras?.get(id)?.name ?? id;
+        // Declare what the health paths mean (displayName/units/timeout) so clients can label and
+        // stale-flag them without knowing sk-video. Re-emitted when a camera definition changes.
+        const emitCameraHealthMeta = (id: string): void => {
+          const camera = cameras?.get(id);
+          if (!camera?.enabled) return;
+          skBridge.emitMeta(
+            buildCameraHealthMeta({
+              id,
+              name: camera.name,
+              pollSeconds: WATCHDOG_POLL_MS / 1000,
+            }),
+          );
+        };
+        for (const id of Object.keys(cameras?.list() ?? {})) {
+          emitCameraHealthMeta(id);
+        }
         watchdog = new StreamWatchdog({
           getMonitoredCameras: () =>
             Object.entries(cameras?.list() ?? {})
-              .filter(([, camera]) => camera.enabled && camera.safetyCritical === true)
+              .filter(([, camera]) => camera.enabled)
               .map(([id]) => id),
+          isAlarmEligible: (id) => cameras?.get(id)?.safetyCritical === true,
           fetchHealth: async (id) => {
             const health = await fetchStreamHealth({
               apiPort: gateway?.apiPort ?? 1984,
@@ -779,16 +816,31 @@ export = function (app: ServerAPI): Plugin {
             return health;
           },
           raiseNotification: (id) =>
-            void skBridge.raiseNotification(`camera.${id}.offline`, {
+            void skBridge.raiseNotification(feedOutagePath(id), {
               state: 'alarm',
-              message: `Safety camera "${id}" has gone dark.`,
+              message: `Safety camera "${cameraDisplayName(id)}" has gone dark.`,
+              path: feedOutagePath(id),
               data: { camera: id },
             }),
-          clearNotification: (id) => void skBridge.clearNotification(`camera.${id}.offline`),
+          clearNotification: (id) => void skBridge.clearNotification(feedOutagePath(id)),
+          onSample: (id, sample) => {
+            const values = [
+              { path: `cameras.${id}.producers`, value: sample.producers },
+              { path: `cameras.${id}.consumers`, value: sample.consumers },
+            ];
+            if (sample.feedOutageSeconds !== null) {
+              values.unshift({ path: feedOutagePath(id), value: sample.feedOutageSeconds });
+            }
+            skBridge.emit(values);
+          },
+          seedAnchors: lastGoodSeed,
           log,
         });
         watchdogTimer = setInterval(() => {
-          void watchdog?.poll().catch(() => undefined);
+          void watchdog
+            ?.poll()
+            .then(() => saveLastGood?.())
+            .catch(() => undefined);
         }, WATCHDOG_POLL_MS);
         watchdogTimer.unref?.();
 
@@ -925,6 +977,7 @@ export = function (app: ServerAPI): Plugin {
           }
           await base.setResource(id, value);
           ptz?.invalidate(id);
+          emitCameraHealthMeta(id); // a rename/enable must refresh the health-path labels
           scheduleSync();
         };
         app.registerResourceProvider({
@@ -1005,6 +1058,8 @@ export = function (app: ServerAPI): Plugin {
       }
       watchdog?.reset(); // clears any outstanding "camera dark" alarms while the bridge is still live
       watchdog = null;
+      saveLastGood?.(); // keep the on-disk last-good fresh so a restart-spanning outage still alarms
+      saveLastGood = null;
       if (frigatePruneTimer) {
         clearInterval(frigatePruneTimer);
         frigatePruneTimer = null;

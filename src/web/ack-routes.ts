@@ -7,7 +7,7 @@ import type { AuthGate } from '../security/request-auth';
  * forbids a device-local ack (helm quiet, nav station still alarming). Mutating → auth-gated.
  */
 
-// Notification keys are plugin-internal dotted names (e.g. `mob`, `camera.bow.offline`).
+// Notification keys are plugin-internal dotted names (e.g. `mob`, `cameras.bow.feedOutage`).
 const KEY_RE = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/;
 
 export interface IAckRoutesDeps {

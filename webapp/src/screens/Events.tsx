@@ -25,7 +25,9 @@ function describeEvent(ev: ILoggedEvent): IEventView {
         ? 'caution'
         : 'neutral';
 
-  const offline = /^camera\.(.+)\.offline$/.exec(ev.type);
+  // Current rows use camera-path keys (`cameras.<id>.feedOutage`); the legacy pattern keeps
+  // rows logged by older releases humanised — the event log is durable.
+  const offline = /^cameras\.(.+)\.feedOutage$/.exec(ev.type) ?? /^camera\.(.+)\.offline$/.exec(ev.type);
   if (ev.type === 'mob' || ev.type.startsWith('mob.')) {
     return { icon: '🆘', label: 'Man overboard', frigate: false, severity, href: '#/safety' };
   }
@@ -68,7 +70,7 @@ const FILTERS: Array<{ key: string; label: string; type: string | null }> = [
   { key: 'all', label: 'All', type: null },
   { key: 'mob', label: 'MOB', type: 'mob' },
   { key: 'anchor', label: 'Anchor', type: 'anchor' },
-  { key: 'camera', label: 'Cameras', type: 'camera' },
+  { key: 'camera', label: 'Cameras', type: 'cameras' },
   { key: 'incident', label: 'Incidents', type: 'incident' },
   { key: 'frigate', label: 'Frigate', type: 'frigate' },
 ];

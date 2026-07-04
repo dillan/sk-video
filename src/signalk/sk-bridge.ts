@@ -15,14 +15,32 @@ export interface IDeltaValue {
   value: unknown;
 }
 
+/** One path's metadata (displayName/units/timeout/zones/…), the delta `meta` arm's entry shape. */
+export interface IMetaEntry {
+  path: string;
+  value: Record<string, unknown>;
+}
+
+/** An update carries either values or meta — mirroring the server-api `Update` union. */
+export type TDeltaUpdate = { timestamp?: string; $source?: string } & (
+  { values: IDeltaValue[] } | { meta: IMetaEntry[] }
+);
+
 export interface IDeltaMessage {
-  updates: { values: IDeltaValue[]; timestamp?: string; $source?: string }[];
+  updates: TDeltaUpdate[];
 }
 
 export interface INotificationOptions {
   state: AlarmState;
   message: string;
   data?: Record<string, unknown>;
+  /**
+   * Absolute notification path (without the `notifications.` prefix), e.g.
+   * `cameras.bow.feedOutage`. When omitted the notification lives under the plugin prefix
+   * (`<pluginId>.<key>`). Camera alarms use this so they land on the camera's own path — where
+   * generic clients expect device alarms, and where a later zones handover raises the same alarm.
+   */
+  path?: string;
 }
 
 export interface IActionResult {
@@ -162,6 +180,24 @@ export class SignalKBridge {
     return true;
   }
 
+  /**
+   * Emit path metadata (displayName/units/timeout/zones) as a meta-arm delta. The server folds it
+   * into the model like any incoming meta — including arming its zones watcher when zones ride
+   * along — so this is how a camera declares what its health paths mean.
+   */
+  emitMeta(entries: IMetaEntry | IMetaEntry[]): boolean {
+    if (typeof this.app.handleMessage !== 'function') {
+      this.log('handleMessage unavailable; meta delta dropped');
+      return false;
+    }
+    const list = Array.isArray(entries) ? entries : [entries];
+    if (list.length === 0) {
+      return false;
+    }
+    this.app.handleMessage(this.pluginId, { updates: [{ meta: list }] });
+    return true;
+  }
+
   /** Snapshot of vessel self-state, each field normalised to a value plus optional age. */
   getSelfState(): ISelfState {
     return {
@@ -207,7 +243,7 @@ export class SignalKBridge {
             n.raise({
               state: options.state,
               message: options.message,
-              path: this.notifPath(key),
+              path: this.notifPath(key, options.path),
               data: options.data,
             }),
           );
@@ -253,6 +289,9 @@ export class SignalKBridge {
   clearNotification(key: string): boolean {
     const n = this.app.notifications;
     const id = this.notificationIds.get(key);
+    // Capture the raise-time options BEFORE forgetting them — a path-relocated notification must
+    // clear on the same path it was raised on.
+    const raisedAt = this.notificationOptions.get(key)?.path;
     this.notificationOptions.delete(key);
     if (n?.clear && id !== undefined) {
       try {
@@ -266,7 +305,9 @@ export class SignalKBridge {
     if (!n?.clear) {
       // No notifications API: clear by emitting a normal-state delta on the same path.
       this.notificationIds.delete(key);
-      return this.emit(this.notificationDelta(key, { state: 'normal', message: '' }));
+      return this.emit(
+        this.notificationDelta(key, { state: 'normal', message: '', path: raisedAt }),
+      );
     }
     return false; // API present, but nothing was raised under this key.
   }
@@ -356,8 +397,8 @@ export class SignalKBridge {
     return { value: raw as T };
   }
 
-  private notifPath(key: string): string {
-    return `${this.pluginId}.${key}`;
+  private notifPath(key: string, absolutePath?: string): string {
+    return absolutePath ?? `${this.pluginId}.${key}`;
   }
 
   private notificationDelta(
@@ -366,7 +407,7 @@ export class SignalKBridge {
     flags?: { silenced?: boolean },
   ): IDeltaValue {
     return {
-      path: `notifications.${this.notifPath(key)}`,
+      path: `notifications.${this.notifPath(key, options.path)}`,
       value: {
         state: options.state,
         message: options.message,

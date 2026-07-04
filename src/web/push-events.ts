@@ -16,7 +16,7 @@ export function notificationForEvent(
 ): IPushNotification | null {
   if (!state || !ALERTING.has(state.toLowerCase())) return null;
 
-  const offline = /^camera\.(.+)\.offline$/.exec(type);
+  const offline = /^cameras\.(.+)\.feedOutage$/.exec(type);
   let title: string;
   let url = '#/review/events';
   let body = message ?? '';
