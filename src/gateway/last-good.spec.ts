@@ -32,3 +32,26 @@ describe('LastGoodTracker', () => {
     expect(tracker.get('bow').lastGoodAt).toBeNull();
   });
 });
+
+describe('LastGoodTracker — persistence', () => {
+  it('hydrates from a persisted snapshot so an outage spanning a restart stays visible', () => {
+    let t = 10_000;
+    const tracker = new LastGoodTracker(() => t, { seed: { bow: 4000 } });
+    expect(tracker.get('bow').lastGoodAt).toBe(4000); // survives the restart
+    expect(tracker.get('stern').lastGoodAt).toBeNull(); // unseeded cameras stay honest
+    t = 12_000;
+    tracker.note('bow', true);
+    expect(tracker.get('bow').lastGoodAt).toBe(12_000); // fresh readings still win
+  });
+
+  it('snapshots stamped cameras for persistence, and forget() removes them from it', () => {
+    let t = 1000;
+    const tracker = new LastGoodTracker(() => t, { seed: { stern: 500 } });
+    t = 1500;
+    tracker.note('bow', true);
+    tracker.note('helm', false); // never online -> not in the snapshot
+    expect(tracker.snapshot()).toEqual({ stern: 500, bow: 1500 });
+    tracker.forget('stern');
+    expect(tracker.snapshot()).toEqual({ bow: 1500 });
+  });
+});

@@ -397,3 +397,96 @@ describe('SignalKBridge — onDelta', () => {
     expect(() => unsub()).not.toThrow();
   });
 });
+
+describe('SignalKBridge — meta deltas', () => {
+  it('emits meta entries as a meta-arm update so the server can arm displayName/units/zones', () => {
+    const h = makeApp();
+    const ok = new SignalKBridge(h.app, 'sk-video').emitMeta({
+      path: 'cameras.bow.feedOutage',
+      value: { displayName: 'Bow Camera — feed outage', units: 's', timeout: 30 },
+    });
+    expect(ok).toBe(true);
+    expect(h.deltas).toEqual([
+      {
+        id: 'sk-video',
+        msg: {
+          updates: [
+            {
+              meta: [
+                {
+                  path: 'cameras.bow.feedOutage',
+                  value: { displayName: 'Bow Camera — feed outage', units: 's', timeout: 30 },
+                },
+              ],
+            },
+          ],
+        },
+      },
+    ]);
+  });
+
+  it('accepts a list of meta entries in one delta and drops cleanly without handleMessage', () => {
+    const h = makeApp();
+    new SignalKBridge(h.app, 'sk-video').emitMeta([
+      { path: 'cameras.bow.producers', value: { displayName: 'Bow Camera — producers' } },
+      { path: 'cameras.bow.consumers', value: { displayName: 'Bow Camera — viewers' } },
+    ]);
+    const update = h.deltas[0].msg.updates[0] as { meta: unknown[] };
+    expect(update.meta).toHaveLength(2);
+
+    const partial = new SignalKBridge({ debug: () => {} }, 'sk-video');
+    expect(partial.emitMeta({ path: 'cameras.bow.producers', value: {} })).toBe(false);
+  });
+});
+
+/**
+ * Camera alarms live on the camera's own path (notifications.cameras.<id>.…), not under the
+ * plugin prefix — so a stalling camera reports itself where every Signal K client expects
+ * device alarms, and a later zones handover lands on the SAME notification path.
+ */
+describe('SignalKBridge — absolute-path notifications', () => {
+  const KEY = 'cameras.bow.feedOutage';
+  const OPTS = {
+    state: 'alarm' as const,
+    message: 'Safety camera "bow" has gone dark.',
+    path: 'cameras.bow.feedOutage',
+  };
+
+  it('raises at the given absolute path instead of the plugin-prefixed one', () => {
+    const h = makeApp();
+    new SignalKBridge(h.app, 'sk-video').raiseNotification(KEY, OPTS);
+    expect(h.raised).toHaveLength(1);
+    expect(h.raised[0].path).toBe('cameras.bow.feedOutage');
+  });
+
+  it('falls back to a delta on the absolute path when the server has no notifications API', () => {
+    const h = makeApp({ notifications: undefined });
+    new SignalKBridge(h.app, 'sk-video').raiseNotification(KEY, OPTS);
+    const value = h.deltas[0].msg.updates[0] as { values: { path: string }[] };
+    expect(value.values[0].path).toBe('notifications.cameras.bow.feedOutage');
+  });
+
+  it('acks by re-emitting the silenced state on the absolute path', () => {
+    const h = makeApp({ notifications: undefined });
+    const bridge = new SignalKBridge(h.app, 'sk-video');
+    bridge.raiseNotification(KEY, OPTS);
+    bridge.ackNotification(KEY);
+    const ack = h.deltas[1].msg.updates[0] as {
+      values: { path: string; value: { method: unknown } }[];
+    };
+    expect(ack.values[0].path).toBe('notifications.cameras.bow.feedOutage');
+    expect(ack.values[0].value.method).toEqual([]);
+  });
+
+  it('clears with a normal-state delta on the absolute path', () => {
+    const h = makeApp({ notifications: undefined });
+    const bridge = new SignalKBridge(h.app, 'sk-video');
+    bridge.raiseNotification(KEY, OPTS);
+    bridge.clearNotification(KEY);
+    const clear = h.deltas[1].msg.updates[0] as {
+      values: { path: string; value: { state: string } }[];
+    };
+    expect(clear.values[0].path).toBe('notifications.cameras.bow.feedOutage');
+    expect(clear.values[0].value.state).toBe('normal');
+  });
+});

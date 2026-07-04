@@ -80,7 +80,31 @@ describe('Events', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Cameras' }));
     await waitFor(() => expect(screen.queryByText('Man overboard')).toBeNull());
     expect(screen.getByText(/Camera offline/)).toBeTruthy();
-    expect(fetchMock.mock.calls.some((c) => String(c[0]).includes('type=camera'))).toBe(true);
+    // camera events now live under the `cameras.` key family (camera-path alarms)
+    expect(fetchMock.mock.calls.some((c) => String(c[0]).includes('type=cameras'))).toBe(true);
+  });
+
+  it('humanises a camera-path feed-outage row and deep-links to the camera', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        ok({
+          events: [
+            {
+              id: 'e9',
+              at: 9000,
+              type: 'cameras.stern.feedOutage',
+              state: 'alarm',
+              message: 'Stern camera has gone dark',
+            },
+          ],
+        }),
+      ),
+    );
+    render(<Events />);
+    await waitFor(() => expect(screen.getByText('Camera offline · stern')).toBeTruthy());
+    const link = screen.getByRole('link', { name: 'View →' });
+    expect(link.getAttribute('href')).toBe('#/live/stern');
   });
 
   it('says Frigate is not connected instead of implying an empty feed means nothing happened', async () => {

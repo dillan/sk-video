@@ -12,11 +12,11 @@ describe('notificationForEvent', () => {
     });
   });
 
-  it('humanises a camera-offline key with its id and links to events', () => {
-    const n = notificationForEvent('camera.bow.offline', 'alarm', 'Bow camera went dark');
+  it('humanises a camera feed-outage key with its id and links to events', () => {
+    const n = notificationForEvent('cameras.bow.feedOutage', 'alarm', 'Bow camera went dark');
     expect(n?.title).toBe('Camera offline: bow');
     expect(n?.url).toBe('#/review/events');
-    expect(n?.tag).toBe('camera.bow.offline');
+    expect(n?.tag).toBe('cameras.bow.feedOutage');
   });
 
   it('badges a Frigate detection as close-range', () => {
@@ -26,7 +26,7 @@ describe('notificationForEvent', () => {
   });
 
   it('does not push for a non-alerting state (e.g. normal/clear)', () => {
-    expect(notificationForEvent('camera.bow.offline', 'normal', 'recovered')).toBeNull();
+    expect(notificationForEvent('cameras.bow.feedOutage', 'normal', 'recovered')).toBeNull();
     expect(notificationForEvent('something', undefined, 'x')).toBeNull();
   });
 

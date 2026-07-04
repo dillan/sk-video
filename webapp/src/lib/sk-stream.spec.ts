@@ -44,6 +44,18 @@ describe('notification path normalization', () => {
     expect(notificationKey('notifications.anchor.dragging')).toBeNull();
     expect(notificationKey('navigation.position')).toBeNull();
   });
+
+  it('maps camera-path alarms (notifications.cameras.*) to keys the ack route accepts', () => {
+    // Camera alarms live on the camera's own path; the key is the path minus `notifications.`,
+    // which matches the plugin bridge's notification key for the same alarm.
+    expect(notificationKey('notifications.cameras.bow.feedOutage')).toBe('cameras.bow.feedOutage');
+    expect(
+      notificationKey('notifications.cameras.bow.feedOutage.9922c05a-2813-4995-ab72-33f8f2246ff7'),
+    ).toBe('cameras.bow.feedOutage');
+    expect(notificationKey('notifications.cameras.stern.detections.person')).toBe(
+      'cameras.stern.detections.person',
+    );
+  });
 });
 
 describe('applyVesselDelta', () => {
@@ -175,6 +187,26 @@ describe('SkStream', () => {
     });
     expect(onDelta).toHaveBeenCalledTimes(1);
     expect(states).toEqual(['connecting', 'live']);
+    stream.stop();
+  });
+
+  it('subscribes to camera-path alarms so relocated camera notifications reach the shell', () => {
+    const { sockets, makeSocket } = fakeSocketFactory();
+    const stream = new SkStream({ url: 'ws://x/stream', onDelta: () => undefined, makeSocket });
+    stream.start();
+    sockets[0].onopen?.();
+    const subscribe = JSON.parse(
+      (sockets[0].send as ReturnType<typeof vi.fn>).mock.calls[0][0] as string,
+    ) as { subscribe: { path: string; policy?: string }[] };
+    expect(subscribe.subscribe).toContainEqual({
+      path: 'notifications.cameras.*',
+      policy: 'instant',
+    });
+    // The plugin-prefixed subtree stays subscribed for vessel-scoped keys (mob, incident, anchor).
+    expect(subscribe.subscribe).toContainEqual({
+      path: 'notifications.sk-video.*',
+      policy: 'instant',
+    });
     stream.stop();
   });
 
