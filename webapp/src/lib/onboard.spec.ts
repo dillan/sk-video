@@ -13,6 +13,7 @@ import {
   draftFromHint,
   parseStreamUrl,
   plainStreamDraft,
+  streamSchemeHints,
 } from './onboard';
 import type { ICandidate, IIntrospectResult, ICameraEntry } from '../api';
 
@@ -488,5 +489,47 @@ describe('plainStreamDraft', () => {
     expect(draft.name).toBe('192.168.1.50');
     expect(Object.values(draft.capabilities).every((v) => v === false)).toBe(true);
     expect(draft.media).toBeUndefined();
+  });
+});
+
+describe('streamSchemeHints (RTMP parity with RTSP)', () => {
+  it('gives each scheme its conventional default port', () => {
+    expect(streamSchemeHints('rtsp').defaultPort).toBe(554);
+    expect(streamSchemeHints('rtsps').defaultPort).toBe(322);
+    expect(streamSchemeHints('rtmp').defaultPort).toBe(1935);
+    expect(streamSchemeHints('http').defaultPort).toBe(80);
+    expect(streamSchemeHints('https').defaultPort).toBe(443);
+  });
+
+  it('gives a scheme-appropriate path + URL example', () => {
+    // RTMP paths are app/streamKey, not the RTSP /stream1 shape.
+    expect(streamSchemeHints('rtmp').pathPlaceholder).toMatch(/\/live\//);
+    expect(streamSchemeHints('rtmp').urlExample).toMatch(/^rtmp:\/\//);
+    expect(streamSchemeHints('rtsp').pathPlaceholder).toBe('/stream1');
+    expect(streamSchemeHints('rtsp').urlExample).toMatch(/^rtsp:\/\//);
+  });
+
+  it('falls back safely for an unknown scheme', () => {
+    expect(streamSchemeHints('gopher').defaultPort).toBeUndefined();
+  });
+});
+
+describe('parseStreamUrl — RTMP', () => {
+  it('parses an rtmp URL with an app/streamKey path', () => {
+    const p = parseStreamUrl('rtmp://192.168.1.7:1935/live/boat');
+    expect(p?.source).toEqual({
+      scheme: 'rtmp',
+      host: '192.168.1.7',
+      port: 1935,
+      path: '/live/boat',
+    });
+  });
+
+  it('strips credentials embedded in an rtmp URL', () => {
+    const p = parseStreamUrl('rtmp://streamer:secret@10.0.0.9/live/stream');
+    expect(p?.source.scheme).toBe('rtmp');
+    expect(p?.username).toBe('streamer');
+    expect(p?.password).toBe('secret');
+    expect(JSON.stringify(p?.source)).not.toContain('secret');
   });
 });
