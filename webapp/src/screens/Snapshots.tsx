@@ -3,7 +3,7 @@ import { fetchSnapshots, snapshotUrl, type ISnapshot } from '../api';
 import { formatLatLon } from '../lib/format';
 
 /**
- * The Review cluster's Snapshots tab: a gallery of telemetry-stamped stills (the capture primitive MOB,
+ * The Library cluster's Snapshots tab: a gallery of telemetry-stamped stills (the capture primitive MOB,
  * anchor-watch and incidents reuse). Honest about the position stamp — when there was no GPS fix it
  * says so rather than guessing — and about retention (a bounded library, oldest pruned).
  */

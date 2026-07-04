@@ -16,8 +16,12 @@ const SCREENS: Array<{ name: string; hash: string; ready: string }> = [
   { name: 'Live Wall', hash: '#/live', ready: 'h1:has-text("Live")' },
   { name: 'Cameras', hash: '#/cameras', ready: 'h1:has-text("Cameras")' },
   { name: 'Safety (disarmed)', hash: '#/safety', ready: 'h1:has-text("Safety")' },
-  { name: 'Review — Recordings', hash: '#/review/recordings', ready: 'h1:has-text("Recordings")' },
-  { name: 'Review — Events', hash: '#/review/events', ready: 'h1:has-text("Events")' },
+  {
+    name: 'Library — Recordings',
+    hash: '#/library/recordings',
+    ready: 'h1:has-text("Recordings")',
+  },
+  { name: 'Library — Events', hash: '#/library/events', ready: 'h1:has-text("Events")' },
   { name: 'Settings', hash: '#/settings', ready: 'h1:has-text("Settings")' },
 ];
 

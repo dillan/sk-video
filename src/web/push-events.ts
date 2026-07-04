@@ -18,7 +18,7 @@ export function notificationForEvent(
 
   const offline = /^cameras\.(.+)\.feedOutage$/.exec(type);
   let title: string;
-  let url = '#/review/events';
+  let url = '#/library/events';
   let body = message ?? '';
 
   if (type === 'mob') {

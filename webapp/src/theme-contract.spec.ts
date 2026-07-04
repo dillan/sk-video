@@ -139,7 +139,7 @@ describe('Night-Red contract (no blue / green / white light)', () => {
     }
   });
 
-  it('caps video luminance on the live player AND the review/snapshot surfaces', () => {
+  it('caps video luminance on the live player AND the library/snapshot surfaces', () => {
     const capped = nightBlocks.filter((b) => /brightness\(0\.4\)/.test(b.body));
     const selectors = capped.map((b) => b.selector).join('\n');
     expect(selectors).toContain('.player__media');

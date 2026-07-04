@@ -28,7 +28,7 @@ A rail (tablet/desktop) or bottom tab bar (phone) gives you five areas:
 | Area         | What's there                                                   |
 | ------------ | -------------------------------------------------------------- |
 | **Live**     | The Live Wall and Camera Focus — your day-to-day viewing.      |
-| **Review**   | Recordings, Incidents, Events, Snapshots, and Imported videos. |
+| **Library**  | Recordings, uploaded Videos, Incidents, Events, and Snapshots. |
 | **Cameras**  | Add, scan, edit, calibrate, and check the health of cameras.   |
 | **Safety**   | The man-overboard / safety console.                            |
 | **Settings** | Themes, density, safety alerts, and operational settings.      |
@@ -54,9 +54,9 @@ Tap a tile to open **Camera Focus** — one camera, full attention:
 
 ---
 
-## Review
+## Library
 
-Everything worth keeping lives under **Review**, as tabs.
+Everything worth keeping lives under **Library**, as tabs.
 
 **Recordings** is the rolling DVR, one scrubbable timeline per camera. Recorded spans show solid; coverage gaps show as neutral hatching with no invented cause. Scrub the track (or arrow-key it) to seek the inline player, and use **Mark incident here** to capture a bundle from that past moment — cut from whatever footage is still in the buffer.
 
@@ -70,7 +70,7 @@ Everything worth keeping lives under **Review**, as tabs.
 
 **Snapshots** is a gallery of your position-stamped stills, each honest about whether it had a GPS fix.
 
-**Imported videos** holds clips you've uploaded — distinct from recordings and incidents — with playback and a quota readout.
+**Videos** holds clips you’ve uploaded — distinct from recordings and incidents — with playback and a quota readout.
 
 ---
 

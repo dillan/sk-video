@@ -128,6 +128,6 @@ describe('Events', () => {
     render(<Events />);
     await waitFor(() => expect(screen.getByText('Incident')).toBeTruthy());
     const link = screen.getByRole('link', { name: 'View →' });
-    expect(link.getAttribute('href')).toBe('#/review/incidents');
+    expect(link.getAttribute('href')).toBe('#/library/incidents');
   });
 });

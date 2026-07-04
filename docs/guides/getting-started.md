@@ -73,7 +73,7 @@ Open it from the **Live Wall** and you should have live video. If a camera shows
 
 ## Where to next
 
-- **[The SK Video app](the-app.md)** — a tour of the console: Live, Review (recordings, incidents, events, snapshots), Safety, and Settings.
+- **[The SK Video app](the-app.md)** — a tour of the console: Live, Library (recordings, incidents, events, snapshots), Safety, and Settings.
 - **[Adding & organizing cameras](cameras.md)** — scanning vs. adding by hand, logins, and telling the boat where each camera is mounted (which unlocks the smart features).
 - **[Watching video](viewing.md)** — pick the right delivery mode, move a PTZ camera, and use the night/fog picture presets.
 - **[Troubleshooting](troubleshooting.md)** — if the scan finds nothing or the picture won't load.

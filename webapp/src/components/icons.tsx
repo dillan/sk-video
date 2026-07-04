@@ -21,7 +21,7 @@ export function LiveIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
-export function ReviewIcon(props: SVGProps<SVGSVGElement>) {
+export function LibraryIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <svg {...base(props)}>
       <circle cx="12" cy="12" r="8.5" />

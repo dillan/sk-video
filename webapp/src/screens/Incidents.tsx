@@ -86,7 +86,7 @@ function AssetRow({ id, asset }: { id: string; asset: IIncidentAsset }) {
 }
 
 /**
- * The Review cluster's Incidents tab: browse evidence bundles and review one. Honest throughout —
+ * The Library cluster's Incidents tab: browse evidence bundles and review one. Honest throughout —
  * "best-effort evidence" not a certified VDR, PARTIAL surfaced (with the per-camera failures shown,
  * never hidden), sha256 = file-integrity not chain-of-custody, telemetry forward-only from the trigger.
  */

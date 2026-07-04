@@ -62,9 +62,9 @@ Frigate is also what powers the **experimental visual MOB refine** (see [Safety 
 
 For an event worth keeping, SK Video can assemble a single **incident bundle**: a short **before-and-after clip** from each camera, a **sampled track** of the boat's telemetry across the event, and **snapshots** — all packaged together with the position and time.
 
-- The reliable trigger is the **manual "mark incident"** button — in the SK Video app's **Review → Recordings**, where you can also scrub the DVR timeline back and **mark an incident from a past moment**. You can also set an **incident auto-trigger path** in **Settings → Operational** (e.g. an alarm subtree) so a bundle is captured automatically when that alarm fires.
+- The reliable trigger is the **manual "mark incident"** button — in the SK Video app's **Library → Recordings**, where you can also scrub the DVR timeline back and **mark an incident from a past moment**. You can also set an **incident auto-trigger path** in **Settings → Operational** (e.g. an alarm subtree) so a bundle is captured automatically when that alarm fires.
 - A bundle is **honest about completeness**: if a clip couldn't be captured but the telemetry and snapshots were, it's marked _partial_ with the failures recorded — never silently claimed complete.
-- Browse and review bundles in **Review → Incidents**; **pin** one so retention never prunes it, add a label or notes, and **export a `.zip`** to share what was captured (manifest + clips + telemetry + an honesty README).
+- Browse and review bundles in **Library → Incidents**; **pin** one so retention never prunes it, add a label or notes, and **export a `.zip`** to share what was captured (manifest + clips + telemetry + an honesty README).
 
 > Pre-roll (the "before") means the plugin is always keeping a short rolling buffer — a small continuous cost, even when you're not actively recording. It's best-effort evidence, not a legal black box.
 
@@ -72,7 +72,7 @@ For an event worth keeping, SK Video can assemble a single **incident bundle**: 
 
 ## Where to next
 
-- **[The SK Video app](the-app.md)** — the console where you drive all of this (Live, Review, Safety, Settings).
+- **[The SK Video app](the-app.md)** — the console where you drive all of this (Live, Library, Safety, Settings).
 - **[Hardware & performance](hardware-and-performance.md)** — which of these your hardware can sustain.
 - **[What it is — and isn't](../reference/capabilities.md)** — the full honesty ledger.
 - **[Settings & configuration](../reference/configuration.md)** — every operational setting these features use.

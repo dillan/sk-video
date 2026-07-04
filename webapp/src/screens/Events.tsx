@@ -47,7 +47,7 @@ function describeEvent(ev: ILoggedEvent): IEventView {
       label: 'Incident',
       frigate: false,
       severity,
-      href: '#/review/incidents',
+      href: '#/library/incidents',
     };
   }
   if (/^anchor/.test(ev.type)) {
@@ -77,7 +77,7 @@ const FILTERS: Array<{ key: string; label: string; type: string | null }> = [
 ];
 
 /**
- * The Review cluster's Events tab: the durable activity feed (MOB, incidents, anchor drag, cameras
+ * The Library cluster's Events tab: the durable activity feed (MOB, incidents, anchor drag, cameras
  * going dark). It's the retrospective record the live notification stream can't be — notifications
  * vanish on clear, this log doesn't. Honest about its bounds (best-effort, oldest rows roll off past
  * the cap) and about Frigate: those rows are close-range detections from a user-run Frigate, and an

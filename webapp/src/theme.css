@@ -721,14 +721,14 @@ button.tile {
   max-height: 60vh;
 }
 /* ---- Review cluster (tab shell + recordings + incidents) ---- */
-.review {
+.library {
   display: flex;
   flex-direction: column;
   gap: 14px;
   flex: 1;
   min-height: 0;
 }
-.review__tabs {
+.library__tabs {
   margin-top: 0;
 }
 .rec,

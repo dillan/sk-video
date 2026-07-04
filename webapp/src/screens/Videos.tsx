@@ -25,11 +25,11 @@ function uploadError(err: unknown): string {
 }
 
 /**
- * The Review cluster's "Imported" tab: surfaces the shipped /videos asset store (upload, list, inline
+ * The Library cluster's Videos tab: surfaces the shipped /videos asset store (upload, list, inline
  * Range-served playback, delete) so a manually-kept clip lives alongside camera footage. It is honestly
  * separate from camera recordings and incidents, and quota-bounded server-side.
  */
-export function ImportedVideos() {
+export function Videos() {
   const [videos, setVideos] = useState<IVideoAsset[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [msg, setMsg] = useState<Msg | null>(null);
@@ -92,7 +92,7 @@ export function ImportedVideos() {
     <div className="settings">
       <header className="page-head">
         <div>
-          <h1>Imported videos</h1>
+          <h1>Videos</h1>
           <div className="page-head__sub">Kept separate from camera footage</div>
         </div>
         <div className="page-head__spacer" />
@@ -110,14 +110,14 @@ export function ImportedVideos() {
       {msg && <div className={`chip chip--${msg.kind}`}>{msg.text}</div>}
 
       <p className="muted">
-        Imported videos are files you upload yourself — kept separate from the DVR recordings and
+        Videos are files you upload yourself — kept separate from the DVR recordings and
         incident evidence your cameras produce, and bounded by a fixed storage quota.
       </p>
 
       {err && <div className="chip chip--caution">Can’t load videos ({err})</div>}
       {videos && videos.length === 0 && !err && (
         <div className="empty">
-          <p>No imported videos yet.</p>
+          <p>No videos yet.</p>
           <p className="muted">Upload one to keep it alongside your camera footage.</p>
         </div>
       )}

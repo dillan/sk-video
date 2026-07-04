@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, waitFor, cleanup, fireEvent } from '@testing-library/react';
-import { ImportedVideos } from './ImportedVideos';
+import { Videos } from './Videos';
 import type { IVideoAsset } from '../api';
 
 const ok = (json: unknown) => Promise.resolve({ ok: true, json: async () => json });
@@ -49,26 +49,26 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('ImportedVideos', () => {
+describe('Videos', () => {
   it('lists stored videos with a human size', async () => {
     mockApi(V);
-    render(<ImportedVideos />);
+    render(<Videos />);
     await waitFor(() => expect(screen.getByText('clip.mp4')).toBeTruthy());
     expect(screen.getByText(/1\.5 KB/)).toBeTruthy();
-    // The intro is honest about what imported clips are — no "arrives in later slices" leftovers.
+    // The intro is honest about what uploaded clips are — no "arrives in later slices" leftovers.
     expect(screen.getByText(/separate from the DVR recordings and incident evidence/)).toBeTruthy();
     expect(screen.queryByText(/later slices/)).toBeNull();
   });
 
   it('shows an empty state when there are no videos', async () => {
     mockApi([]);
-    render(<ImportedVideos />);
-    await waitFor(() => expect(screen.getByText('No imported videos yet.')).toBeTruthy());
+    render(<Videos />);
+    await waitFor(() => expect(screen.getByText('No videos yet.')).toBeTruthy());
   });
 
   it('plays a video inline when Play is tapped', async () => {
     mockApi(V);
-    render(<ImportedVideos />);
+    render(<Videos />);
     await screen.findByText('clip.mp4');
     fireEvent.click(screen.getByRole('button', { name: 'Play' }));
     expect(document.querySelector('video.vidrow__player')).toBeTruthy();
@@ -76,7 +76,7 @@ describe('ImportedVideos', () => {
 
   it('uploads a picked file and refreshes the list', async () => {
     const calls = mockApi(V);
-    render(<ImportedVideos />);
+    render(<Videos />);
     await screen.findByText('clip.mp4');
     pick('new.mp4');
     await waitFor(() => expect(screen.getByText(/Uploaded new\.mp4/)).toBeTruthy());
@@ -85,7 +85,7 @@ describe('ImportedVideos', () => {
 
   it('explains the quota error honestly on a 413 upload', async () => {
     mockApi(V, { uploadStatus: 413 });
-    render(<ImportedVideos />);
+    render(<Videos />);
     await screen.findByText('clip.mp4');
     pick('big.mp4');
     await waitFor(() => expect(screen.getByText(/exceed the storage quota/)).toBeTruthy());
@@ -93,7 +93,7 @@ describe('ImportedVideos', () => {
 
   it('deletes a video only after a confirm step', async () => {
     const calls = mockApi(V);
-    render(<ImportedVideos />);
+    render(<Videos />);
     await screen.findByText('clip.mp4');
     fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
     fireEvent.click(screen.getByRole('button', { name: 'Confirm delete' }));

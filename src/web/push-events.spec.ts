@@ -15,7 +15,7 @@ describe('notificationForEvent', () => {
   it('humanises a camera feed-outage key with its id and links to events', () => {
     const n = notificationForEvent('cameras.bow.feedOutage', 'alarm', 'Bow camera went dark');
     expect(n?.title).toBe('Camera offline: bow');
-    expect(n?.url).toBe('#/review/events');
+    expect(n?.url).toBe('#/library/events');
     expect(n?.tag).toBe('cameras.bow.feedOutage');
   });
 

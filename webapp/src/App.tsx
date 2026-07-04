@@ -32,7 +32,7 @@ import { CameraFocus } from './screens/CameraFocus';
 import { Safety } from './screens/Safety';
 import { Cameras } from './screens/Cameras';
 import { Settings } from './screens/Settings';
-import { Review } from './screens/Review';
+import { Library } from './screens/Library';
 
 /** Refresh cadence for the recording tally (a light read; the strip only shows a count). */
 const RECORDING_REFRESH_MS = 60_000;
@@ -201,8 +201,8 @@ export function App() {
           ) : (
             <LiveWall onOpenCamera={(id) => navigate('live', id)} />
           ))}
-        {route.cluster === 'review' && (
-          <Review tab={route.id} onTab={(t) => navigate('review', t)} />
+        {route.cluster === 'library' && (
+          <Library tab={route.id} onTab={(t) => navigate('library', t)} />
         )}
         {route.cluster === 'cameras' && <Cameras />}
         {route.cluster === 'safety' && <Safety onMobChange={setMob} />}

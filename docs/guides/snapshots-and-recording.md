@@ -6,7 +6,7 @@ SK Video can save a still photo from any camera with your **boat's position and 
 
 ## Position-stamped snapshots
 
-Take a snapshot — from **Camera Focus** in the SK Video app, or the KIP widget — and the plugin writes a photo **plus** a record of where the boat was and what it was doing at that instant: GPS position, heading, speed over ground, depth, and wind. That turns a photo into evidence — "this is what the chartplotter saw, here, at this time." Your stills collect in the app under **Review → Snapshots**, each honest about whether it had a GPS fix.
+Take a snapshot — from **Camera Focus** in the SK Video app, or the KIP widget — and the plugin writes a photo **plus** a record of where the boat was and what it was doing at that instant: GPS position, heading, speed over ground, depth, and wind. That turns a photo into evidence — "this is what the chartplotter saw, here, at this time." Your stills collect in the app under **Library → Snapshots**, each honest about whether it had a GPS fix.
 
 When taken from the KIP widget, how the boat data is attached is a per-widget choice:
 
@@ -33,7 +33,7 @@ What to know:
 - **It's tier-gated.** Recording needs a bit of muscle. A low-power **Cerbo-class** device offers no recording channels; a **Pi 4** can record a couple of cameras at once; a **small PC** can do several. See [Hardware & performance](hardware-and-performance.md).
 - **It can never fill the disk.** Recordings are kept to a budget (about 10 GB and 48 hours by default) and the oldest clips are pruned automatically. A full disk can't brick the Signal K server.
 - **Play it back with seeking.** Saved clips stream back to your browser with proper seek/scrub support.
-- **Browse it on a timeline.** The app's **Review → Recordings** shows your footage as a scrubbable timeline per camera, with any **gaps** (a camera that dropped out and came back) shown honestly rather than papered over, so you can jump straight to the moment you want — and **mark an incident from that past moment** to keep it.
+- **Browse it on a timeline.** The app's **Library → Recordings** shows your footage as a scrubbable timeline per camera, with any **gaps** (a camera that dropped out and came back) shown honestly rather than papered over, so you can jump straight to the moment you want — and **mark an incident from that past moment** to keep it.
 
 > This is best-effort onboard recording, not a certified marine VDR (voyage data recorder). It's great for "what happened at the dock last night?" — not a legal black box.
 
@@ -49,13 +49,13 @@ You can upload a video to the boat (a chart briefing, a saved clip) and play it 
 
 - Uploads are checked by their actual file contents (so a renamed non-video can't sneak in) and kept to a storage quota.
 - Playback supports **seeking** (HTTP Range), so you can scrub through a long clip without downloading the whole thing.
-- Clips show up in the app under **Review → Imported videos** (or KIP's **Uploaded** source tab).
+- Clips show up in the app under **Library → Videos** (or KIP's **Uploaded** source tab).
 
 ---
 
 ## Incident clips (a step up)
 
-For events worth keeping, SK Video can package a short **before-and-after clip**, a sampled track of the boat's telemetry, and snapshots into a single **incident bundle** — see the incidents section in [Advanced features](advanced.md). The reliable way to capture one is the manual "mark incident" button (in **Review → Recordings**, including from a scrubbed-back moment); it can also fire automatically from your own alarms. Browse and review bundles in **Review → Incidents**, where you can pin them and **export a `.zip`** to share what was captured.
+For events worth keeping, SK Video can package a short **before-and-after clip**, a sampled track of the boat's telemetry, and snapshots into a single **incident bundle** — see the incidents section in [Advanced features](advanced.md). The reliable way to capture one is the manual "mark incident" button (in **Library → Recordings**, including from a scrubbed-back moment); it can also fire automatically from your own alarms. Browse and review bundles in **Library → Incidents**, where you can pin them and **export a `.zip`** to share what was captured.
 
 ---
 

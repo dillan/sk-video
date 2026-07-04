@@ -121,7 +121,7 @@ function CameraDvr({
 }
 
 /**
- * The Review cluster's Recordings tab: a scrubbable DVR per camera. Honest about what it is — a
+ * The Library cluster's Recordings tab: a scrubbable DVR per camera. Honest about what it is — a
  * best-effort rolling buffer (not a 24/7 NVR) that prunes old footage, with neutral gap markers (the
  * backend records where coverage stopped, never a fabricated cause). Click/scrub the track to seek;
  * "Mark incident here" mints a retrospective bundle from the buffer around that moment.

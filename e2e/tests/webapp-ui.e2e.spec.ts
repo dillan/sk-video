@@ -303,11 +303,11 @@ test.describe('SK Video webapp — Live Wall + Camera Focus', () => {
   });
 });
 
-test.describe('SK Video webapp — Review / Imported videos', () => {
+test.describe('SK Video webapp — Library / Videos', () => {
   test('uploads, plays, and deletes an imported video', async ({ page }) => {
     const NAME = 'webapp-ui-clip.mp4';
-    await page.goto(`${APP}#/review/imported`);
-    await expect(page.getByRole('heading', { name: 'Imported videos' })).toBeVisible();
+    await page.goto(`${APP}#/library/videos`);
+    await expect(page.getByRole('heading', { name: 'Videos', exact: true })).toBeVisible();
 
     // A minimal valid MP4 (ftyp + isom brand) so the server accepts it by magic bytes.
     const mp4 = Buffer.concat([
@@ -332,16 +332,16 @@ test.describe('SK Video webapp — Review / Imported videos', () => {
   });
 });
 
-test.describe('SK Video webapp — Review (Recordings + Incidents)', () => {
-  test('the Review tabs default to Recordings and switch', async ({ page }) => {
-    await page.goto(`${APP}#/review`);
+test.describe('SK Video webapp — Library (Recordings + Incidents)', () => {
+  test('the Library tabs default to Recordings and switch', async ({ page }) => {
+    await page.goto(`${APP}#/library`);
     await expect(page.getByRole('heading', { name: 'Recordings' })).toBeVisible();
     await page.getByRole('button', { name: 'Incidents' }).click();
     await expect(page.getByRole('heading', { name: 'Incidents' })).toBeVisible();
     await page.getByRole('button', { name: 'Events' }).click();
     await expect(page.getByRole('heading', { name: 'Events' })).toBeVisible();
-    await page.getByRole('button', { name: 'Imported' }).click();
-    await expect(page.getByRole('heading', { name: 'Imported videos' })).toBeVisible();
+    await page.getByRole('button', { name: 'Videos' }).click();
+    await expect(page.getByRole('heading', { name: 'Videos', exact: true })).toBeVisible();
   });
 
   test('Recordings shows a scrubbable DVR track and marks an incident from a scrubbed moment', async ({
@@ -352,7 +352,7 @@ test.describe('SK Video webapp — Review (Recordings + Incidents)', () => {
     await new Promise((r) => setTimeout(r, 5000)); // let a couple of segments land on disk
     await request.post(plugin(`/cameras/${CAMERA}/record`), { data: { active: false } });
 
-    await page.goto(`${APP}#/review/recordings`);
+    await page.goto(`${APP}#/library/recordings`);
     await expect(page.getByText(CAMERA, { exact: true })).toBeVisible({ timeout: 15_000 });
     // The DVR tabs by camera; if other cameras have leftover footage, select our camera's tab.
     const tab = page.getByRole('button', { name: CAMERA, exact: true });
@@ -380,7 +380,7 @@ test.describe('SK Video webapp — Review (Recordings + Incidents)', () => {
       (b: { status: string }) => b.status !== 'capturing',
       30_000,
     );
-    await page.goto(`${APP}#/review/incidents`);
+    await page.goto(`${APP}#/library/incidents`);
     const row = page.locator('.incident__row').first();
     await expect(row).toBeVisible({ timeout: 15_000 });
     await row.click();
@@ -414,7 +414,7 @@ test.describe('SK Video webapp — Review (Recordings + Incidents)', () => {
     await request.post(plugin('/incidents'), {
       data: { cameras: [CAMERA], preMs: 0, postMs: 1000 },
     });
-    await page.goto(`${APP}#/review/events`);
+    await page.goto(`${APP}#/library/events`);
     await expect(page.getByRole('heading', { name: 'Events' })).toBeVisible();
     // The incident event shows as a humanised "Incident" row in the feed.
     await expect(page.locator('.event', { hasText: 'Incident' }).first()).toBeVisible({
@@ -424,7 +424,7 @@ test.describe('SK Video webapp — Review (Recordings + Incidents)', () => {
 
   test('Snapshots shows a captured still', async ({ page, request }) => {
     await request.post(plugin(`/cameras/${CAMERA}/snapshot`), { data: {} });
-    await page.goto(`${APP}#/review/snapshots`);
+    await page.goto(`${APP}#/library/snapshots`);
     await expect(page.getByRole('heading', { name: 'Snapshots' })).toBeVisible();
     await expect(page.locator('.snap').first()).toBeVisible({ timeout: 15_000 });
   });

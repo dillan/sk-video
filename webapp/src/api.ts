@@ -656,7 +656,7 @@ export async function logout(signal?: AbortSignal): Promise<void> {
   });
 }
 
-// ---- Imported videos (the shipped /videos asset store) ----
+// ---- Uploaded videos (the shipped /videos asset store) ----
 
 /** An uploaded video, kept separate from camera recordings/incidents. */
 export interface IVideoAsset {

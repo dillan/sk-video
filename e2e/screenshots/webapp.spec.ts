@@ -4,7 +4,7 @@ import { shot } from './kip-harness';
 // KIP-INDEPENDENT captures of the SK Video web app console (the React PWA the plugin serves at
 // /plugins/sk-video/app/ and lists at /sk-video/). Like admin.spec.ts these only need the core stack
 // (Signal K + the plugin + the MediaMTX test camera) — no KIP. They reset to a clean, realistic camera
-// set so the Live Wall and Review screens look the same every run.
+// set so the Live Wall and Library screens look the same every run.
 //
 // Run against the demo stack (./run.sh, then seeded), or any running stack:
 //   SIGNALK_URL=http://localhost:3000 npx playwright test --config=screenshots.config.ts \
@@ -156,7 +156,7 @@ test('webapp: Recordings DVR (scrubbed)', async ({ page, request }) => {
   await request.post(`/plugins/sk-video/cameras/foredeck/record`, { data: { active: true } });
   await page.waitForTimeout(6000); // let a couple of segments land
   await request.post(`/plugins/sk-video/cameras/foredeck/record`, { data: { active: false } });
-  await page.goto(`${APP}#/review/recordings`);
+  await page.goto(`${APP}#/library/recordings`);
   await expect(page.getByRole('heading', { name: 'Recordings' })).toBeVisible();
   const track = page.getByRole('slider', { name: /Scrub foredeck/ }).first();
   await track.focus().catch(() => undefined);

@@ -67,7 +67,7 @@ Open the **SK Video app** from the Signal K **Webapps** menu (or go to `http://<
 
 1. Go to **Cameras** and **Scan** for cameras, pick one, or **add one by hand** (name, address, and a login if the camera needs one).
 2. Open it from the **Live Wall** to watch. The player picks the best delivery automatically (low-latency WebRTC, HLS, or a still-refresh fallback).
-3. Explore **Review** (recordings, incidents, events, snapshots), the **Safety** console, and **Settings** (themes, alerts, and the operational config that used to live in the Signal K admin).
+3. Explore **Library** (recordings, incidents, events, snapshots), the **Safety** console, and **Settings** (themes, alerts, and the operational config that used to live in the Signal K admin).
 
 <p align="center">
   <img src="docs/images/app-live-wall.webp" alt="The SK Video app's Live Wall" width="80%">

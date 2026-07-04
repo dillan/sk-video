@@ -1,4 +1,4 @@
-import { ImportedVideos } from './ImportedVideos';
+import { Videos } from './Videos';
 import { Recordings } from './Recordings';
 import { Incidents } from './Incidents';
 import { Snapshots } from './Snapshots';
@@ -6,22 +6,22 @@ import { Events } from './Events';
 
 const TABS = [
   { key: 'recordings', label: 'Recordings' },
+  { key: 'videos', label: 'Videos' },
   { key: 'incidents', label: 'Incidents' },
   { key: 'events', label: 'Events' },
   { key: 'snapshots', label: 'Snapshots' },
-  { key: 'imported', label: 'Imported' },
 ] as const;
 
 /**
- * The Review cluster shell: a sub-nav across the review surfaces (Recordings, Incidents, Imported),
- * driven by the route's optional id (`#/review/incidents`). Recordings is the default — review is
- * footage-first. Events is the durable activity feed; Snapshots the still library.
+ * The Library cluster shell: a sub-nav across everything the boat keeps (DVR recordings, uploaded
+ * videos, incident bundles, the event feed, snapshots), driven by the route's optional id
+ * (`#/library/videos`). Recordings is the default — the library is footage-first.
  */
-export function Review({ tab, onTab }: { tab?: string; onTab: (t: string) => void }) {
+export function Library({ tab, onTab }: { tab?: string; onTab: (t: string) => void }) {
   const active = TABS.some((t) => t.key === tab) ? (tab as string) : 'recordings';
   return (
-    <div className="review">
-      <nav className="seg review__tabs" aria-label="Review sections">
+    <div className="library">
+      <nav className="seg library__tabs" aria-label="Library sections">
         {TABS.map((t) => (
           <button
             key={t.key}
@@ -35,10 +35,10 @@ export function Review({ tab, onTab }: { tab?: string; onTab: (t: string) => voi
         ))}
       </nav>
       {active === 'recordings' && <Recordings />}
+      {active === 'videos' && <Videos />}
       {active === 'incidents' && <Incidents />}
       {active === 'events' && <Events />}
       {active === 'snapshots' && <Snapshots />}
-      {active === 'imported' && <ImportedVideos />}
     </div>
   );
 }

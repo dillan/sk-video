@@ -13,7 +13,7 @@ Plain-language, step-by-step guides. No coding required.
 | Guide | What it covers |
 | --- | --- |
 | **[Getting started](guides/getting-started.md)** | Install the plugin, switch it on, open the app, and see your first camera. |
-| **[The SK Video app](guides/the-app.md)** | A tour of the console: Live, Review (recordings, incidents, events, snapshots), Safety, Settings, and installing it as an app. |
+| **[The SK Video app](guides/the-app.md)** | A tour of the console: Live, Library (recordings, incidents, events, snapshots), Safety, Settings, and installing it as an app. |
 | **[Adding & organizing cameras](guides/cameras.md)** | Scan the network or add a camera by hand, give it a login, and tell the boat where it's mounted. |
 | **[Watching video](guides/viewing.md)** | Delivery modes (smooth vs. low-latency), moving a PTZ camera, and night/fog/glare picture presets. |
 | **[Snapshots & recording](guides/snapshots-and-recording.md)** | Save a photo with your GPS position baked in, and record a camera to the boat. |

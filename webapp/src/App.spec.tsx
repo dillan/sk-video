@@ -75,7 +75,7 @@ describe('App shell', () => {
   it('renders the primary navigation', () => {
     mockApi();
     render(<App />);
-    for (const label of ['Live', 'Review', 'Cameras', 'Safety']) {
+    for (const label of ['Live', 'Library', 'Cameras', 'Safety']) {
       expect(screen.getAllByRole('button', { name: label }).length).toBeGreaterThan(0);
     }
   });
