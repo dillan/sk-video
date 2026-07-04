@@ -154,7 +154,9 @@ const INCIDENT_TRIGGER_COOLDOWN_MS = 60_000;
 const INCIDENT_SWEEP_MS = 5 * 60 * 1000;
 // Safety-camera watchdog: poll go2rtc health this often; the hysteresis thresholds turn that into a
 // ~45 s debounce before a "camera dark" alarm (and ~30 s before it clears).
-const WATCHDOG_POLL_MS = 15_000;
+// Overridable for the e2e harness only (SKVIDEO_WATCHDOG_POLL_MS), so outage/alarm scenarios run
+// in seconds instead of minutes; production keeps the 15s default.
+const WATCHDOG_POLL_MS = Number(process.env.SKVIDEO_WATCHDOG_POLL_MS ?? '') || 15_000;
 const VISUAL_REFINE_CHECK_MS = 1000; // how often the experimental MOB refine checks for track loss
 // A retention budget for the incidents subtree, independent of the DVR/upload budgets. Pinned
 // bundles are never pruned.
@@ -827,9 +829,16 @@ export = function (app: ServerAPI): Plugin {
         // when a camera definition changes.
         const emitCameraHealthMeta = (id: string): void => {
           const camera = cameras?.get(id);
-          if (!camera?.enabled) return;
-          const thresholds = healthZones[id];
-          const zones = thresholds ? zonesForThresholds(camera.name, thresholds) : undefined;
+          if (!camera) return;
+          const thresholds = camera.enabled ? healthZones[id] : undefined;
+          // The zones key is ALWAYS explicit (array or null): a camera whose opt-in was removed —
+          // or that was disabled — must DISARM the server's zone watcher, not leave stale
+          // thresholds alarming from the last config.
+          const zones = thresholds ? zonesForThresholds(camera.name, thresholds) : null;
+          if (!camera.enabled) {
+            skBridge.emitMeta({ path: feedOutagePath(id), value: { zones: null } });
+            return;
+          }
           if (skBridge.canSetDefaultMeta) {
             // Server ≥ 2.30: suggest labels/units as merge-semantics DEFAULTS so a user-edited
             // displayName survives every restart. Zones stay a meta delta — they are the user's
@@ -841,18 +850,18 @@ export = function (app: ServerAPI): Plugin {
             })) {
               skBridge.setDefaultMeta(entry.path, entry.value);
             }
-            if (zones) {
-              skBridge.emitMeta({ path: feedOutagePath(id), value: { zones } });
-            }
+            skBridge.emitMeta({ path: feedOutagePath(id), value: { zones } });
           } else {
-            skBridge.emitMeta(
-              buildCameraHealthMeta({
-                id,
-                name: camera.name,
-                pollSeconds: WATCHDOG_POLL_MS / 1000,
-                zones,
-              }),
-            );
+            const entries = buildCameraHealthMeta({
+              id,
+              name: camera.name,
+              pollSeconds: WATCHDOG_POLL_MS / 1000,
+              zones: zones ?? undefined,
+            });
+            if (!zones) {
+              entries[0] = { path: entries[0].path, value: { ...entries[0].value, zones: null } };
+            }
+            skBridge.emitMeta(entries);
           }
         };
         for (const id of Object.keys(cameras?.list() ?? {})) {

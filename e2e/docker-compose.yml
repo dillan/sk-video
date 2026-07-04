@@ -44,6 +44,8 @@ services:
       # IP, forcing the fallback to HLS/MJPEG). The screenshot harness sets GO2RTC_CANDIDATES to get the
       # low-latency "happy path"; left empty for the e2e tests, which exercise the fallback walk.
       SKVIDEO_GO2RTC_CANDIDATES: ${GO2RTC_CANDIDATES:-}
+      # Fast health polling so the camera-outage/alarm scenarios run in seconds, not minutes.
+      SKVIDEO_WATCHDOG_POLL_MS: '2000'
     ports:
       - '${SIGNALK_PORT:-3000}:3000'
       - '8555:8555/tcp' # go2rtc WebRTC (ICE) — reachable from the host for representative captures
