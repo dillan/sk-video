@@ -104,6 +104,64 @@ test.describe('sk-video plugin live contract', () => {
     await request.delete(`${BASE}/plugins/sk-video/videos/${asset.id}`);
   });
 
+  test('resumable upload: create → append → probe → resume → complete → Range playback', async ({
+    request,
+  }) => {
+    const P = `${BASE}/plugins/sk-video`;
+    const bytes = tinyMp4(8192);
+
+    const created = await request.post(`${P}/videos/uploads`, {
+      data: { name: 'resumable.mp4', size: bytes.length },
+    });
+    expect(created.status()).toBe(201);
+    const { id, offset } = await created.json();
+    expect(offset).toBe(0);
+
+    // Send the first half, then PROBE — simulating a client that lost the connection.
+    const half = Math.floor(bytes.length / 2);
+    const first = await request.patch(`${P}/videos/uploads/${id}`, {
+      headers: { 'X-Upload-Offset': '0', 'Content-Type': 'application/octet-stream' },
+      data: bytes.subarray(0, half),
+    });
+    expect(first.status()).toBe(204);
+    expect(first.headers()['x-upload-offset']).toBe(String(half));
+
+    const probe = await request.get(`${P}/videos/uploads/${id}`);
+    expect((await probe.json()).offset).toBe(half);
+
+    // A stale re-send of the first half is refused with the offset to resume from.
+    const stale = await request.patch(`${P}/videos/uploads/${id}`, {
+      headers: { 'X-Upload-Offset': '0', 'Content-Type': 'application/octet-stream' },
+      data: bytes.subarray(0, half),
+    });
+    expect(stale.status()).toBe(409);
+    expect((await stale.json()).offset).toBe(half);
+
+    // Resume from the probed offset and finalize.
+    const rest = await request.patch(`${P}/videos/uploads/${id}`, {
+      headers: { 'X-Upload-Offset': String(half), 'Content-Type': 'application/octet-stream' },
+      data: bytes.subarray(half),
+    });
+    expect(rest.status()).toBe(204);
+
+    const done = await request.post(`${P}/videos/uploads/${id}/complete`);
+    expect(done.status()).toBe(201);
+    const asset = await done.json();
+    expect(asset.contentType).toBe('video/mp4');
+    expect(asset.size).toBe(bytes.length);
+
+    const ranged = await request.get(`${P}/videos/${asset.id}`, {
+      headers: { Range: 'bytes=0-9' },
+    });
+    expect(ranged.status()).toBe(206);
+
+    // The partial session is gone after completion; a discard is idempotent.
+    expect((await request.get(`${P}/videos/uploads/${id}`)).status()).toBe(404);
+    expect((await request.delete(`${P}/videos/uploads/${id}`)).status()).toBe(204);
+
+    await request.delete(`${P}/videos/${asset.id}`);
+  });
+
   test('stores write-only camera credentials and never returns them', async ({ request }) => {
     const secret = 'sup3r-s3cret-pw';
     const post = await request.post(`${BASE}/plugins/sk-video/cameras/${CAMERA}/credentials`, {

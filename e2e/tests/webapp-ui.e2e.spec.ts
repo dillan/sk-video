@@ -146,7 +146,7 @@ test.describe('SK Video webapp — plain-stream (RTSP URL) onboarding', () => {
   }) => {
     await page.goto(`${APP}#/cameras`);
     await page.getByRole('button', { name: 'Add a camera' }).click();
-    await page.getByRole('button', { name: 'Paste a stream URL (rtsp://…)' }).click();
+    await page.getByRole('button', { name: 'Paste a stream URL (rtsp:// or rtmp://…)' }).click();
 
     // The harness camera is a real RTSP source — the Test button runs a real server-side ffprobe.
     await page.getByPlaceholder('rtsp://192.168.1.50:554/stream1').fill('rtsp://mediamtx:8554/cam');
