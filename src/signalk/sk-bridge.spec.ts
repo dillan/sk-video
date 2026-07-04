@@ -537,3 +537,37 @@ describe('SignalKBridge — acking server-raised (zone) notifications', () => {
     expect(bridge.ackNotification('cameras.bow.feedOutage')).toBe(false);
   });
 });
+
+describe('SignalKBridge — polite default metadata (setDefaultMetadata, server ≥ 2.30)', () => {
+  it('routes defaults through setDefaultMetadata when the server offers it', () => {
+    const calls: { path: string; value: Record<string, unknown> }[] = [];
+    const h = makeApp({
+      setDefaultMetadata: async (path: string, value: Record<string, unknown>) => {
+        calls.push({ path, value });
+        return true;
+      },
+    });
+    const bridge = new SignalKBridge(h.app, 'sk-video');
+    expect(bridge.canSetDefaultMeta).toBe(true);
+    expect(
+      bridge.setDefaultMeta('cameras.bow.feedOutage', { displayName: 'Bow — feed outage' }),
+    ).toBe(true);
+    expect(calls).toEqual([
+      { path: 'cameras.bow.feedOutage', value: { displayName: 'Bow — feed outage' } },
+    ]);
+  });
+
+  it('reports unavailability on older servers so the caller can fall back to meta deltas', () => {
+    const bridge = new SignalKBridge(makeApp().app, 'sk-video');
+    expect(bridge.canSetDefaultMeta).toBe(false);
+    expect(bridge.setDefaultMeta('cameras.bow.feedOutage', { displayName: 'x' })).toBe(false);
+  });
+
+  it('never lets a rejected setDefaultMetadata promise crash the caller', () => {
+    const h = makeApp({
+      setDefaultMetadata: () => Promise.reject(new Error('disk full')),
+    });
+    const bridge = new SignalKBridge(h.app, 'sk-video');
+    expect(() => bridge.setDefaultMeta('cameras.bow.feedOutage', { units: 's' })).not.toThrow();
+  });
+});
