@@ -135,6 +135,12 @@ export class AssetStore {
     return this.blobs.pathFor(id);
   }
 
+  /** Whether the store could accept `bytes` more right now — a cheap pre-check, stages nothing. */
+  canAccept(bytes: number): { ok: true } | { ok: false; reason: string } {
+    const quota = checkQuota(this.usage(), bytes, this.limits);
+    return quota.ok ? { ok: true } : { ok: false, reason: quota.reason };
+  }
+
   usage(): IQuotaUsage {
     const values = Object.values(this.assets);
     return {

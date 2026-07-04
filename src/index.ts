@@ -205,6 +205,7 @@ export = function (app: ServerAPI): Plugin {
   let discovery: DiscoveryService | null = null;
   let videos: AssetStore | null = null;
   let resumableUploads: ResumableUploadStore | null = null;
+  let resumableSweepTimer: ReturnType<typeof setInterval> | null = null;
   let hardware: IHardwareInfo | null = null;
   let bridge: SignalKBridge | null = null;
   let snapshots: SnapshotService | null = null;
@@ -482,6 +483,19 @@ export = function (app: ServerAPI): Plugin {
         // marina wifi resumes where it died. Stale partials are swept on every start.
         resumableUploads = new ResumableUploadStore(dataDir);
         resumableUploads.sweep();
+        // Boats run for weeks between restarts — reap abandoned partials periodically, not
+        // only at start (a lesson from the adversarial review of this feature).
+        resumableSweepTimer = setInterval(
+          () => {
+            try {
+              resumableUploads?.sweep();
+            } catch {
+              /* a transient FS error must not crash the plugin; next sweep retries */
+            }
+          },
+          60 * 60 * 1000,
+        );
+        resumableSweepTimer.unref?.();
 
         // The durable activity feed: every notification raised through the bridge (MOB, incident,
         // anchor drag, camera-offline) is tapped into an append-only log so the console can
@@ -1298,6 +1312,10 @@ export = function (app: ServerAPI): Plugin {
       ptz = null;
       discovery = null;
       videos = null;
+      if (resumableSweepTimer) {
+        clearInterval(resumableSweepTimer);
+        resumableSweepTimer = null;
+      }
       resumableUploads = null;
       hardware = null;
       bridge = null;
@@ -1618,6 +1636,9 @@ export = function (app: ServerAPI): Plugin {
       // Uploaded video library: store + Range-served playback.
       registerUploadRoutes(router, () => videos, unauthorized, {
         getResumable: () => resumableUploads,
+        // Same brute-force guard as the other sensitive routes: session spawning and one-shot
+        // uploads share the 20/min budget (appends are bounded by the session caps).
+        throttle: tooManyRequests,
       });
       registerSnapshotReadRoutes(router, () => snapshotStore);
       registerEventLogRoutes(router, () => eventLog);

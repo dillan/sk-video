@@ -487,3 +487,71 @@ describe('registerUploadRoutes — resumable uploads', () => {
     }
   });
 });
+
+describe('registerUploadRoutes — throttling and error mapping', () => {
+  it('applies the shared rate limit to session creation and one-shot uploads', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'sk-video-throttle-'));
+    try {
+      const resumable = new ResumableUploadStore(dir);
+      const { router, handlers } = fakeRouter();
+      let allowed = 1;
+      registerUploadRoutes(router, () => makeStore(), ALLOW, {
+        getResumable: () => resumable,
+        throttle: (_req, res) => {
+          if (allowed > 0) {
+            allowed -= 1;
+            return false;
+          }
+          res.status(429).json({ error: 'too many requests' });
+          return true;
+        },
+      });
+      const res1 = new FakeRes();
+      await handlersCall(
+        handlers,
+        'POST /videos/uploads',
+        fakeReq({ body: { name: 'a', size: 10 } as never }),
+        res1,
+      );
+      expect(res1.statusCode).toBe(201);
+      const res2 = new FakeRes();
+      await handlersCall(
+        handlers,
+        'POST /videos/uploads',
+        fakeReq({ body: { name: 'b', size: 10 } as never }),
+        res2,
+      );
+      expect(res2.statusCode).toBe(429);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('maps an append overflow to 413 (same semantic as an oversize declaration)', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'sk-video-overflow-'));
+    try {
+      const resumable = new ResumableUploadStore(dir);
+      const { router, handlers } = fakeRouter();
+      registerUploadRoutes(router, () => makeStore(), ALLOW, { getResumable: () => resumable });
+      const res1 = new FakeRes();
+      await handlersCall(
+        handlers,
+        'POST /videos/uploads',
+        fakeReq({ body: { name: 'a.mp4', size: 10 } as never }),
+        res1,
+      );
+      const { id } = res1.body as { id: string };
+      const res2 = new FakeRes();
+      await handlersCall(
+        handlers,
+        'PATCH /videos/uploads/:id',
+        uploadReq(Buffer.alloc(50, 1), { 'x-upload-offset': '0' }, { id }),
+        res2,
+      );
+      expect(res2.statusCode).toBe(413);
+      expect(res2.headers['Connection']).toBe('close'); // unread body → drop the connection after
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});

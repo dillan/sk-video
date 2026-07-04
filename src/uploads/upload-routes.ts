@@ -18,6 +18,8 @@ export interface IUploadRouteOptions {
   streamFactory?: StreamFactory;
   /** The resumable-upload staging store; the resumable routes 503 until it exists. */
   getResumable?: () => ResumableUploadStore | null;
+  /** Writes a 429 and returns true when the caller is over the shared rate limit. */
+  throttle?: (req: Request, res: Response) => boolean;
 }
 
 /**
@@ -67,8 +69,16 @@ export function registerUploadRoutes(
     if (err instanceof ResumableUploadError) {
       if (err.code === 'unknown') {
         res.status(404).json({ error: 'unknown upload' });
-      } else if (err.code === 'offset-mismatch' || err.code === 'incomplete') {
+      } else if (
+        err.code === 'offset-mismatch' ||
+        err.code === 'incomplete' ||
+        err.code === 'locked'
+      ) {
         res.status(409).json({ error: err.message, offset: err.currentOffset ?? 0 });
+      } else if (err.code === 'overflow') {
+        res.status(413).json({ error: err.message });
+      } else if (err.code === 'busy') {
+        res.status(429).json({ error: err.message });
       } else {
         res.status(400).json({ error: err.message });
       }
@@ -87,6 +97,7 @@ export function registerUploadRoutes(
 
   router.post('/videos/uploads', (req: Request, res: Response) => {
     if (gate(req, res)) return;
+    if (options.throttle?.(req, res)) return;
     const resumable = requireResumable(res);
     if (!resumable) return;
     const body = (req.body ?? {}) as { name?: unknown; size?: unknown };
@@ -99,10 +110,6 @@ export function registerUploadRoutes(
       const up = resumable.create(typeof body.name === 'string' ? body.name : undefined, size);
       res.status(201).json({ id: up.id, name: up.name, size: up.size, offset: up.offset });
     } catch (err) {
-      if (err instanceof ResumableUploadError && err.code === 'overflow') {
-        res.status(413).json({ error: err.message });
-        return;
-      }
       resumableError(err, res);
     }
   });
@@ -134,7 +141,13 @@ export function registerUploadRoutes(
         res.setHeader('X-Upload-Offset', String(newOffset));
         res.status(204).end();
       })
-      .catch((err: unknown) => resumableError(err, res));
+      .catch((err: unknown) => {
+        // The rejection leaves request body unread on the socket; answer first, then drop the
+        // connection so a keep-alive socket can't wedge behind the unconsumed bytes.
+        res.setHeader('Connection', 'close');
+        resumableError(err, res);
+        res.once('finish', () => (req as Request & { destroy?: () => void }).destroy?.());
+      });
   });
 
   router.post('/videos/uploads/:id/complete', (req: Request, res: Response) => {
@@ -159,6 +172,7 @@ export function registerUploadRoutes(
 
   router.post('/videos', (req: Request, res: Response) => {
     if (gate(req, res)) return;
+    if (options.throttle?.(req, res)) return;
     const store = requireStore(res);
     if (!store) {
       return;
