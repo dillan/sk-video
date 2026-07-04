@@ -490,3 +490,50 @@ describe('SignalKBridge — absolute-path notifications', () => {
     expect(clear.values[0].value.state).toBe('normal');
   });
 });
+
+/**
+ * When the user hands a camera's alarm to server zones, the notification is raised by server core
+ * (self.notificationhandler) — the bridge holds no id for it, so acknowledging must go through the
+ * server's notifications API by path lookup instead of the bridge's own key map.
+ */
+describe('SignalKBridge — acking server-raised (zone) notifications', () => {
+  function appWithLookup(known: Record<string, string[]>, opts?: { refuse?: boolean }) {
+    const acked: string[] = [];
+    const h = makeApp();
+    h.app.notifications = {
+      ...h.app.notifications,
+      getPath: (path: string) =>
+        Object.fromEntries((known[path] ?? []).map((id) => [id, { path }])),
+      acknowledge: (id: string) => {
+        if (opts?.refuse) throw new Error('canAcknowledge=false');
+        acked.push(id);
+      },
+    };
+    return { h, acked };
+  }
+
+  it('falls back to a getPath lookup + acknowledge for a key it never raised', () => {
+    const { h, acked } = appWithLookup({
+      'notifications.cameras.bow.feedOutage': ['srv-1'],
+    });
+    const bridge = new SignalKBridge(h.app, 'sk-video');
+    expect(bridge.ackNotification('cameras.bow.feedOutage')).toBe(true);
+    expect(acked).toEqual(['srv-1']);
+  });
+
+  it('returns false when the server knows no notification under the key', () => {
+    const { h, acked } = appWithLookup({});
+    const bridge = new SignalKBridge(h.app, 'sk-video');
+    expect(bridge.ackNotification('cameras.bow.feedOutage')).toBe(false);
+    expect(acked).toEqual([]);
+  });
+
+  it('survives an acknowledge refusal (canAcknowledge=false throws) without crashing', () => {
+    const { h } = appWithLookup(
+      { 'notifications.cameras.bow.feedOutage': ['srv-1'] },
+      { refuse: true },
+    );
+    const bridge = new SignalKBridge(h.app, 'sk-video');
+    expect(bridge.ackNotification('cameras.bow.feedOutage')).toBe(false);
+  });
+});

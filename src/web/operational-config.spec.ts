@@ -77,6 +77,66 @@ describe('redactConfig', () => {
   });
 });
 
+describe('validateOperationalConfig — cameraHealthZones (server-evaluated health alarms)', () => {
+  it('accepts per-camera thresholds and normalizes the numbers', () => {
+    const r = validateOperationalConfig({
+      cameraHealthZones: {
+        bow: { warnAfterSeconds: 45, alarmAfterSeconds: 120 },
+        'engine-bay': { warnAfterSeconds: '60', alarmAfterSeconds: 300 },
+      },
+    });
+    expect(r.valid).toBe(true);
+    expect(r.value?.cameraHealthZones).toEqual({
+      bow: { warnAfterSeconds: 45, alarmAfterSeconds: 120 },
+      'engine-bay': { warnAfterSeconds: 60, alarmAfterSeconds: 300 },
+    });
+  });
+
+  it('rejects malformed entries', () => {
+    // warn must sit strictly below alarm (the warn zone is [warn, alarm) — upper is exclusive)
+    expect(
+      validateOperationalConfig({
+        cameraHealthZones: { bow: { warnAfterSeconds: 120, alarmAfterSeconds: 120 } },
+      }).valid,
+    ).toBe(false);
+    expect(
+      validateOperationalConfig({
+        cameraHealthZones: { bow: { warnAfterSeconds: -5, alarmAfterSeconds: 120 } },
+      }).valid,
+    ).toBe(false);
+    expect(
+      validateOperationalConfig({
+        cameraHealthZones: { bow: { warnAfterSeconds: 45 } },
+      }).valid,
+    ).toBe(false);
+    expect(
+      validateOperationalConfig({
+        cameraHealthZones: { bow: { warnAfterSeconds: 45, alarmAfterSeconds: 120, bogus: 1 } },
+      }).valid,
+    ).toBe(false);
+    expect(validateOperationalConfig({ cameraHealthZones: { bow: 'on' } }).valid).toBe(false);
+    expect(validateOperationalConfig({ cameraHealthZones: [] }).valid).toBe(false);
+    // camera ids are slugs — a path-ish key must not pass into meta paths
+    expect(
+      validateOperationalConfig({
+        cameraHealthZones: { 'bow.hacked': { warnAfterSeconds: 45, alarmAfterSeconds: 120 } },
+      }).valid,
+    ).toBe(false);
+  });
+
+  it('passes through redact and merge untouched (no secrets involved)', () => {
+    const cfg: IOperationalConfig = {
+      cameraHealthZones: { bow: { warnAfterSeconds: 45, alarmAfterSeconds: 120 } },
+    };
+    expect(redactConfig(cfg).cameraHealthZones).toEqual(cfg.cameraHealthZones);
+    const merged = mergeConfig(
+      { cameraHealthZones: { stern: { warnAfterSeconds: 30, alarmAfterSeconds: 90 } } },
+      cfg,
+    );
+    expect(merged.cameraHealthZones).toEqual(cfg.cameraHealthZones); // update wins wholesale
+  });
+});
+
 describe('mergeConfig (password preservation)', () => {
   const current: IOperationalConfig = {
     frigate: { mqttHost: 'old', mqttPassword: 'keepme' },

@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { feedOutagePath, buildCameraHealthMeta } from './camera-meta';
+import {
+  feedOutagePath,
+  buildCameraHealthMeta,
+  zonesForThresholds,
+  buildCameraHealthTeardown,
+} from './camera-meta';
 
 describe('camera health meta', () => {
   it('derives the gauge path from the camera id', () => {
@@ -46,5 +51,31 @@ describe('camera health meta', () => {
     ]);
     // Counts never carry zones — only the gauge alarms.
     expect((meta[1].value as { zones?: unknown }).zones).toBeUndefined();
+  });
+});
+
+describe('zonesForThresholds', () => {
+  it('maps warn/alarm seconds to contiguous warn + alarm zones with human messages', () => {
+    expect(
+      zonesForThresholds('Bow Camera', { warnAfterSeconds: 45, alarmAfterSeconds: 120 }),
+    ).toEqual([
+      // upper is exclusive in the server's zone test, so the warn band hands over exactly at alarm
+      { lower: 45, upper: 120, state: 'warn', message: 'Bow Camera feed is stalling' },
+      { lower: 120, state: 'alarm', message: 'Bow Camera has gone dark' },
+    ]);
+  });
+});
+
+describe('buildCameraHealthTeardown', () => {
+  it('returns the in-normal-zone final value and the zones-clearing meta, in that order', () => {
+    // A camera deleted while its gauge sits in an alarm zone would otherwise leave a
+    // permanently-stuck server-raised notification — the teardown drives it back to normal
+    // and then disarms the zone watcher.
+    const teardown = buildCameraHealthTeardown('bow');
+    expect(teardown.finalValue).toEqual({ path: 'cameras.bow.feedOutage', value: 0 });
+    expect(teardown.clearZonesMeta).toEqual({
+      path: 'cameras.bow.feedOutage',
+      value: { zones: null },
+    });
   });
 });
