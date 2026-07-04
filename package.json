@@ -40,6 +40,7 @@
     "signalk-node-server-plugin",
     "signalk-webapp",
     "signalk-category-utility",
+    "signalk-category-hardware",
     "ip-camera",
     "rtsp",
     "onvif",
@@ -49,7 +50,13 @@
   ],
   "signalk": {
     "displayName": "SK Video",
-    "appIcon": "icons/icon-192.png"
+    "appIcon": "icons/icon-192.png",
+    "screenshots": [
+      "docs/images/app-live-wall.webp",
+      "docs/images/app-camera-focus.webp",
+      "docs/images/app-cameras.webp",
+      "docs/images/widget-playing.webp"
+    ]
   },
   "author": "Dillan Laughlin",
   "license": "MIT",
@@ -60,6 +67,10 @@
   "files": [
     "dist",
     "public",
+    "docs/images/app-live-wall.webp",
+    "docs/images/app-camera-focus.webp",
+    "docs/images/app-cameras.webp",
+    "docs/images/widget-playing.webp",
     "README.md",
     "LICENSE"
   ],

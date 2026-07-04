@@ -39,6 +39,7 @@ import {
 } from './signalk/camera-meta';
 import { buildCameraPutControls } from './signalk/camera-put-controls';
 import { classifyAuxCommands } from './onvif/aux-commands';
+import { statusLine } from './web/status-line';
 import { fetchStreamHealth, fetchAllStreamsHealth } from './gateway/stream-health';
 import { registerCamerasProjectionRoute } from './cameras/cameras-projection-routes';
 import { PtzManager } from './onvif/ptz-manager';
@@ -220,6 +221,10 @@ export = function (app: ServerAPI): Plugin {
   // start() from the persisted snapshot so an outage spanning a restart stays visible.
   let lastGood = new LastGoodTracker();
   let saveLastGood: (() => void) | null = null;
+  // Latest per-camera online flag from the health poll — feeds the aggregate status line.
+  const cameraOnlineNow = new Map<string, boolean>();
+  // While go2rtc is down the status line shows the error; the poll must not paint "Ready" over it.
+  let gatewayDegraded = false;
   let frigateClient: FrigateClient | null = null;
   let frigateMqtt: IMqttConnection | null = null;
   // Live broker-link state so the console can say "Frigate not connected" instead of implying
@@ -334,11 +339,22 @@ export = function (app: ServerAPI): Plugin {
     syncTimer = setTimeout(() => void runSync(), SYNC_DEBOUNCE_MS);
   }
 
-  /** The normal "all good" plugin status line — reused on startup and when the gateway recovers. */
+  /**
+   * The normal "all good" plugin status line — refreshed by the health poll so the Dashboard shows
+   * streaming/dark counts at a glance. Per-camera detail lives in the data model (cameras.<id>.*).
+   */
   function readyStatus(): string {
-    const count = cameras ? Object.keys(cameras.list()).length : 0;
-    const suffix = hardware ? ` · ${describeTier(hardware)}` : '';
-    return `Ready — ${count} camera${count === 1 ? '' : 's'}${suffix}`;
+    const ids = cameras ? Object.keys(cameras.list()) : [];
+    let streaming = 0;
+    for (const id of ids) {
+      if (cameraOnlineNow.get(id)) streaming += 1;
+    }
+    return statusLine({
+      cameras: ids.length,
+      streaming,
+      dark: watchdog?.alarmedCameras().length ?? 0,
+      tier: hardware ? describeTier(hardware) : undefined,
+    });
   }
 
   // A1 (experimental): turn one Frigate person detection into a small bounded relativeMove nudge on
@@ -424,11 +440,16 @@ export = function (app: ServerAPI): Plugin {
             log,
             // go2rtc keeps retrying on its own; surface a down/recovered status so a silent gateway
             // failure (e.g. a boot-time port conflict) is visible instead of a stale "Ready".
-            onDegraded: (attempts) =>
+            onDegraded: (attempts) => {
+              gatewayDegraded = true;
               app.setPluginError(
                 `Video gateway is down — go2rtc failed to start (${attempts} attempts) and is retrying. Check for a port conflict on 1984/8554/8555.`,
-              ),
-            onHealthy: () => app.setPluginStatus(readyStatus()),
+              );
+            },
+            onHealthy: () => {
+              gatewayDegraded = false;
+              app.setPluginStatus(readyStatus());
+            },
           }),
           // Optional explicit WebRTC ICE host candidates (`ip:port,ip:port`) for hosts where go2rtc
           // can't auto-detect a browser-reachable address (NAT / multi-homed / containerized). Off
@@ -802,14 +823,31 @@ export = function (app: ServerAPI): Plugin {
           const camera = cameras?.get(id);
           if (!camera?.enabled) return;
           const thresholds = healthZones[id];
-          skBridge.emitMeta(
-            buildCameraHealthMeta({
+          const zones = thresholds ? zonesForThresholds(camera.name, thresholds) : undefined;
+          if (skBridge.canSetDefaultMeta) {
+            // Server ≥ 2.30: suggest labels/units as merge-semantics DEFAULTS so a user-edited
+            // displayName survives every restart. Zones stay a meta delta — they are the user's
+            // authoritative thresholds from our own settings screen and must re-arm on change.
+            for (const entry of buildCameraHealthMeta({
               id,
               name: camera.name,
               pollSeconds: WATCHDOG_POLL_MS / 1000,
-              zones: thresholds ? zonesForThresholds(camera.name, thresholds) : undefined,
-            }),
-          );
+            })) {
+              skBridge.setDefaultMeta(entry.path, entry.value);
+            }
+            if (zones) {
+              skBridge.emitMeta({ path: feedOutagePath(id), value: { zones } });
+            }
+          } else {
+            skBridge.emitMeta(
+              buildCameraHealthMeta({
+                id,
+                name: camera.name,
+                pollSeconds: WATCHDOG_POLL_MS / 1000,
+                zones,
+              }),
+            );
+          }
         };
         for (const id of Object.keys(cameras?.list() ?? {})) {
           emitCameraHealthMeta(id);
@@ -893,6 +931,7 @@ export = function (app: ServerAPI): Plugin {
             }),
           clearNotification: (id) => void skBridge.clearNotification(feedOutagePath(id)),
           onSample: (id, sample) => {
+            cameraOnlineNow.set(id, sample.online);
             const values = [
               { path: `cameras.${id}.producers`, value: sample.producers },
               { path: `cameras.${id}.consumers`, value: sample.consumers },
@@ -908,7 +947,13 @@ export = function (app: ServerAPI): Plugin {
         watchdogTimer = setInterval(() => {
           void watchdog
             ?.poll()
-            .then(() => saveLastGood?.())
+            .then(() => {
+              saveLastGood?.();
+              // Keep the Dashboard's aggregate honest — but never paint over a gateway error.
+              if (started && !gatewayDegraded) {
+                app.setPluginStatus(readyStatus());
+              }
+            })
             .catch(() => undefined);
         }, WATCHDOG_POLL_MS);
         watchdogTimer.unref?.();
@@ -1156,6 +1201,8 @@ export = function (app: ServerAPI): Plugin {
       watchdog = null;
       saveLastGood?.(); // keep the on-disk last-good fresh so a restart-spanning outage still alarms
       saveLastGood = null;
+      cameraOnlineNow.clear();
+      gatewayDegraded = false;
       if (frigatePruneTimer) {
         clearInterval(frigatePruneTimer);
         frigatePruneTimer = null;

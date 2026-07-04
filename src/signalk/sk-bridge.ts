@@ -86,6 +86,8 @@ export interface ISignalKApp {
     /** Look up active notifications by their full path — how server-raised (zone) alarms are found. */
     getPath?(path: string): Record<string, unknown> | undefined;
   };
+  /** Server ≥ 2.30: per-field-merge default metadata that never overwrites user-set fields. */
+  setDefaultMetadata?(path: string, value: Record<string, unknown>): Promise<boolean>;
   /** Bacon-style self-path delta stream; present on full servers, absent on partial ones. */
   streambundle?: {
     getSelfBus(path: string): {
@@ -198,6 +200,33 @@ export class SignalKBridge {
     }
     this.app.handleMessage(this.pluginId, { updates: [{ meta: list }] });
     return true;
+  }
+
+  /** True when the server offers merge-semantics default metadata (server ≥ 2.30). */
+  get canSetDefaultMeta(): boolean {
+    return typeof this.app.setDefaultMetadata === 'function';
+  }
+
+  /**
+   * Politely suggest metadata defaults: the server merges per-field and never overwrites what a
+   * user already configured — the right channel for displayName/description. Returns false on
+   * older servers so the caller can fall back to a plain meta delta. Fire-and-forget: a failed
+   * persist must never break the caller.
+   */
+  setDefaultMeta(path: string, value: Record<string, unknown>): boolean {
+    const fn = this.app.setDefaultMetadata;
+    if (typeof fn !== 'function') {
+      return false;
+    }
+    try {
+      void Promise.resolve(fn.call(this.app, path, value)).catch((err: unknown) =>
+        this.log(`setDefaultMetadata(${path}) failed: ${errMessage(err)}`),
+      );
+      return true;
+    } catch (err) {
+      this.log(`setDefaultMetadata(${path}) threw: ${errMessage(err)}`);
+      return false;
+    }
   }
 
   /** Snapshot of vessel self-state, each field normalised to a value plus optional age. */
