@@ -2135,3 +2135,54 @@ button.tile {
     background: var(--video-mat);
   }
 }
+
+/* Upload progress panel (Library → Videos): overall bar + one row per file. */
+.upload__head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.upload__bar {
+  flex: 1;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--surface-2, rgba(128, 128, 128, 0.25));
+  overflow: hidden;
+}
+.upload__bar-fill {
+  height: 100%;
+  background: var(--accent, #4a9eda);
+  transition: width 200ms linear;
+}
+.upload__stats {
+  white-space: nowrap;
+  font-size: 0.85em;
+}
+.upload__files {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.upload__file {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.upload__name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.upload__meta {
+  opacity: 0.7;
+  font-size: 0.85em;
+}
+.upload__state {
+  font-size: 0.85em;
+}
+.upload__state--failed {
+  color: var(--caution, #e0a030);
+}

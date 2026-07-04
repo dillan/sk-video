@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { uploadAll, type IUploadProgress, type IUploadTransport } from './upload-queue';
 
 /** A controllable fake transport: the test drives byte progress and settles each file by hand. */
@@ -6,12 +6,15 @@ function fakeTransport() {
   const inflight: {
     file: File;
     onBytes: (sent: number) => void;
+    signal?: AbortSignal;
     resolve: () => void;
     reject: (err: unknown) => void;
   }[] = [];
-  const transport: IUploadTransport = (file, onBytes) =>
+  const transport: IUploadTransport = (file, onBytes, signal) =>
     new Promise<unknown>((resolve, reject) => {
-      inflight.push({ file, onBytes, resolve: () => resolve({}), reject });
+      const entry = { file, onBytes, signal, resolve: () => resolve({}), reject };
+      signal?.addEventListener('abort', () => reject(new Error('aborted')));
+      inflight.push(entry);
     });
   return { transport, inflight };
 }
@@ -23,7 +26,7 @@ function harness(files: File[], opts: { errorText?: (err: unknown) => string } =
   const { transport, inflight } = fakeTransport();
   const updates: IUploadProgress[] = [];
   let now = 0;
-  const done = uploadAll(files, transport, {
+  const handle = uploadAll(files, transport, {
     onProgress: (p) => updates.push(p),
     now: () => now,
     ...opts,
@@ -31,7 +34,8 @@ function harness(files: File[], opts: { errorText?: (err: unknown) => string } =
   return {
     inflight,
     updates,
-    done,
+    handle,
+    done: handle.done,
     tick: (ms: number) => (now += ms),
     last: () => updates[updates.length - 1],
   };
@@ -113,30 +117,50 @@ describe('uploadAll', () => {
     expect(h.last().fraction).toBe(1);
   });
 
-  it('cancel aborts the current file and marks the rest, and reports done', async () => {
-    const ctrl = new AbortController();
-    const { transport, inflight } = fakeTransport();
-    const updates: IUploadProgress[] = [];
-    const aborted = vi.fn();
-    const done = uploadAll(
-      [file('a.mp4', 1000), file('b.mp4', 1000)],
-      (f, onBytes, signal) => {
-        signal?.addEventListener('abort', aborted);
-        return transport(f, onBytes, signal);
-      },
-      {
-        onProgress: (p) => updates.push(p),
-        now: () => 0,
-        signal: ctrl.signal,
-      },
-    );
+  it('cancels one QUEUED file without touching the rest of the batch', async () => {
+    const h = harness([file('a.mp4', 1000), file('b.mp4', 1000), file('c.mp4', 1000)]);
     await Promise.resolve();
-    ctrl.abort();
-    inflight[0].reject(new Error('cancelled'));
-    const results = await done;
-    expect(aborted).toHaveBeenCalled();
-    expect(results[0].state).toBe('failed');
-    expect(results[1].state).toBe('failed'); // never started — cancelled with the queue
-    expect(updates[updates.length - 1].done).toBe(true);
+    h.handle.cancelFile(1); // b is still queued — skipped when its turn comes
+    expect(h.last().files[1].state).toBe('cancelled');
+    expect(h.last().bytesTotal).toBe(2000); // b's bytes leave the aggregate immediately
+
+    h.inflight[0].onBytes(1000);
+    h.inflight[0].resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(h.inflight).toHaveLength(2);
+    expect(h.inflight[1].file.name).toBe('c.mp4'); // b was never started
+
+    h.inflight[1].resolve();
+    const results = await h.done;
+    expect(results.map((r) => r.state)).toEqual(['done', 'cancelled', 'done']);
+  });
+
+  it('cancels the file currently IN FLIGHT by aborting its transport, then continues', async () => {
+    const h = harness([file('a.mp4', 1000), file('b.mp4', 1000)]);
+    await Promise.resolve();
+    h.inflight[0].onBytes(400);
+    h.handle.cancelFile(0); // aborts the per-file signal; the transport rejects
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(h.last().files[0].state).toBe('cancelled'); // cancelled, not "failed"
+    expect(h.last().bytesTotal).toBe(1000);
+
+    expect(h.inflight).toHaveLength(2);
+    h.inflight[1].resolve();
+    const results = await h.done;
+    expect(results.map((r) => r.state)).toEqual(['cancelled', 'done']);
+  });
+
+  it('cancelAll cancels the current file and everything queued, and reports done', async () => {
+    const h = harness([file('a.mp4', 1000), file('b.mp4', 1000)]);
+    await Promise.resolve();
+    h.handle.cancelAll();
+    await Promise.resolve();
+    await Promise.resolve();
+    const results = await h.done;
+    expect(results.map((r) => r.state)).toEqual(['cancelled', 'cancelled']);
+    expect(h.last().done).toBe(true);
   });
 });

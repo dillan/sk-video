@@ -8,6 +8,7 @@ import {
   type IVideoAsset,
 } from '../api';
 import { formatBytes } from '../lib/format';
+import { uploadAll, type IUploadHandle, type IUploadProgress } from '../lib/upload-queue';
 
 interface Msg {
   kind: 'caution' | 'info';
@@ -24,19 +25,67 @@ function uploadError(err: unknown): string {
   return 'Couldn’t upload that video.';
 }
 
+/** Compose the after-the-batch summary: honest about failures and cancellations. */
+function summarize(files: IUploadProgress['files']): Msg {
+  const done = files.filter((f) => f.state === 'done').length;
+  const failed = files.filter((f) => f.state === 'failed').length;
+  const cancelledCount = files.filter((f) => f.state === 'cancelled').length;
+  const total = files.length;
+  if (done === total) {
+    return {
+      kind: 'info',
+      text: total === 1 ? `Uploaded ${files[0].name}.` : `Uploaded ${total} videos.`,
+    };
+  }
+  const parts: string[] = [];
+  if (failed > 0) parts.push(`${failed} failed`);
+  if (cancelledCount > 0) parts.push(`${cancelledCount} cancelled`);
+  return {
+    kind: failed > 0 ? 'caution' : 'info',
+    text: `Uploaded ${done} of ${total} — ${parts.join(', ')}.`,
+  };
+}
+
+/** "8.2 MB/s · ~40 s left" — shown once the queue has a measurable speed. */
+function paceText(progress: IUploadProgress): string | null {
+  if (progress.bytesPerSecond === null || progress.etaSeconds === null) return null;
+  const eta =
+    progress.etaSeconds < 90
+      ? `~${Math.max(1, Math.round(progress.etaSeconds))} s left`
+      : `~${Math.round(progress.etaSeconds / 60)} min left`;
+  return `${formatBytes(progress.bytesPerSecond)}/s · ${eta}`;
+}
+
+function fileStateText(file: IUploadProgress['files'][number]): string {
+  switch (file.state) {
+    case 'queued':
+      return 'Queued';
+    case 'uploading':
+      return `${Math.round(file.progress * 100)}%`;
+    case 'done':
+      return 'Done';
+    case 'cancelled':
+      return 'Cancelled';
+    case 'failed':
+      return file.error ?? 'Failed';
+  }
+}
+
 /**
- * The Library cluster's Videos tab: surfaces the shipped /videos asset store (upload, list, inline
- * Range-served playback, delete) so a manually-kept clip lives alongside camera footage. It is honestly
- * separate from camera recordings and incidents, and quota-bounded server-side.
+ * The Library cluster's Videos tab: upload your own video files (several at once, with live
+ * progress, speed, and time remaining, and per-file cancel) and keep them alongside camera
+ * footage. The shipped /videos asset store lists, Range-serves, and deletes them; every upload is
+ * validated by magic bytes and bounded by a fixed storage quota server-side.
  */
 export function Videos() {
   const [videos, setVideos] = useState<IVideoAsset[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [msg, setMsg] = useState<Msg | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [upload, setUpload] = useState<IUploadProgress | null>(null);
   const [playing, setPlaying] = useState<string | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const handleRef = useRef<IUploadHandle | null>(null);
 
   const load = useCallback((signal?: AbortSignal) => {
     setErr(null);
@@ -53,21 +102,37 @@ export function Videos() {
     return () => ctrl.abort();
   }, [load]);
 
-  const onFile = async (e: ChangeEvent<HTMLInputElement>): Promise<void> => {
-    const file = e.target.files?.[0];
-    e.target.value = ''; // let the same file be re-picked after a failure
-    if (!file) return;
-    setBusy(true);
+  const onFiles = async (e: ChangeEvent<HTMLInputElement>): Promise<void> => {
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = ''; // let the same files be re-picked after a failure
+    if (files.length === 0 || handleRef.current) return;
     setMsg(null);
-    try {
-      await uploadVideo(file);
-      setMsg({ kind: 'info', text: `Uploaded ${file.name}.` });
-      await load();
-    } catch (uerr) {
-      setMsg({ kind: 'caution', text: uploadError(uerr) });
-    } finally {
-      setBusy(false);
-    }
+    const handle = uploadAll(
+      files,
+      (file, onBytes, signal) => uploadVideo(file, { onBytes, signal }),
+      { onProgress: setUpload, errorText: uploadError },
+    );
+    handleRef.current = handle;
+    const results = await handle.done;
+    handleRef.current = null;
+    // On a clean batch the panel has nothing left to say; with failures/cancellations it stays,
+    // so the per-file reasons remain readable next to the summary.
+    setUpload(
+      results.every((f) => f.state === 'done')
+        ? null
+        : {
+            files: results,
+            currentIndex: null,
+            bytesSent: 0,
+            bytesTotal: 0,
+            fraction: 1,
+            bytesPerSecond: null,
+            etaSeconds: null,
+            done: true,
+          },
+    );
+    setMsg(summarize(results));
+    await load();
   };
 
   const onDelete = async (id: string): Promise<void> => {
@@ -88,6 +153,10 @@ export function Videos() {
     }
   };
 
+  const pct = upload ? Math.round(upload.fraction * 100) : 0;
+  const pace = upload ? paceText(upload) : null;
+  const uploading = upload !== null && !upload.done;
+
   return (
     <div className="settings">
       <header className="page-head">
@@ -100,18 +169,70 @@ export function Videos() {
           type="button"
           className="btn"
           onClick={() => fileRef.current?.click()}
-          disabled={busy}
+          disabled={uploading}
         >
-          {busy ? 'Uploading…' : 'Upload video'}
+          {uploading ? 'Uploading…' : 'Upload videos'}
         </button>
-        <input ref={fileRef} type="file" accept="video/*" hidden onChange={onFile} />
+        <input ref={fileRef} type="file" accept="video/*" multiple hidden onChange={onFiles} />
       </header>
 
       {msg && <div className={`chip chip--${msg.kind}`}>{msg.text}</div>}
 
+      {upload && (
+        <section className="panel upload">
+          {!upload.done && (
+            <div className="upload__head">
+              <div
+                className="upload__bar"
+                role="progressbar"
+                aria-label="Upload progress"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={pct}
+              >
+                <div className="upload__bar-fill" style={{ width: `${pct}%` }} />
+              </div>
+              <div className="upload__stats mono">
+                {pct}%{pace ? ` · ${pace}` : ''}
+              </div>
+              <button
+                type="button"
+                className="iconbtn"
+                onClick={() => handleRef.current?.cancelAll()}
+              >
+                Cancel all
+              </button>
+            </div>
+          )}
+          <ul className="upload__files">
+            {upload.files.map((f, i) => (
+              <li key={`${f.name}-${i}`} className="upload__file">
+                <span className="upload__name">{f.name}</span>
+                <span className="upload__meta mono">{formatBytes(f.size)}</span>
+                <span
+                  className={`upload__state${f.state === 'failed' ? ' upload__state--failed' : ''}`}
+                >
+                  {fileStateText(f)}
+                </span>
+                {(f.state === 'queued' || f.state === 'uploading') && (
+                  <button
+                    type="button"
+                    className="iconbtn"
+                    aria-label={`Cancel ${f.name}`}
+                    onClick={() => handleRef.current?.cancelFile(i)}
+                  >
+                    ✕
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       <p className="muted">
-        Videos are files you upload yourself — kept separate from the DVR recordings and
-        incident evidence your cameras produce, and bounded by a fixed storage quota.
+        Videos are files you upload yourself — kept separate from the DVR recordings and incident
+        evidence your cameras produce, and bounded by a fixed storage quota.
       </p>
 
       {err && <div className="chip chip--caution">Can’t load videos ({err})</div>}

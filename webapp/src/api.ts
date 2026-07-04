@@ -674,18 +674,42 @@ export const fetchVideos = (signal?: AbortSignal): Promise<IVideoAsset[]> =>
 export const videoUrl = (id: string): string => `${API_BASE}/videos/${encodeURIComponent(id)}`;
 
 /** Upload a video; the body is streamed to disk and validated by magic bytes server-side. */
-export const uploadVideo = async (file: File): Promise<IVideoAsset> => {
-  const res = await fetch(`${API_BASE}/videos`, {
-    method: 'POST',
-    credentials: 'include',
-    headers: { 'X-Filename': file.name, Accept: 'application/json' },
-    body: file,
+/**
+ * Upload one video with live progress. XHR rather than fetch on purpose: fetch cannot report
+ * upload progress, and progress (%, speed, time remaining) is part of the upload contract.
+ */
+export const uploadVideo = (
+  file: File,
+  opts: { onBytes?: (sent: number) => void; signal?: AbortSignal } = {},
+): Promise<IVideoAsset> =>
+  new Promise<IVideoAsset>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', `${API_BASE}/videos`);
+    xhr.withCredentials = true;
+    xhr.responseType = 'json';
+    xhr.setRequestHeader('X-Filename', file.name);
+    xhr.setRequestHeader('Accept', 'application/json');
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) opts.onBytes?.(e.loaded);
+    };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(xhr.response as IVideoAsset);
+      } else {
+        reject(new ApiError(`upload failed (${xhr.status})`, xhr.status));
+      }
+    };
+    xhr.onerror = () => reject(new ApiError('upload failed (network)', 0));
+    xhr.onabort = () => reject(new ApiError('upload cancelled', 0));
+    if (opts.signal) {
+      if (opts.signal.aborted) {
+        reject(new ApiError('upload cancelled', 0));
+        return;
+      }
+      opts.signal.addEventListener('abort', () => xhr.abort());
+    }
+    xhr.send(file);
   });
-  if (!res.ok) {
-    throw new ApiError(`upload failed (${res.status})`, res.status);
-  }
-  return res.json() as Promise<IVideoAsset>;
-};
 
 export const deleteVideo = async (id: string): Promise<void> => {
   await send(`/videos/${encodeURIComponent(id)}`, { method: 'DELETE' }, 'delete video');
