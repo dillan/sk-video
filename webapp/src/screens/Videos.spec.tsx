@@ -100,12 +100,49 @@ describe('Videos', () => {
     await waitFor(() => expect(screen.getByText('No videos yet.')).toBeTruthy());
   });
 
-  it('plays a video inline when Play is tapped', async () => {
+  it('renders a grid of thumbnails labelled with filename, size, and date', async () => {
+    mockApi([
+      { id: 'v1', name: 'clip.mp4', contentType: 'video/mp4', size: 1536, createdAt: 1_700_000_000_000 },
+    ]);
+    render(<Videos />);
+    await screen.findByText('clip.mp4');
+    const tile = document.querySelector('.vidtile');
+    expect(tile).toBeTruthy();
+    // The tile's thumbnail is a muted, inline <video> (so hover-preview is possible).
+    const thumb = tile!.querySelector('video') as HTMLVideoElement;
+    expect(thumb.muted).toBe(true);
+    expect(thumb.getAttribute('src')).toContain('/videos/v1');
+    // Label carries name + human size + a date.
+    expect(tile!.textContent).toContain('clip.mp4');
+    expect(tile!.textContent).toMatch(/1\.5 KB/);
+    expect(tile!.textContent).toMatch(/\d{4}|\/|\d{1,2}/); // some rendered date
+  });
+
+  it('opens a full player when a grid tile is clicked', async () => {
     mockApi(V);
     render(<Videos />);
     await screen.findByText('clip.mp4');
-    fireEvent.click(screen.getByRole('button', { name: 'Play' }));
-    expect(document.querySelector('video.vidrow__player')).toBeTruthy();
+    expect(document.querySelector('.vidmodal')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /Play clip\.mp4/ }));
+    const player = document.querySelector('.vidmodal video') as HTMLVideoElement;
+    expect(player).toBeTruthy();
+    expect(player.getAttribute('src')).toContain('/videos/v1');
+    expect(player.hasAttribute('controls')).toBe(true);
+  });
+
+  it('previews inline (muted) on hover and stops on leave', async () => {
+    const play = vi
+      .spyOn(HTMLMediaElement.prototype, 'play')
+      .mockImplementation(() => Promise.resolve());
+    const pause = vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => {});
+    mockApi(V);
+    render(<Videos />);
+    await screen.findByText('clip.mp4');
+    const thumb = document.querySelector('.vidtile__thumb') as HTMLElement;
+    fireEvent.mouseEnter(thumb);
+    expect(play).toHaveBeenCalled();
+    fireEvent.mouseLeave(thumb);
+    expect(pause).toHaveBeenCalled();
   });
 
   it('accepts multiple files in one pick', async () => {
@@ -208,12 +245,32 @@ describe('Videos', () => {
     await waitFor(() => expect(screen.getByText(/Uploaded flaky\.mp4\./)).toBeTruthy());
   });
 
-  it('deletes a video only after a confirm step', async () => {
+  it('deletes a video from the trashcan only after a confirm step', async () => {
     const calls = mockApi(V);
     render(<Videos />);
     await screen.findByText('clip.mp4');
-    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    // The red trashcan asks first — no DELETE until the confirmation is accepted.
+    fireEvent.click(screen.getByRole('button', { name: 'Delete clip.mp4' }));
+    expect(calls.some((c) => c.method === 'DELETE')).toBe(false);
     fireEvent.click(screen.getByRole('button', { name: 'Confirm delete' }));
     await waitFor(() => expect(calls.some((c) => c.method === 'DELETE')).toBe(true));
+  });
+
+  it('cancels a delete without removing the video', async () => {
+    const calls = mockApi(V);
+    render(<Videos />);
+    await screen.findByText('clip.mp4');
+    fireEvent.click(screen.getByRole('button', { name: 'Delete clip.mp4' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Keep' }));
+    expect(calls.some((c) => c.method === 'DELETE')).toBe(false);
+    expect(screen.getByText('clip.mp4')).toBeTruthy();
+  });
+
+  it('tapping the trashcan does not open the player', async () => {
+    mockApi(V);
+    render(<Videos />);
+    await screen.findByText('clip.mp4');
+    fireEvent.click(screen.getByRole('button', { name: 'Delete clip.mp4' }));
+    expect(document.querySelector('.vidmodal')).toBeNull(); // confirm shown, not playback
   });
 });
