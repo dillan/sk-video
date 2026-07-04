@@ -165,6 +165,13 @@ test('webapp: Recordings DVR (scrubbed)', async ({ page, request }) => {
   await shot(page, 'app-recordings');
 });
 
+test('webapp: Videos library', async ({ page }) => {
+  await page.goto(`${APP}#/library/videos`);
+  await expect(page.getByRole('heading', { name: 'Videos' })).toBeVisible({ timeout: 15_000 });
+  await page.waitForTimeout(500);
+  await shot(page, 'app-videos');
+});
+
 test('webapp: Settings (Operational)', async ({ page }) => {
   await page.goto(`${APP}#/settings`);
   await expect(page.getByRole('heading', { name: 'Operational settings' })).toBeVisible({

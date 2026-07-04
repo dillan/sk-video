@@ -66,7 +66,7 @@ if [ "$COPY" = "yes" ]; then
   fi
   # The published doc set. Add a name here when a doc references a new screenshot.
   for name in admin-plugin-config \
-              app-live-wall app-camera-focus app-ptz app-cameras app-recordings app-settings \
+              app-live-wall app-camera-focus app-ptz app-cameras app-recordings app-videos app-settings \
               widget-playing camera-setup ptz snapshot scan quality \
               source-tabs uploaded config-camera-manual config-url config-appearance \
               state-empty state-error; do
