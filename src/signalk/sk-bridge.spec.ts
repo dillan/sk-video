@@ -538,6 +538,48 @@ describe('SignalKBridge — acking server-raised (zone) notifications', () => {
   });
 });
 
+/**
+ * The server announces Resources-API writes as v2 deltas (path resources.<type>.<id>, null on
+ * delete) — internal store mutations bypass that, so the bridge must emit the identical shape
+ * manually, per the Resource Providers doc's "Delta Notifications for Internal Resource Changes".
+ */
+describe('SignalKBridge — resource-change deltas (internal writes)', () => {
+  function appCapturingVersion() {
+    const sent: { msg: IDeltaMessage; skVersion?: string }[] = [];
+    const h = makeApp({
+      handleMessage: (_id, msg, skVersion) => sent.push({ msg, skVersion }),
+    });
+    return { h, sent };
+  }
+
+  it('announces an internal resource write as the documented v2 delta', () => {
+    const { h, sent } = appCapturingVersion();
+    const ok = new SignalKBridge(h.app, 'sk-video').emitResource('cameras', 'bow', {
+      name: 'Bow Camera',
+      enabled: true,
+    });
+    expect(ok).toBe(true);
+    expect(sent).toHaveLength(1);
+    expect(sent[0].skVersion).toBe('v2'); // resources deliberately stay out of the v1 full model
+    const update = sent[0].msg.updates[0] as { values: { path: string; value: unknown }[] };
+    expect(update.values).toEqual([
+      { path: 'resources.cameras.bow', value: { name: 'Bow Camera', enabled: true } },
+    ]);
+  });
+
+  it('announces a deletion as a null tombstone', () => {
+    const { h, sent } = appCapturingVersion();
+    new SignalKBridge(h.app, 'sk-video').emitResource('incidents', 'inc-1', null);
+    const update = sent[0].msg.updates[0] as { values: { path: string; value: unknown }[] };
+    expect(update.values[0]).toEqual({ path: 'resources.incidents.inc-1', value: null });
+  });
+
+  it('degrades to false without handleMessage', () => {
+    const bridge = new SignalKBridge({ debug: () => {} }, 'sk-video');
+    expect(bridge.emitResource('cameras', 'bow', {})).toBe(false);
+  });
+});
+
 describe('SignalKBridge — polite default metadata (setDefaultMetadata, server ≥ 2.30)', () => {
   it('routes defaults through setDefaultMetadata when the server offers it', () => {
     const calls: { path: string; value: Record<string, unknown> }[] = [];
