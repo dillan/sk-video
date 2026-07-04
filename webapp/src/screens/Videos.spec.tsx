@@ -1,11 +1,21 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, waitFor, cleanup, fireEvent } from '@testing-library/react';
-import { Videos } from './Videos';
 import type { IVideoAsset } from '../api';
+
+// uploadVideo is XHR-based (fetch cannot report upload progress), so it is mocked at the module
+// seam; list/delete keep flowing through fetch stubs below.
+const uploadMock = vi.hoisted(() => vi.fn());
+vi.mock('../api', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../api')>()),
+  uploadVideo: uploadMock,
+}));
+
+import { Videos } from './Videos';
+import { ApiError } from '../api';
 
 const ok = (json: unknown) => Promise.resolve({ ok: true, json: async () => json });
 
-function mockApi(videos: IVideoAsset[], opts: { uploadStatus?: number } = {}) {
+function mockApi(videos: IVideoAsset[]) {
   const calls: { url: string; method: string }[] = [];
   vi.stubGlobal(
     'fetch',
@@ -13,11 +23,6 @@ function mockApi(videos: IVideoAsset[], opts: { uploadStatus?: number } = {}) {
       const u = String(url);
       const method = init?.method ?? 'GET';
       calls.push({ url: u, method });
-      if (u.endsWith('/videos') && method === 'POST') {
-        return opts.uploadStatus && opts.uploadStatus !== 201
-          ? Promise.resolve({ ok: false, status: opts.uploadStatus })
-          : ok({ id: 'v2', name: 'new.mp4', contentType: 'video/mp4', size: 100, createdAt: 0 });
-      }
       if (u.includes('/videos/') && method === 'DELETE') {
         return Promise.resolve({ ok: true, status: 204, json: async () => ({}) });
       }
@@ -29,10 +34,27 @@ function mockApi(videos: IVideoAsset[], opts: { uploadStatus?: number } = {}) {
 }
 
 const fileInput = () => document.querySelector('input[type=file]') as HTMLInputElement;
-const pick = (name: string) =>
-  fireEvent.change(fileInput(), {
-    target: { files: [new File([new Uint8Array([0, 0, 0, 1])], name, { type: 'video/mp4' })] },
-  });
+const mkFile = (name: string, size = 4): File =>
+  new File([new Uint8Array(size)], name, { type: 'video/mp4' });
+const pick = (...files: File[]) => fireEvent.change(fileInput(), { target: { files } });
+
+/** An uploadVideo mock the test settles by hand, with access to each call's onBytes callback. */
+function controllableUploads() {
+  const started: { name: string; onBytes?: (sent: number) => void; resolve: () => void; reject: (e: unknown) => void }[] = [];
+  uploadMock.mockImplementation(
+    (file: File, opts?: { onBytes?: (sent: number) => void }) =>
+      new Promise((resolve, reject) => {
+        started.push({
+          name: file.name,
+          onBytes: opts?.onBytes,
+          resolve: () =>
+            resolve({ id: file.name, name: file.name, contentType: 'video/mp4', size: file.size, createdAt: 0 }),
+          reject,
+        });
+      }),
+  );
+  return started;
+}
 
 const V: IVideoAsset[] = [
   {
@@ -47,6 +69,7 @@ const V: IVideoAsset[] = [
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  uploadMock.mockReset();
 });
 
 describe('Videos', () => {
@@ -74,21 +97,69 @@ describe('Videos', () => {
     expect(document.querySelector('video.vidrow__player')).toBeTruthy();
   });
 
-  it('uploads a picked file and refreshes the list', async () => {
-    const calls = mockApi(V);
+  it('accepts multiple files in one pick', async () => {
+    mockApi(V);
     render(<Videos />);
     await screen.findByText('clip.mp4');
-    pick('new.mp4');
-    await waitFor(() => expect(screen.getByText(/Uploaded new\.mp4/)).toBeTruthy());
-    expect(calls.some((c) => c.method === 'POST' && c.url.endsWith('/videos'))).toBe(true);
+    expect(fileInput().multiple).toBe(true);
   });
 
-  it('explains the quota error honestly on a 413 upload', async () => {
-    mockApi(V, { uploadStatus: 413 });
+  it('uploads several files with live progress, then refreshes the list', async () => {
+    mockApi(V);
+    const started = controllableUploads();
     render(<Videos />);
     await screen.findByText('clip.mp4');
-    pick('big.mp4');
-    await waitFor(() => expect(screen.getByText(/exceed the storage quota/)).toBeTruthy());
+
+    pick(mkFile('a.mp4', 1000), mkFile('b.mp4', 1000));
+    await waitFor(() => expect(started).toHaveLength(1)); // sequential: b waits for a
+
+    // The progress panel is live: overall bar plus a row per file.
+    expect(screen.getByRole('progressbar', { name: /upload progress/i })).toBeTruthy();
+    expect(screen.getByText('a.mp4')).toBeTruthy();
+    expect(screen.getByText('b.mp4')).toBeTruthy();
+
+    started[0].onBytes?.(500);
+    await waitFor(() =>
+      expect(
+        screen.getByRole('progressbar', { name: /upload progress/i }).getAttribute('aria-valuenow'),
+      ).toBe('25'),
+    );
+
+    started[0].onBytes?.(1000);
+    started[0].resolve();
+    await waitFor(() => expect(started).toHaveLength(2));
+    started[1].onBytes?.(1000);
+    started[1].resolve();
+
+    await waitFor(() => expect(screen.getByText(/Uploaded 2 videos\./)).toBeTruthy());
+  });
+
+  it('summarises a partial failure and names the reason per file', async () => {
+    mockApi(V);
+    const started = controllableUploads();
+    render(<Videos />);
+    await screen.findByText('clip.mp4');
+
+    pick(mkFile('big.mp4', 1000), mkFile('ok.mp4', 1000));
+    await waitFor(() => expect(started).toHaveLength(1));
+    started[0].reject(new ApiError('upload failed (413)', 413));
+    await waitFor(() => expect(started).toHaveLength(2));
+    started[1].onBytes?.(1000);
+    started[1].resolve();
+
+    await waitFor(() => expect(screen.getByText(/Uploaded 1 of 2 — 1 failed\./)).toBeTruthy());
+    expect(screen.getByText(/exceed the storage quota/)).toBeTruthy(); // on big.mp4's row
+  });
+
+  it('uploads a single picked file and reports it by name', async () => {
+    mockApi(V);
+    const started = controllableUploads();
+    render(<Videos />);
+    await screen.findByText('clip.mp4');
+    pick(mkFile('new.mp4'));
+    await waitFor(() => expect(started).toHaveLength(1));
+    started[0].resolve();
+    await waitFor(() => expect(screen.getByText(/Uploaded new\.mp4\./)).toBeTruthy());
   });
 
   it('deletes a video only after a confirm step', async () => {
