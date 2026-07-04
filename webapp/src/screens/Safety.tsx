@@ -242,9 +242,7 @@ export function Safety({ onMobChange }: { onMobChange?: (s: IMobStatus) => void 
               {status.aimedCameras}/{capable}
             </span>
           </div>
-          {capablePtz.length === 0 && (
-            <div className="muted">No calibrated PTZ camera to aim.</div>
-          )}
+          {capablePtz.length === 0 && <div className="muted">No calibrated PTZ camera to aim.</div>}
           {capablePtz.map((c) => {
             const offline = c.enabled === false;
             const outcome = aimOutcomes.get(c.id) ?? (aimedIds.has(c.id) ? 'aimed' : null);

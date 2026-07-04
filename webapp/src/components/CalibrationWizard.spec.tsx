@@ -104,15 +104,15 @@ describe('CalibrationWizard', () => {
     await captureAll();
     fireEvent.click(screen.getByRole('button', { name: 'Save calibration' }));
     // Honest framing: verification needs a live AIS target; calibration stays static.
-    await waitFor(() =>
-      expect(screen.getByText(/needs a live AIS target/)).toBeTruthy(),
-    );
+    await waitFor(() => expect(screen.getByText(/needs a live AIS target/)).toBeTruthy());
     expect(screen.getByText(/re-run after the mount shifts/)).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'Verify: slew to AIS cue' }));
     await waitFor(() =>
       expect(
-        calls.some((c) => c.url.includes('/cameras/reolink/slew-to-cue') && c.init?.method === 'POST'),
+        calls.some(
+          (c) => c.url.includes('/cameras/reolink/slew-to-cue') && c.init?.method === 'POST',
+        ),
       ).toBe(true),
     );
     await waitFor(() => expect(screen.getByText(/Slew commanded/)).toBeTruthy());

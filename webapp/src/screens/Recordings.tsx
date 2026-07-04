@@ -209,8 +209,8 @@ export function Recordings() {
           <p>No recordings yet.</p>
           {recordingChannels === 0 ? (
             <p className="muted">
-              Recording isn’t available on this hardware tier — live viewing still works. A Pi&nbsp;4
-              or better enables the rolling buffer.
+              Recording isn’t available on this hardware tier — live viewing still works. A
+              Pi&nbsp;4 or better enables the rolling buffer.
             </p>
           ) : (
             <p className="muted">Start one with Record on a camera.</p>

@@ -301,9 +301,9 @@ describe('CameraWizard edit mode', () => {
     expect(screen.getByText(/Push-only; expect restarts/)).toBeTruthy();
 
     // No pull source exists, so Continue stays disabled until an address is entered.
-    expect(
-      (screen.getByRole('button', { name: 'Continue' }) as HTMLButtonElement).disabled,
-    ).toBe(true);
+    expect((screen.getByRole('button', { name: 'Continue' }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
     fireEvent.change(screen.getByPlaceholderText(/RTMP server/), {
       target: { value: '192.168.1.10' },
     });
@@ -370,9 +370,9 @@ describe('CameraWizard edit mode', () => {
     });
     // The URL's embedded login moved into the write-only fields, with the honest note.
     expect(screen.getByText(/stored\s+write-only, never in the shared camera record/)).toBeTruthy();
-    expect((screen.getByPlaceholderText('only if the stream needs one') as HTMLInputElement).value).toBe(
-      'admin',
-    );
+    expect(
+      (screen.getByPlaceholderText('only if the stream needs one') as HTMLInputElement).value,
+    ).toBe('admin');
     // Structured fields were parsed out of the URL.
     expect((screen.getByPlaceholderText('192.168.1.50') as HTMLInputElement).value).toBe(
       '192.168.1.60',
@@ -397,7 +397,12 @@ describe('CameraWizard edit mode', () => {
       // …but the resource itself never carries them.
       expect(JSON.stringify(body)).not.toContain('admin');
       expect(JSON.stringify(body)).not.toContain('pw');
-      expect(body.source).toEqual({ scheme: 'rtsp', host: '192.168.1.60', port: 554, path: '/stream1' });
+      expect(body.source).toEqual({
+        scheme: 'rtsp',
+        host: '192.168.1.60',
+        port: 554,
+        path: '/stream1',
+      });
       expect(body.capabilities.ptz).toBe(false); // nothing introspected — never guessed
       const creds = calls.find((c) => c.url.includes('/credentials') && c.init?.method === 'POST');
       expect(creds).toBeTruthy();
@@ -448,9 +453,7 @@ describe('CameraWizard edit mode', () => {
       target: { value: '192.168.1.62' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Connect & read' }));
-    await waitFor(() =>
-      expect(screen.getByText(/add it as a plain stream below/)).toBeTruthy(),
-    );
+    await waitFor(() => expect(screen.getByText(/add it as a plain stream below/)).toBeTruthy());
     fireEvent.click(screen.getByRole('button', { name: 'No ONVIF? Add as a plain stream' }));
     // The address carries over — the user doesn't retype what they already entered.
     expect((screen.getByPlaceholderText('192.168.1.50') as HTMLInputElement).value).toBe(

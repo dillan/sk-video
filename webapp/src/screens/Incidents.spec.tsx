@@ -97,16 +97,19 @@ describe('Incidents', () => {
       assets: [
         {
           ...DETAIL.assets[0],
-          coverage: { actualStartMs: 80_000, actualEndMs: 140_000, contiguous: true, segmentCount: 2 },
+          coverage: {
+            actualStartMs: 80_000,
+            actualEndMs: 140_000,
+            contiguous: true,
+            segmentCount: 2,
+          },
         },
       ],
     };
     vi.stubGlobal(
       'fetch',
       vi.fn((url: string) =>
-        /\/incidents\/[^/]+$/.test(String(url))
-          ? ok(withCoverage)
-          : ok({ incidents: LIST }),
+        /\/incidents\/[^/]+$/.test(String(url)) ? ok(withCoverage) : ok({ incidents: LIST }),
       ),
     );
     render(<Incidents />);

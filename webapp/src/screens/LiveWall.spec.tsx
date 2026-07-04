@@ -82,23 +82,19 @@ describe('LiveWall group chips', () => {
   });
 
   it('skips the chips when only the all group exists', async () => {
-    mockProjection(
-      { bow: { name: 'Bow', enabled: true } },
-      [{ key: 'all', label: 'All cameras', cameraIds: ['bow'] }],
-    );
+    mockProjection({ bow: { name: 'Bow', enabled: true } }, [
+      { key: 'all', label: 'All cameras', cameraIds: ['bow'] },
+    ]);
     render(<LiveWall onOpenCamera={() => undefined} />);
     await screen.findByText('Bow');
     expect(screen.queryByRole('navigation', { name: 'Camera groups' })).toBeNull();
   });
 
   it('skips the chips for a single real group (it would only mirror All cameras)', async () => {
-    mockProjection(
-      { bow: { name: 'Foredeck', enabled: true, placement: { mount: 'bow' } } },
-      [
-        { key: 'all', label: 'All cameras', cameraIds: ['bow'] },
-        { key: 'sector:forward', label: 'Forward', cameraIds: ['bow'] },
-      ],
-    );
+    mockProjection({ bow: { name: 'Foredeck', enabled: true, placement: { mount: 'bow' } } }, [
+      { key: 'all', label: 'All cameras', cameraIds: ['bow'] },
+      { key: 'sector:forward', label: 'Forward', cameraIds: ['bow'] },
+    ]);
     render(<LiveWall onOpenCamera={() => undefined} />);
     await screen.findByText('Foredeck');
     expect(screen.queryByRole('navigation', { name: 'Camera groups' })).toBeNull();

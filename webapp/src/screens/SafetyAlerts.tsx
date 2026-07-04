@@ -38,10 +38,10 @@ export function SafetyAlerts() {
     <section className="panel">
       <h2 className="panel__title">Safety alerts</h2>
       <p className="muted">
-        Get a push notification when a safety event fires (man overboard, anchor drag, a safety camera
-        going dark, an incident) — even when the app is closed. Best-effort: the boat needs internet
-        to send, and on iPhone you must add the app to your Home Screen first. Delivery goes through
-        your browser’s push service; the alert content is encrypted end-to-end.
+        Get a push notification when a safety event fires (man overboard, anchor drag, a safety
+        camera going dark, an incident) — even when the app is closed. Best-effort: the boat needs
+        internet to send, and on iPhone you must add the app to your Home Screen first. Delivery
+        goes through your browser’s push service; the alert content is encrypted end-to-end.
       </p>
 
       {state === 'loading' && <div className="chip chip--neutral">Checking…</div>}
@@ -50,7 +50,8 @@ export function SafetyAlerts() {
       )}
       {state === 'denied' && (
         <div className="chip chip--caution">
-          Notifications are blocked — allow them for this site in your browser settings, then return.
+          Notifications are blocked — allow them for this site in your browser settings, then
+          return.
         </div>
       )}
       {(state === 'on' || state === 'off') && (

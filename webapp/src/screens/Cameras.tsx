@@ -74,9 +74,7 @@ export function Cameras() {
       );
     // One aggregate read gives every row its health tri-state (producing / went dark / never seen).
     fetchCamerasProjection(ctrl.signal)
-      .then((p) =>
-        setPresence(Object.fromEntries(p.cameras.map((c) => [c.id, c.health] as const))),
-      )
+      .then((p) => setPresence(Object.fromEntries(p.cameras.map((c) => [c.id, c.health] as const))))
       .catch(() => undefined); // rows still render without presence chips
     return () => ctrl.abort();
   }, []);

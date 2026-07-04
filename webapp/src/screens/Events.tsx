@@ -27,7 +27,8 @@ function describeEvent(ev: ILoggedEvent): IEventView {
 
   // Current rows use camera-path keys (`cameras.<id>.feedOutage`); the legacy pattern keeps
   // rows logged by older releases humanised — the event log is durable.
-  const offline = /^cameras\.(.+)\.feedOutage$/.exec(ev.type) ?? /^camera\.(.+)\.offline$/.exec(ev.type);
+  const offline =
+    /^cameras\.(.+)\.feedOutage$/.exec(ev.type) ?? /^camera\.(.+)\.offline$/.exec(ev.type);
   if (ev.type === 'mob' || ev.type.startsWith('mob.')) {
     return { icon: '🆘', label: 'Man overboard', frigate: false, severity, href: '#/safety' };
   }

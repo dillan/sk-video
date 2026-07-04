@@ -209,9 +209,7 @@ describe('CameraControls', () => {
   it('disables Record with the tier reason when the gate says recording is unavailable', async () => {
     const reason = 'Recording isn’t available on this hardware tier — live viewing still works.';
     const fetchMock = mockApi();
-    render(
-      <CameraControls {...base} camera={camera()} recordGate={{ allowed: false, reason }} />,
-    );
+    render(<CameraControls {...base} camera={camera()} recordGate={{ allowed: false, reason }} />);
     const record = screen.getByRole('button', { name: 'Record' }) as HTMLButtonElement;
     expect(record.disabled).toBe(true);
     expect(record.title).toBe(reason);
@@ -238,9 +236,7 @@ describe('CameraControls', () => {
   it('offers a manual transport pin in the stream menu (Auto = server walk)', async () => {
     const onForceTransport = vi.fn();
     mockApi();
-    render(
-      <CameraControls {...base} camera={camera()} onForceTransport={onForceTransport} />,
-    );
+    render(<CameraControls {...base} camera={camera()} onForceTransport={onForceTransport} />);
     fireEvent.click(screen.getByRole('button', { name: 'Stream variant' }));
     fireEvent.click(await screen.findByRole('menuitemradio', { name: /Transport · WebRTC/ }));
     expect(onForceTransport).toHaveBeenCalledWith('webrtc');

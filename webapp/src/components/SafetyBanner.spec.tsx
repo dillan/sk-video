@@ -37,7 +37,9 @@ describe('SafetyBanner', () => {
 
   it('keeps warn-level notifications as chips, never full-bleed', () => {
     render(
-      <SafetyBanner alerts={{ fog: alert({ key: 'fog', state: 'warn', message: 'Fog preset' }) }} />,
+      <SafetyBanner
+        alerts={{ fog: alert({ key: 'fog', state: 'warn', message: 'Fog preset' }) }}
+      />,
     );
     expect(screen.queryByRole('button', { name: 'Acknowledge' })).toBeNull();
     expect(screen.getByText('Fog preset')).toBeTruthy();

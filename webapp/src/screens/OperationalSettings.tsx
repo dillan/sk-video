@@ -262,10 +262,10 @@ export function OperationalSettings() {
         <>
           <h3 className="cfg__group">Camera health alarms</h3>
           <p className="muted">
-            Normally the plugin raises a camera-dark alarm itself. Ticking a camera hands that
-            alarm to the Signal K server’s zone watcher instead: the thresholds below become
-            standard zone metadata, so any instrument (KIP included) shows the warn/alarm state —
-            the alarm still appears in the same place either way.
+            Normally the plugin raises a camera-dark alarm itself. Ticking a camera hands that alarm
+            to the Signal K server’s zone watcher instead: the thresholds below become standard zone
+            metadata, so any instrument (KIP included) shows the warn/alarm state — the alarm still
+            appears in the same place either way.
           </p>
           {cameraRows.map((cam) => {
             const row = form.healthZones[cam.id] ?? DEFAULT_ZONE_ROW;

@@ -87,7 +87,9 @@ export function CameraWizard({ onDone, edit, hasStoredLogin = false }: Props) {
     if (err instanceof ApiError && err.status === 401) {
       setMsg({
         kind: 'caution',
-        text: editing ? 'Sign in to Signal K to save the camera.' : 'Sign in to Signal K to add a camera.',
+        text: editing
+          ? 'Sign in to Signal K to save the camera.'
+          : 'Sign in to Signal K to add a camera.',
       });
     } else if (err instanceof ApiError && err.status === 429) {
       setMsg({ kind: 'caution', text: 'Rate-limited — wait a few seconds and try again.' });
@@ -663,8 +665,7 @@ export function CameraWizard({ onDone, edit, hasStoredLogin = false }: Props) {
         <div className="panel wizard__step">
           {!editing && (
             <p className="muted">
-              {returnStep === 'connect' ? 'Read from the camera' : 'Source'}: <b>{draft.name}</b>{' '}
-              ·{' '}
+              {returnStep === 'connect' ? 'Read from the camera' : 'Source'}: <b>{draft.name}</b> ·{' '}
               <span className="mono">
                 {draft.source.scheme}://{draft.source.host}
                 {draft.source.port ? `:${draft.source.port}` : ''}
