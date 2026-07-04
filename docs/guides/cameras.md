@@ -22,20 +22,24 @@ Click **Scan**. SK Video broadcasts on the local network and lists any cameras t
 
 > Some boat networks block the discovery broadcast (it can't cross certain switches, VLANs, or a Docker bridge). If **Scan** comes up empty but you know the camera's address, add it by hand instead.
 
-### 2. Add a camera by hand
+### 2. Add a camera by hand (with or without ONVIF)
 
-Click **Add a camera** and fill in:
+Click **Enter address manually** and type the camera's address. The wizard first tries to **read the camera over ONVIF** — when that works you get everything pre-filled (stream, codec, PTZ, imaging) with no further typing.
 
-- **Name** — what you'll call it ("Foredeck", "Cockpit"…).
-- **Address (host)** — the camera's IP address, e.g. `192.168.1.50`.
-- **Port** — usually `554` for RTSP cameras (leave blank to use the default).
-- **Path** — the stream path from the camera's manual, e.g. `/stream1` or `/h264Preview_01_main`.
+Not every camera speaks ONVIF (and some hide it on odd ports). If the read fails — or you already know it won't work — pick **No ONVIF? Add as a plain stream**, or go straight to **Paste a stream URL (rtsp://…)** from the first step:
+
+- **Paste a full URL** like `rtsp://192.168.1.50:554/stream1` and the wizard splits it into the right fields. A login embedded in the URL (`rtsp://user:pass@…`) is moved to the camera-login fields and stored **write-only** — it never ends up in the shared camera record.
+- **Or fill in the fields**: scheme (`rtsp`, `rtsps`, `rtmp`, `http`, `https`), address, port (usually `554` for RTSP), and the stream path from the camera's manual. Query-string paths (Dahua-style `/cam/realmonitor?channel=1&subtype=0`) work too.
+- **Don't know the path?** Enter the make (Hikvision, Reolink, Dahua, Axis, Foscam, Amcrest, Ubiquiti, Vivotek…) and the wizard suggests the vendor's known stream paths to try.
+- **Test the stream before saving** — the server probes it for real video, so a wrong address never persists.
+
+A camera added this way saves with no claimed capabilities (nothing was auto-detected — the wizard never guesses). If the camera does speak ONVIF later, **Re-scan** on its row picks up PTZ, imaging, and sub-streams.
 
 <p align="center">
   <img src="../images/config-camera-manual.webp" alt="The Add-a-camera form filled in by hand" width="85%">
 </p>
 
-If you only have a full stream URL from the camera maker, the **URL** tab accepts an `http(s)://`, `rtsp://`, or `rtmp://` link directly.
+In the **KIP widget**, the **URL** tab likewise accepts an `http(s)://`, `rtsp://`, or `rtmp://` link directly.
 
 ### 3. Action cameras (GoPro / Insta360) — guided setup
 
