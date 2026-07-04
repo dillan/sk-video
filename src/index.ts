@@ -962,8 +962,26 @@ export = function (app: ServerAPI): Plugin {
               zones: csvList(fr?.zones, []),
             },
             raiseNotification: (key, message, data) =>
-              void skBridge.raiseNotification(key, { state: 'alert', message, data }),
+              void skBridge.raiseNotification(key, {
+                state: 'alert',
+                message,
+                data,
+                // Camera-scoped detections alarm on the camera's own path, not the plugin prefix.
+                ...(key.startsWith('cameras.') ? { path: key } : {}),
+              }),
             clearNotification: (key) => void skBridge.clearNotification(key),
+            // Map a Frigate camera name onto one of OUR cameras by id or display name — never a
+            // guess: an unmapped Frigate camera keeps the legacy plugin-scoped key.
+            resolveCameraId: (frigateCamera) => {
+              const wanted = frigateCamera.trim().toLowerCase();
+              if (!wanted) return null;
+              for (const [id, camera] of Object.entries(cameras?.list() ?? {})) {
+                if (id.toLowerCase() === wanted || camera.name.trim().toLowerCase() === wanted) {
+                  return id;
+                }
+              }
+              return null;
+            },
             fetchClip: (eventId) =>
               frigateApiUrl
                 ? fetchFrigateClip(frigateApiUrl, eventId, {
