@@ -1,10 +1,14 @@
 import { describe, it, expect } from 'vitest';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { once } from 'node:events';
 import { Readable, Writable } from 'node:stream';
 import type { IRouter, Request, Response } from 'express';
 import { registerUploadRoutes } from './upload-routes';
 import type { AuthGate } from '../security/request-auth';
 import { AssetStore, type IAssetIndexPersistence, type IBlobStore } from './asset-store';
+import { ResumableUploadStore } from './resumable-store';
 
 const ALLOW: AuthGate = () => false;
 const DENY: AuthGate = (_req, res) => {
@@ -84,6 +88,7 @@ function fakeRouter() {
   const router = {
     get: add('GET'),
     post: add('POST'),
+    patch: add('PATCH'),
     delete: add('DELETE'),
   } as unknown as IRouter;
   return { router, handlers };
@@ -125,11 +130,29 @@ function fakeReq(over: Partial<Request> & { body?: unknown } = {}): Request {
 }
 
 /** A POST /videos request as a real readable body stream (the route streams it to the store). */
-function uploadReq(body: Buffer | Uint8Array, headers: Record<string, string> = {}): Request {
+function uploadReq(
+  body: Buffer | Uint8Array,
+  headers: Record<string, string> = {},
+  params: Record<string, string> = {},
+): Request {
   const stream = Readable.from(Buffer.from(body)) as unknown as Request & Readable;
-  (stream as unknown as { params: unknown }).params = {};
+  (stream as unknown as { params: unknown }).params = params;
   (stream as unknown as { headers: unknown }).headers = headers;
   return stream as never;
+}
+
+/** Invoke a captured handler and wait for the response to finish (json()/end() both fire it). */
+async function handlersCall(
+  handlers: Map<string, (req: Request, res: Response) => void>,
+  key: string,
+  req: Request,
+  res: FakeRes,
+): Promise<void> {
+  const handler = handlers.get(key);
+  if (!handler) throw new Error(`no handler registered for ${key}`);
+  const finished = once(res, 'finish');
+  handler(req, res as never);
+  await finished;
 }
 
 describe('registerUploadRoutes', () => {
@@ -283,5 +306,184 @@ describe('registerUploadRoutes', () => {
     const res2 = new FakeRes();
     handlers.get('DELETE /videos/:id')!(fakeReq({ params: { id: asset.id } }), res2 as never);
     expect(res2.statusCode).toBe(404);
+  });
+});
+
+describe('registerUploadRoutes — resumable uploads', () => {
+  function resumableSetup(gate: AuthGate = ALLOW) {
+    const dir = mkdtempSync(join(tmpdir(), 'sk-video-resumable-routes-'));
+    const resumable = new ResumableUploadStore(dir);
+    const store = makeStore();
+    const { router, handlers } = fakeRouter();
+    registerUploadRoutes(router, () => store, gate, { getResumable: () => resumable });
+    return {
+      store,
+      resumable,
+      handlers,
+      cleanup: () => rmSync(dir, { recursive: true, force: true }),
+    };
+  }
+
+  const createReq = (name: string, size: number) => fakeReq({ body: { name, size } as never });
+
+  it('creates a session, appends with offset verification, and completes into the store', async () => {
+    const h = resumableSetup();
+    try {
+      const res1 = new FakeRes();
+      await handlersCall(h.handlers, 'POST /videos/uploads', createReq('clip.mp4', 100), res1);
+      expect(res1.statusCode).toBe(201);
+      const { id, offset } = res1.body as { id: string; offset: number };
+      expect(offset).toBe(0);
+
+      const bytes = mp4(100);
+      const res2 = new FakeRes();
+      await handlersCall(
+        h.handlers,
+        'PATCH /videos/uploads/:id',
+        uploadReq(bytes.subarray(0, 60), { 'x-upload-offset': '0' }, { id }),
+        res2,
+      );
+      expect(res2.statusCode).toBe(204);
+      expect(res2.headers['X-Upload-Offset']).toBe('60');
+
+      // A stale/duplicate chunk answers 409 with the offset to resume from.
+      const res3 = new FakeRes();
+      await handlersCall(
+        h.handlers,
+        'PATCH /videos/uploads/:id',
+        uploadReq(bytes.subarray(0, 60), { 'x-upload-offset': '0' }, { id }),
+        res3,
+      );
+      expect(res3.statusCode).toBe(409);
+      expect((res3.body as { offset: number }).offset).toBe(60);
+
+      const res4 = new FakeRes();
+      await handlersCall(
+        h.handlers,
+        'PATCH /videos/uploads/:id',
+        uploadReq(bytes.subarray(60), { 'x-upload-offset': '60' }, { id }),
+        res4,
+      );
+      expect(res4.statusCode).toBe(204);
+
+      const res5 = new FakeRes();
+      await handlersCall(
+        h.handlers,
+        'POST /videos/uploads/:id/complete',
+        fakeReq({ params: { id } }),
+        res5,
+      );
+      expect(res5.statusCode).toBe(201);
+      expect((res5.body as { name: string }).name).toBe('clip.mp4');
+      expect(h.store.list()).toHaveLength(1);
+    } finally {
+      h.cleanup();
+    }
+  });
+
+  it('probes the current offset with GET (the resume handshake)', async () => {
+    const h = resumableSetup();
+    try {
+      const res1 = new FakeRes();
+      await handlersCall(h.handlers, 'POST /videos/uploads', createReq('clip.mp4', 100), res1);
+      const { id } = res1.body as { id: string };
+      await handlersCall(
+        h.handlers,
+        'PATCH /videos/uploads/:id',
+        uploadReq(mp4(100).subarray(0, 40), { 'x-upload-offset': '0' }, { id }),
+        new FakeRes(),
+      );
+      const res2 = new FakeRes();
+      await handlersCall(h.handlers, 'GET /videos/uploads/:id', fakeReq({ params: { id } }), res2);
+      expect(res2.statusCode).toBe(200);
+      expect(res2.body).toMatchObject({ id, name: 'clip.mp4', size: 100, offset: 40 });
+    } finally {
+      h.cleanup();
+    }
+  });
+
+  it('refuses to complete an unfinished upload with 409 + the offset', async () => {
+    const h = resumableSetup();
+    try {
+      const res1 = new FakeRes();
+      await handlersCall(h.handlers, 'POST /videos/uploads', createReq('clip.mp4', 100), res1);
+      const { id } = res1.body as { id: string };
+      const res2 = new FakeRes();
+      await handlersCall(
+        h.handlers,
+        'POST /videos/uploads/:id/complete',
+        fakeReq({ params: { id } }),
+        res2,
+      );
+      expect(res2.statusCode).toBe(409);
+      expect((res2.body as { offset: number }).offset).toBe(0);
+    } finally {
+      h.cleanup();
+    }
+  });
+
+  it('maps finalize rejections honestly (junk bytes answer 415)', async () => {
+    const h = resumableSetup();
+    try {
+      const res1 = new FakeRes();
+      await handlersCall(h.handlers, 'POST /videos/uploads', createReq('junk.bin', 50), res1);
+      const { id } = res1.body as { id: string };
+      await handlersCall(
+        h.handlers,
+        'PATCH /videos/uploads/:id',
+        uploadReq(Buffer.alloc(50, 7), { 'x-upload-offset': '0' }, { id }),
+        new FakeRes(),
+      );
+      const res2 = new FakeRes();
+      await handlersCall(
+        h.handlers,
+        'POST /videos/uploads/:id/complete',
+        fakeReq({ params: { id } }),
+        res2,
+      );
+      expect(res2.statusCode).toBe(415);
+    } finally {
+      h.cleanup();
+    }
+  });
+
+  it('gates every resumable route behind auth and 404s unknown sessions', async () => {
+    const h = resumableSetup(DENY);
+    try {
+      for (const key of [
+        'POST /videos/uploads',
+        'GET /videos/uploads/:id',
+        'PATCH /videos/uploads/:id',
+        'POST /videos/uploads/:id/complete',
+        'DELETE /videos/uploads/:id',
+      ]) {
+        const res = new FakeRes();
+        await handlersCall(h.handlers, key, fakeReq({ params: { id: 'x' } }), res);
+        expect(res.statusCode, key).toBe(401);
+      }
+    } finally {
+      h.cleanup();
+    }
+    const open = resumableSetup();
+    try {
+      const res = new FakeRes();
+      await handlersCall(
+        open.handlers,
+        'GET /videos/uploads/:id',
+        fakeReq({ params: { id: 'nope' } }),
+        res,
+      );
+      expect(res.statusCode).toBe(404);
+      const res2 = new FakeRes();
+      await handlersCall(
+        open.handlers,
+        'DELETE /videos/uploads/:id',
+        fakeReq({ params: { id: 'nope' } }),
+        res2,
+      );
+      expect(res2.statusCode).toBe(204); // discard is idempotent
+    } finally {
+      open.cleanup();
+    }
   });
 });
