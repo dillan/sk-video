@@ -304,7 +304,7 @@ test.describe('SK Video webapp — Live Wall + Camera Focus', () => {
 });
 
 test.describe('SK Video webapp — Library / Videos', () => {
-  test('uploads, plays, and deletes an imported video', async ({ page }) => {
+  test('uploads, plays, and deletes a video from the thumbnail grid', async ({ page }) => {
     const NAME = 'webapp-ui-clip.mp4';
     await page.goto(`${APP}#/library/videos`);
     await expect(page.getByRole('heading', { name: 'Videos', exact: true })).toBeVisible();
@@ -320,15 +320,20 @@ test.describe('SK Video webapp — Library / Videos', () => {
       buffer: mp4,
     });
 
-    const row = page.locator('.vidrow', { hasText: NAME });
-    await expect(row).toHaveCount(1); // exactly one row after a single upload
+    const tile = page.locator('.vidtile', { hasText: NAME });
+    await expect(tile).toHaveCount(1); // exactly one tile after a single upload
+    await expect(tile.getByText(NAME)).toBeVisible();
 
-    await row.getByRole('button', { name: 'Play' }).click();
-    await expect(row.locator('video.vidrow__player')).toBeVisible();
+    // Clicking the thumbnail opens the full-screen player.
+    await tile.getByRole('button', { name: `Play ${NAME}` }).click();
+    await expect(page.locator('.vidmodal video')).toBeVisible();
+    await page.getByRole('button', { name: 'Close player' }).click();
+    await expect(page.locator('.vidmodal')).toHaveCount(0);
 
-    await row.getByRole('button', { name: 'Delete' }).click();
-    await row.getByRole('button', { name: 'Confirm delete' }).click();
-    await expect(row).toHaveCount(0);
+    // The red trashcan asks first, then deletes.
+    await tile.getByRole('button', { name: `Delete ${NAME}` }).click();
+    await tile.getByRole('button', { name: 'Confirm delete' }).click();
+    await expect(tile).toHaveCount(0);
   });
 });
 

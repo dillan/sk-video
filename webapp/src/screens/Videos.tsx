@@ -4,6 +4,96 @@ import { formatBytes } from '../lib/format';
 import { uploadVideoResumable } from '../lib/resumable-upload';
 import { uploadAll, type IUploadHandle, type IUploadProgress } from '../lib/upload-queue';
 
+/**
+ * One video in the library grid: a muted inline <video> serves as both the still thumbnail
+ * (its first frame, from preload="metadata") and the hover preview — mousing over it plays the
+ * clip muted, leaving stops and rewinds. Clicking the thumbnail opens the full player; the red
+ * trashcan (which never opens the player) asks for confirmation before deleting.
+ */
+function VideoTile({
+  video,
+  confirming,
+  onPlay,
+  onAskDelete,
+  onConfirmDelete,
+  onCancelDelete,
+}: {
+  video: IVideoAsset;
+  confirming: boolean;
+  onPlay: () => void;
+  onAskDelete: () => void;
+  onConfirmDelete: () => void;
+  onCancelDelete: () => void;
+}) {
+  const ref = useRef<HTMLVideoElement>(null);
+  const preview = (on: boolean): void => {
+    const el = ref.current;
+    if (!el) return;
+    if (on) {
+      const p = el.play();
+      if (p && typeof p.catch === 'function') p.catch(() => undefined);
+    } else {
+      el.pause();
+      el.currentTime = 0;
+    }
+  };
+
+  return (
+    <li className="vidtile">
+      <button
+        type="button"
+        className="vidtile__thumb"
+        aria-label={`Play ${video.name}`}
+        onClick={onPlay}
+        onMouseEnter={() => preview(true)}
+        onMouseLeave={() => preview(false)}
+      >
+        <video
+          ref={ref}
+          src={videoUrl(video.id)}
+          muted
+          loop
+          playsInline
+          preload="metadata"
+          tabIndex={-1}
+        />
+        <span className="vidtile__play" aria-hidden="true">
+          ▶
+        </span>
+      </button>
+      <button
+        type="button"
+        className="vidtile__trash"
+        aria-label={`Delete ${video.name}`}
+        onClick={onAskDelete}
+      >
+        🗑
+      </button>
+      <div className="vidtile__label">
+        <div className="vidtile__name" title={video.name}>
+          {video.name}
+        </div>
+        <div className="vidtile__meta mono">
+          {formatBytes(video.size)} · {new Date(video.createdAt).toLocaleDateString()}
+        </div>
+      </div>
+      {confirming && (
+        <div className="vidtile__confirm">
+          <p>Delete this video?</p>
+          <div className="vidtile__confirm-actions">
+            <button type="button" className="iconbtn btn--danger" onClick={onConfirmDelete}>
+              Confirm delete
+            </button>
+            <button type="button" className="iconbtn" onClick={onCancelDelete}>
+              Keep
+            </button>
+          </div>
+        </div>
+      )}
+    </li>
+  );
+}
+
 interface Msg {
   kind: 'caution' | 'info';
   text: string;
@@ -276,54 +366,48 @@ export function Videos() {
         </div>
       )}
       {videos && videos.length > 0 && (
-        <ul className="vidlist">
+        <ul className="vidgrid">
           {videos.map((v) => (
-            <li key={v.id} className="panel vidrow">
-              <div className="vidrow__head">
-                <div>
-                  <div className="vidrow__name">{v.name}</div>
-                  <div className="vidrow__meta mono">
-                    {formatBytes(v.size)} · {new Date(v.createdAt).toLocaleDateString()}
-                  </div>
-                </div>
-                <div className="dock__group">
-                  <button
-                    type="button"
-                    className="iconbtn iconbtn--wide"
-                    onClick={() => setPlaying(playing === v.id ? null : v.id)}
-                  >
-                    {playing === v.id ? 'Hide' : 'Play'}
-                  </button>
-                  {confirmId === v.id ? (
-                    <button
-                      type="button"
-                      className="iconbtn iconbtn--wide btn--danger"
-                      onClick={() => void onDelete(v.id)}
-                    >
-                      Confirm delete
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      className="iconbtn iconbtn--wide"
-                      onClick={() => setConfirmId(v.id)}
-                    >
-                      Delete
-                    </button>
-                  )}
-                </div>
-              </div>
-              {playing === v.id && (
-                <video
-                  className="vidrow__player"
-                  src={videoUrl(v.id)}
-                  controls
-                  preload="metadata"
-                />
-              )}
-            </li>
+            <VideoTile
+              key={v.id}
+              video={v}
+              confirming={confirmId === v.id}
+              onPlay={() => setPlaying(v.id)}
+              onAskDelete={() => setConfirmId(v.id)}
+              onConfirmDelete={() => void onDelete(v.id)}
+              onCancelDelete={() => setConfirmId(null)}
+            />
           ))}
         </ul>
+      )}
+
+      {playing && (
+        <div
+          className="vidmodal"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Video player"
+          onClick={() => setPlaying(null)}
+        >
+          <button
+            type="button"
+            className="vidmodal__close iconbtn"
+            aria-label="Close player"
+            onClick={() => setPlaying(null)}
+          >
+            ✕
+          </button>
+          {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions */}
+          <div className="vidmodal__stage" onClick={(e) => e.stopPropagation()}>
+            <video
+              className="vidmodal__player"
+              src={videoUrl(playing)}
+              controls
+              autoPlay
+              preload="metadata"
+            />
+          </div>
+        </div>
       )}
     </div>
   );

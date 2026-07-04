@@ -143,7 +143,8 @@ describe('Night-Red contract (no blue / green / white light)', () => {
     const capped = nightBlocks.filter((b) => /brightness\(0\.4\)/.test(b.body));
     const selectors = capped.map((b) => b.selector).join('\n');
     expect(selectors).toContain('.player__media');
-    expect(selectors).toContain('.vidrow__player');
+    expect(selectors).toContain('.vidmodal__player');
+    expect(selectors).toContain('.vidtile__thumb video');
     expect(selectors).toContain('.snap__img');
   });
 });

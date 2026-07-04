@@ -102,7 +102,13 @@ describe('Videos', () => {
 
   it('renders a grid of thumbnails labelled with filename, size, and date', async () => {
     mockApi([
-      { id: 'v1', name: 'clip.mp4', contentType: 'video/mp4', size: 1536, createdAt: 1_700_000_000_000 },
+      {
+        id: 'v1',
+        name: 'clip.mp4',
+        contentType: 'video/mp4',
+        size: 1536,
+        createdAt: 1_700_000_000_000,
+      },
     ]);
     render(<Videos />);
     await screen.findByText('clip.mp4');

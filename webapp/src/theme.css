@@ -122,9 +122,10 @@
 [data-theme='night'] .tile__sheen {
   filter: brightness(0.4) saturate(0.5);
 }
-/* Review playback (recordings / incidents / imported clips / snapshots) gets the same luminance cap
- * as the live player — a bright recorded frame blows out night vision exactly like a live one. */
-[data-theme='night'] :is(.vidrow__player, .snap__img) {
+/* Library playback (recordings / incidents / uploaded videos / snapshots) gets the same luminance
+ * cap as the live player — a bright recorded frame blows out night vision exactly like a live one.
+ * This covers the video grid's thumbnails/hover previews and the full-screen modal player too. */
+[data-theme='night'] :is(.vidrow__player, .vidmodal__player, .vidtile__thumb video, .snap__img) {
   filter: brightness(0.4);
 }
 /* Cool-gray and white chrome floating over video moves onto the warm text ramp (no white at sea). */
@@ -242,6 +243,9 @@
 }
 [data-density='desk'] .settings,
 [data-density='desk'] .vidlist {
+  gap: 10px;
+}
+[data-density='desk'] .vidgrid {
   gap: 10px;
 }
 [data-density='desk'] .vidrow {
@@ -687,6 +691,7 @@ button.tile {
   margin-top: 12px;
   flex-wrap: wrap;
 }
+/* Shared row/player styling used by Recordings and Incidents (the video-library grid has its own). */
 .vidlist {
   list-style: none;
   margin: 0;
@@ -720,7 +725,7 @@ button.tile {
   background: var(--video-mat);
   max-height: 60vh;
 }
-/* ---- Review cluster (tab shell + recordings + incidents) ---- */
+/* ---- Library cluster (tab shell + recordings + incidents) ---- */
 .library {
   display: flex;
   flex-direction: column;
@@ -2190,4 +2195,139 @@ button.tile {
   outline: 2px dashed var(--accent, #4a9eda);
   outline-offset: -6px;
   border-radius: 8px;
+}
+
+/* ---- Video library grid (Library → Videos) ---- */
+.vidgrid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 14px;
+}
+.vidtile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--panel, var(--surface-1));
+  box-shadow: var(--shadow-1, 0 1px 2px rgba(0, 0, 0, 0.2));
+}
+.vidtile__thumb {
+  position: relative;
+  display: block;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  background: var(--video-mat);
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+}
+.vidtile__thumb video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.vidtile__play {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 34px;
+  color: #fff;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.7);
+  opacity: 0.85;
+  pointer-events: none;
+  transition: opacity 150ms ease;
+}
+.vidtile__thumb:hover .vidtile__play,
+.vidtile__thumb:focus-visible .vidtile__play {
+  opacity: 0; /* the live preview takes over on hover */
+}
+.vidtile__trash {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+  border: 0;
+  border-radius: 999px;
+  width: 34px;
+  height: 34px;
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  color: #fff;
+  background: var(--danger, #c0392b);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+  opacity: 0.9;
+}
+.vidtile__trash:hover,
+.vidtile__trash:focus-visible {
+  opacity: 1;
+}
+.vidtile__label {
+  padding: 8px 10px 10px;
+}
+.vidtile__name {
+  font-weight: 600;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vidtile__meta {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+.vidtile__confirm {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 12px;
+  text-align: center;
+  background: rgba(10, 12, 16, 0.86);
+  color: #fff;
+}
+.vidtile__confirm-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* ---- Video playback modal ---- */
+.vidmodal {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(6, 8, 11, 0.88);
+}
+.vidmodal__stage {
+  max-width: min(1100px, 96vw);
+  max-height: 88vh;
+}
+.vidmodal__player {
+  width: 100%;
+  max-height: 88vh;
+  border-radius: var(--radius-sm);
+  background: #000;
+}
+.vidmodal__close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 2;
 }
