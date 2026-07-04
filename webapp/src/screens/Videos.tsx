@@ -1,13 +1,7 @@
-import { useCallback, useEffect, useRef, useState, type ChangeEvent } from 'react';
-import {
-  fetchVideos,
-  uploadVideo,
-  deleteVideo,
-  videoUrl,
-  ApiError,
-  type IVideoAsset,
-} from '../api';
+import { useCallback, useEffect, useRef, useState, type ChangeEvent, type DragEvent } from 'react';
+import { fetchVideos, deleteVideo, videoUrl, ApiError, type IVideoAsset } from '../api';
 import { formatBytes } from '../lib/format';
+import { uploadVideoResumable } from '../lib/resumable-upload';
 import { uploadAll, type IUploadHandle, type IUploadProgress } from '../lib/upload-queue';
 
 interface Msg {
@@ -84,8 +78,11 @@ export function Videos() {
   const [upload, setUpload] = useState<IUploadProgress | null>(null);
   const [playing, setPlaying] = useState<string | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [dragOver, setDragOver] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const handleRef = useRef<IUploadHandle | null>(null);
+  /** The last batch's File objects, by row index — what a per-file Retry re-sends. */
+  const batchFilesRef = useRef<File[]>([]);
 
   const load = useCallback((signal?: AbortSignal) => {
     setErr(null);
@@ -102,21 +99,20 @@ export function Videos() {
     return () => ctrl.abort();
   }, [load]);
 
-  const onFiles = async (e: ChangeEvent<HTMLInputElement>): Promise<void> => {
-    const files = Array.from(e.target.files ?? []);
-    e.target.value = ''; // let the same files be re-picked after a failure
+  const startBatch = async (files: File[]): Promise<void> => {
     if (files.length === 0 || handleRef.current) return;
     setMsg(null);
+    batchFilesRef.current = files;
     const handle = uploadAll(
       files,
-      (file, onBytes, signal) => uploadVideo(file, { onBytes, signal }),
+      (file, onBytes, signal) => uploadVideoResumable(file, { onBytes, signal }),
       { onProgress: setUpload, errorText: uploadError },
     );
     handleRef.current = handle;
     const results = await handle.done;
     handleRef.current = null;
     // On a clean batch the panel has nothing left to say; with failures/cancellations it stays,
-    // so the per-file reasons remain readable next to the summary.
+    // so the per-file reasons remain readable next to the summary (with a Retry per failed row).
     setUpload(
       results.every((f) => f.state === 'done')
         ? null
@@ -133,6 +129,23 @@ export function Videos() {
     );
     setMsg(summarize(results));
     await load();
+  };
+
+  const onFiles = (e: ChangeEvent<HTMLInputElement>): void => {
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = ''; // let the same files be re-picked after a failure
+    void startBatch(files);
+  };
+
+  const onDrop = (e: DragEvent): void => {
+    e.preventDefault();
+    setDragOver(false);
+    void startBatch(Array.from(e.dataTransfer?.files ?? []));
+  };
+
+  const retryFile = (index: number): void => {
+    const file = batchFilesRef.current[index];
+    if (file) void startBatch([file]);
   };
 
   const onDelete = async (id: string): Promise<void> => {
@@ -158,7 +171,15 @@ export function Videos() {
   const uploading = upload !== null && !upload.done;
 
   return (
-    <div className="settings">
+    <div
+      className={`settings${dragOver ? ' droptarget' : ''}`}
+      onDragOver={(e) => {
+        e.preventDefault();
+        setDragOver(true);
+      }}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={onDrop}
+    >
       <header className="page-head">
         <div>
           <h1>Videos</h1>
@@ -224,6 +245,16 @@ export function Videos() {
                     ✕
                   </button>
                 )}
+                {upload.done && (f.state === 'failed' || f.state === 'cancelled') && (
+                  <button
+                    type="button"
+                    className="iconbtn"
+                    aria-label={`Retry ${f.name}`}
+                    onClick={() => retryFile(i)}
+                  >
+                    Retry {f.name}
+                  </button>
+                )}
               </li>
             ))}
           </ul>
@@ -231,8 +262,10 @@ export function Videos() {
       )}
 
       <p className="muted">
-        Videos are files you upload yourself — kept separate from the DVR recordings and incident
-        evidence your cameras produce, and bounded by a fixed storage quota.
+        Videos are files you upload yourself (pick several, or drag &amp; drop them here) — kept
+        separate from the DVR recordings and incident evidence your cameras produce, and bounded by
+        a fixed storage quota. An upload interrupted by a dropped connection resumes where it left
+        off.
       </p>
 
       {err && <div className="chip chip--caution">Can’t load videos ({err})</div>}

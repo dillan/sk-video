@@ -2186,3 +2186,8 @@ button.tile {
 .upload__state--failed {
   color: var(--caution, #e0a030);
 }
+.droptarget {
+  outline: 2px dashed var(--accent, #4a9eda);
+  outline-offset: -6px;
+  border-radius: 8px;
+}
