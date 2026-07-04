@@ -191,3 +191,62 @@ describe('FrigateClient', () => {
     expect(logs.some((l) => l.includes('bridge exploded'))).toBe(true);
   });
 });
+
+/**
+ * Detections on a Frigate camera that maps to one of OUR cameras live on that camera's own
+ * notification path (notifications.cameras.<id>.detections.<label>) so all of a camera's alarms
+ * congregate under one subscribable subtree. Frigate cameras we can't map keep the legacy
+ * per-event key — never guess a camera identity.
+ */
+describe('FrigateClient — camera-path detection alarms', () => {
+  const mapped = (over: Partial<IFrigateClientDeps> = {}) =>
+    setup({
+      resolveCameraId: (frigateCamera) => (frigateCamera === 'front_door' ? 'bow' : null),
+      ...over,
+    });
+
+  it('keys a mapped detection by camera + label and tags the sk-video camera id', () => {
+    const h = mapped();
+    h.client.handleMessage(event('new'));
+    expect(h.raised).toHaveLength(1);
+    expect(h.raised[0].key).toBe('cameras.bow.detections.person');
+    expect(h.raised[0].data.cameraId).toBe('bow');
+  });
+
+  it('keeps the legacy per-event key for an unmapped Frigate camera', () => {
+    const h = mapped();
+    h.client.handleMessage(event('new', { camera: 'garage' }));
+    expect(h.raised[0].key).toBe('frigate.evt-1');
+    expect('cameraId' in h.raised[0].data).toBe(false);
+  });
+
+  it('clears a shared camera+label alarm only when the LAST active event expires', () => {
+    const h = mapped({ retentionMs: 1000 });
+    h.client.handleMessage(event('new', { id: 'e1' })); // t=1000
+    h.setClock(1600);
+    h.client.handleMessage(event('new', { id: 'e2' })); // same camera+label, still active
+    h.setClock(2100); // e1 quiet for 1100ms (expired), e2 for 500ms (alive)
+    h.client.sweep();
+    expect(h.cleared).toEqual([]); // e2 still holds the shared alarm up
+    h.setClock(2700); // now e2 expired too
+    h.client.sweep();
+    expect(h.cleared).toEqual(['cameras.bow.detections.person']); // cleared exactly once
+  });
+
+  it('sanitises a hostile label so it cannot escape the detections subtree', () => {
+    const h = mapped();
+    h.client.handleMessage(
+      event('new', { label: 'person', id: 'e9' }), // control: normal
+    );
+    expect(h.raised[0].key).toBe('cameras.bow.detections.person');
+    // classifyEvent gates on configured labels, so a hostile label must ALSO be in config to
+    // reach keying — simulate that worst case directly.
+    const h2 = setup({
+      config: { labels: ['per.son:*'], minScore: 0.7, zones: [] },
+      resolveCameraId: () => 'bow',
+    });
+    h2.client.handleMessage(event('new', { label: 'per.son:*' }));
+    expect(h2.raised).toHaveLength(1);
+    expect(h2.raised[0].key).toBe('cameras.bow.detections.per-son');
+  });
+});
