@@ -14,6 +14,7 @@ import {
 import { CameraWizard } from '../components/CameraWizard';
 import { CameraHealth } from '../components/CameraHealth';
 import { CalibrationWizard } from '../components/CalibrationWizard';
+import { useWriteGate } from '../lib/auth';
 import { capabilityBadges, healthPresence } from '../lib/camera';
 import { mergeRescan } from '../lib/onboard';
 
@@ -57,6 +58,8 @@ export function Cameras() {
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [rescanId, setRescanId] = useState<string | null>(null);
   const [msg, setMsg] = useState<Msg | null>(null);
+  // Read-only: camera management is a write, so disable it with a reason. Viewing + diagnostics stay.
+  const gate = useWriteGate('Managing cameras needs write access — ask an admin.');
 
   const refresh = useCallback(() => {
     const ctrl = new AbortController();
@@ -177,7 +180,13 @@ export function Cameras() {
       <header className="page-head">
         <h1>Cameras</h1>
         <div className="page-head__spacer" />
-        <button type="button" className="btn" onClick={() => setView({ kind: 'add' })}>
+        <button
+          type="button"
+          className="btn"
+          onClick={() => setView({ kind: 'add' })}
+          disabled={gate.disabled}
+          title={gate.title}
+        >
           Add a camera
         </button>
       </header>
@@ -195,7 +204,13 @@ export function Cameras() {
       {load.state === 'ready' && load.cameras.length === 0 && (
         <div className="empty">
           <p>No cameras yet.</p>
-          <button type="button" className="btn" onClick={() => setView({ kind: 'add' })}>
+          <button
+            type="button"
+            className="btn"
+            onClick={() => setView({ kind: 'add' })}
+            disabled={gate.disabled}
+            title={gate.title}
+          >
             Add your first camera
           </button>
         </div>
@@ -238,6 +253,8 @@ export function Cameras() {
                   type="button"
                   className="btn btn--ghost"
                   onClick={() => setView({ kind: 'edit', entry: c })}
+                  disabled={gate.disabled}
+                  title={gate.title}
                 >
                   Edit
                 </button>
@@ -251,9 +268,11 @@ export function Cameras() {
                 <button
                   type="button"
                   className="btn btn--ghost"
-                  disabled={rescanId === c.id}
+                  disabled={gate.disabled || rescanId === c.id}
                   onClick={() => rescan(c)}
-                  title="Re-detect this camera’s capabilities using its stored login"
+                  title={
+                    gate.title ?? 'Re-detect this camera’s capabilities using its stored login'
+                  }
                 >
                   {rescanId === c.id ? 'Re-scanning…' : 'Re-scan'}
                 </button>
@@ -262,11 +281,19 @@ export function Cameras() {
                     type="button"
                     className="btn btn--ghost"
                     onClick={() => setView({ kind: 'calibrate', entry: c })}
+                    disabled={gate.disabled}
+                    title={gate.title}
                   >
                     Calibrate
                   </button>
                 )}
-                <button type="button" className="btn btn--ghost" onClick={() => toggle(c)}>
+                <button
+                  type="button"
+                  className="btn btn--ghost"
+                  onClick={() => toggle(c)}
+                  disabled={gate.disabled}
+                  title={gate.title}
+                >
                   {c.enabled ? 'Disable' : 'Enable'}
                 </button>
                 <button
@@ -274,6 +301,8 @@ export function Cameras() {
                   className={`btn btn--ghost${confirmId === c.id ? ' btn--danger' : ''}`}
                   onClick={() => remove(c.id)}
                   onBlur={() => confirmId === c.id && setConfirmId(null)}
+                  disabled={gate.disabled}
+                  title={gate.title}
                 >
                   {confirmId === c.id ? 'Confirm delete' : 'Delete'}
                 </button>
