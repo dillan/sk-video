@@ -1,32 +1,28 @@
 import { useState } from 'react';
-import { login, fetchSession, type ISessionInfo } from '../api';
+import { useAuth } from '../lib/auth';
+import { SK_ROOT } from '../api';
 
 /**
- * The in-app sign-in surface (auth brief, decision A). SK Video has no account system — these are the
- * boat's Signal K credentials. It's non-modal: it sits in a banner above the live console so the video
- * and safety state stay visible behind it; a lapsed session is informational, never a safety alarm.
- * Calm copy, show/hide password, Enter-to-submit, password-manager friendly (autocomplete + input types).
+ * The in-app sign-in surface (states 4/5/6). SK Video has no account system — these are the boat's
+ * Signal K credentials. It's non-modal: it sits in a banner above the live console so the video and
+ * safety state stay visible behind it; a lapsed session is informational, never a safety alarm.
+ *
+ * It drives the AuthProvider (one sign-in path for the whole app): submit calls signIn(); the busy and
+ * error states come from the provider (state 5 disables the form, state 6 shows the message). A
+ * low-prominence "Go to Signal K to sign in" link is the redirect fallback for anyone who prefers the
+ * server's own login. Calm copy, show/hide password, Enter-to-submit, password-manager friendly.
  */
-export function SignIn({ onSignedIn }: { onSignedIn: (s: ISessionInfo) => void }) {
+export function SignIn() {
+  const { signIn, signInError, state } = useAuth();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [show, setShow] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const busy = state === 'signingIn';
 
-  const submit = (e: React.FormEvent) => {
+  const submit = (e: React.FormEvent): void => {
     e.preventDefault();
     if (busy || !username) return;
-    setBusy(true);
-    setError(null);
-    login(username, password)
-      .then(() => fetchSession())
-      .then(onSignedIn)
-      .catch((err: unknown) => {
-        setError(err instanceof Error ? err.message : 'Sign-in failed.');
-        setPassword(''); // clear the password but keep the username + focus for a quick retry
-      })
-      .finally(() => setBusy(false));
+    void signIn(username, password);
   };
 
   return (
@@ -69,7 +65,10 @@ export function SignIn({ onSignedIn }: { onSignedIn: (s: ISessionInfo) => void }
       >
         {busy ? 'Signing in…' : 'Sign in'}
       </button>
-      {error && <span className="chip chip--caution">{error}</span>}
+      {signInError && <span className="chip chip--caution">{signInError}</span>}
+      <a className="signin__fallback" href={`${SK_ROOT}/admin/#/login`}>
+        Go to Signal K to sign in
+      </a>
     </form>
   );
 }

@@ -67,7 +67,7 @@ function authChipText(state: AuthState, username?: string): string {
  */
 function AppShell() {
   const [route, navigate] = useHashRoute();
-  const { state: authState, session, username, reprobe, adoptSession } = useAuth();
+  const { state: authState, session, username, reprobe } = useAuth();
   const [mob, setMob] = useState<IMobStatus | null>(null);
   const [vessel, setVessel] = useState<IVesselState | null>(null);
   const [alerts, setAlerts] = useState<Record<string, IAlert>>({});
@@ -179,9 +179,14 @@ function AppShell() {
       {authChipText(authState, username)}
     </span>
   );
-  // The in-app sign-in surface appears for a cold sign-in and for a lapsed session (state 7 gets its
-  // dedicated non-modal treatment in Phase 2; for now both reuse the calm SignIn banner).
-  const showSignIn = authState === 'signinRequired' || authState === 'reauth';
+  // The in-app sign-in surface appears for a cold sign-in and a lapsed session, and stays up while a
+  // submit is in flight or after it failed (state 7 gets its dedicated non-modal treatment later; for
+  // now both reuse the calm SignIn banner).
+  const showSignIn =
+    authState === 'signinRequired' ||
+    authState === 'reauth' ||
+    authState === 'signingIn' ||
+    authState === 'signinFailed';
 
   return (
     <div className="shell">
@@ -211,7 +216,7 @@ function AppShell() {
             </button>
           </div>
         )}
-        {showSignIn && <SignIn onSignedIn={adoptSession} />}
+        {showSignIn && <SignIn />}
         {route.cluster === 'live' &&
           (route.id ? (
             <CameraFocus cameraId={route.id} onBack={() => navigate('live')} />

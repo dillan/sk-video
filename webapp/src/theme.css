@@ -1093,6 +1093,13 @@ button.tile {
   font-size: 12px;
   cursor: pointer;
 }
+/* Low-prominence redirect fallback to Signal K's own login (neutral, never the blue primary). */
+.signin__fallback {
+  font-size: 12px;
+  color: var(--text-secondary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
 
 /* ---- Confirm dialog (destructive/deliberate actions, e.g. sign out) ---- */
 .confirm {
