@@ -39,9 +39,9 @@ describe('ReAuth (state 7)', () => {
   it('disables the form while signing in', () => {
     authMock.current = { signIn: vi.fn(), signInError: null, state: 'signingIn' };
     render(<ReAuth />);
-    expect((screen.getByRole('button', { name: 'Signing in…' }) as HTMLButtonElement).disabled).toBe(
-      true,
-    );
+    expect(
+      (screen.getByRole('button', { name: 'Signing in…' }) as HTMLButtonElement).disabled,
+    ).toBe(true);
   });
 
   it('shows the provider error after a failed attempt', () => {
