@@ -102,6 +102,11 @@
   box-shadow: inset 0 0 0 1px rgba(255, 129, 89, 0.3);
   color: var(--accent-bright);
 }
+[data-theme='night'] .chip--online {
+  /* no green at sea — remap the "open server" chip to the amber family (color is already tokenised) */
+  background: rgba(255, 159, 10, 0.12);
+  box-shadow: inset 0 0 0 1px rgba(255, 159, 10, 0.3);
+}
 /* Hardcoded blue/green fills survive the token swap, so each gets an explicit red-orange remap.
  * Faint white fills (≤8% alpha) read as neutral gray on near-black and are left alone. */
 [data-theme='night'] .navitem[aria-current='page'] {
@@ -507,6 +512,24 @@ body {
 .chip--neutral {
   background: rgba(255, 255, 255, 0.05);
   color: var(--text-secondary);
+}
+/* Auth chip: green "open server" and slate "offline". */
+.chip--online {
+  background: rgba(52, 199, 89, 0.1);
+  box-shadow: inset 0 0 0 1px rgba(52, 199, 89, 0.28);
+  color: var(--status-online);
+  font-weight: 600;
+}
+.chip--offline {
+  background: rgba(255, 255, 255, 0.04);
+  box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.28);
+  color: #94a3b8;
+}
+.authchip__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--status-online);
 }
 .chip--alarm {
   background: rgba(229, 52, 42, 0.16);

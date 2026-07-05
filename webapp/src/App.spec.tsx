@@ -150,7 +150,7 @@ describe('App shell', () => {
     const at = (v: string) => ({ securityEnabled: false, authenticated: true, pluginVersion: v });
     mockApi({ sessions: [at('1.0.0'), at('1.1.0')] });
     render(<App />);
-    await waitFor(() => expect(screen.getByText('open server')).toBeTruthy()); // first /session done
+    await waitFor(() => expect(screen.getByText('Open server')).toBeTruthy()); // first /session done
     fireEvent(document, new Event('visibilitychange'));
     await waitFor(() =>
       expect(screen.getByText(/SK Video was updated — reload for the new version/)).toBeTruthy(),
@@ -162,7 +162,7 @@ describe('App shell', () => {
     const at = (v: string) => ({ securityEnabled: false, authenticated: true, pluginVersion: v });
     mockApi({ sessions: [at('1.0.0'), at('1.0.0')] });
     render(<App />);
-    await waitFor(() => expect(screen.getByText('open server')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('Open server')).toBeTruthy());
     fireEvent(document, new Event('visibilitychange'));
     // Let the recheck settle, then assert the prompt never appeared.
     await waitFor(() =>

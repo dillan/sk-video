@@ -21,8 +21,8 @@ import {
   type TStreamState,
 } from './lib/sk-stream';
 import { AuthProvider, useAuth } from './lib/auth';
-import type { AuthState } from './lib/auth-state';
 import { NavRail, TabBar } from './components/Nav';
+import { AuthChip } from './components/AuthChip';
 import { SignIn } from './components/SignIn';
 import { ReAuth } from './components/ReAuth';
 import { ReadOnlyRibbon } from './components/ReadOnlyRibbon';
@@ -38,28 +38,6 @@ import { Library } from './screens/Library';
 /** Refresh cadence for the recording tally (a light read; the strip only shows a count). */
 const RECORDING_REFRESH_MS = 60_000;
 
-/** The auth-chip text for a posture. Phase 2 layers the per-state colour treatment on top. */
-function authChipText(state: AuthState, username?: string): string {
-  switch (state) {
-    case 'open':
-      return 'open server';
-    case 'signedIn':
-      return username ? `${username} · full control` : 'secured · signed in';
-    case 'readonly':
-      return 'secured · read-only';
-    case 'signinRequired':
-    case 'signingIn':
-    case 'signinFailed':
-      return 'secured · sign in required';
-    case 'reauth':
-      return 'session expired';
-    case 'unreachable':
-      return 'offline';
-    default:
-      return 'checking…';
-  }
-}
-
 /**
  * The Deference app shell: a side rail (tablet/desktop) or bottom tab bar (phone) around the active
  * screen. Live is the hero. Session/auth is owned by the AuthProvider (one source of truth, one
@@ -69,7 +47,7 @@ function authChipText(state: AuthState, username?: string): string {
  */
 function AppShell() {
   const [route, navigate] = useHashRoute();
-  const { state: authState, session, username, everLoggedIn, reprobe } = useAuth();
+  const { state: authState, session, everLoggedIn, reprobe } = useAuth();
   const [mob, setMob] = useState<IMobStatus | null>(null);
   const [vessel, setVessel] = useState<IVesselState | null>(null);
   const [alerts, setAlerts] = useState<Record<string, IAlert>>({});
@@ -176,11 +154,6 @@ function AppShell() {
     return () => stream.stop();
   }, [reseedMob, reprobe]);
 
-  const authChip = (
-    <span className="chip chip--neutral" title="Authentication">
-      {authChipText(authState, username)}
-    </span>
-  );
   // A lapsed session gets the dedicated non-modal re-auth banner (state 7); a cold, never-signed-in
   // load gets the calm sign-in. While a submit is in flight or after it failed, everLoggedIn keeps us
   // on the right surface (re-auth for a returning operator, sign-in for a first-timer).
@@ -190,7 +163,7 @@ function AppShell() {
 
   return (
     <div className="shell">
-      <NavRail current={route.cluster} onNavigate={(c) => navigate(c)} authChip={authChip} />
+      <NavRail current={route.cluster} onNavigate={(c) => navigate(c)} />
       <div className="content">
         <div className="shellstrip">
           <TelemetryStrip
@@ -202,6 +175,7 @@ function AppShell() {
             lastSyncAt={lastSyncAt}
             stale={showReauth}
           />
+          <AuthChip />
         </div>
         <SafetyBanner alerts={alerts} />
         {authState === 'readonly' && <ReadOnlyRibbon />}

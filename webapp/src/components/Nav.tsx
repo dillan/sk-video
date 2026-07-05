@@ -1,4 +1,4 @@
-import type { ComponentType, ReactNode, SVGProps } from 'react';
+import type { ComponentType, SVGProps } from 'react';
 import type { Cluster } from '../lib/router';
 import { LiveIcon, LibraryIcon, CamerasIcon, SafetyIcon, SettingsIcon } from './icons';
 
@@ -41,7 +41,7 @@ function NavButtons({ current, onNavigate }: NavProps) {
 }
 
 /** Side rail — shown on tablet/desktop (CSS hides it on phones). */
-export function NavRail(props: NavProps & { authChip?: ReactNode }) {
+export function NavRail(props: NavProps) {
   return (
     <nav className="rail" aria-label="Primary">
       <img
@@ -54,8 +54,6 @@ export function NavRail(props: NavProps & { authChip?: ReactNode }) {
       <div className="rail__items">
         <NavButtons {...props} />
       </div>
-      <div className="page-head__spacer" />
-      {props.authChip}
     </nav>
   );
 }
