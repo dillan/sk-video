@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { THEMES, THEME_LABELS, type Theme } from '../lib/theme';
 import { DENSITIES, DENSITY_LABELS, type Density } from '../lib/density';
 import { loadContinuousPtz, saveContinuousPtz } from '../lib/ptz-prefs';
+import { useAuth } from '../lib/auth';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import { SafetyAlerts } from './SafetyAlerts';
 import { OperationalSettings } from './OperationalSettings';
 
@@ -19,11 +21,16 @@ interface Props {
  */
 export function Settings({ theme, onTheme, density, onDensity }: Props) {
   const [continuousPtz, setContinuousPtz] = useState(() => loadContinuousPtz());
+  const { state: authState, session, username, userLevel, signOut } = useAuth();
+  const [confirmSignOut, setConfirmSignOut] = useState(false);
   const toggleContinuous = (): void => {
     const next = !continuousPtz;
     setContinuousPtz(next);
     saveContinuousPtz(next);
   };
+  // Sign-out only makes sense on a secured server where this device holds a session.
+  const showSession =
+    session?.securityEnabled === true && (authState === 'signedIn' || authState === 'readonly');
   return (
     <div className="settings">
       <header className="page-head">
@@ -93,9 +100,42 @@ export function Settings({ theme, onTheme, density, onDensity }: Props) {
         </button>
       </section>
 
+      {showSession && (
+        <section className="panel">
+          <h2 className="panel__title">Session</h2>
+          <p className="muted">
+            Signed in with your Signal K credentials
+            {username ? ` as ${username}` : ''}
+            {userLevel ? ` (${userLevel})` : ''}. Signing out returns this device to the sign-in
+            screen; the live feed keeps running for everyone else on this server.
+          </p>
+          <button
+            type="button"
+            className="iconbtn iconbtn--wide"
+            onClick={() => setConfirmSignOut(true)}
+          >
+            Sign out
+          </button>
+        </section>
+      )}
+
       <SafetyAlerts />
 
       <OperationalSettings />
+
+      {confirmSignOut && (
+        <ConfirmDialog
+          title="Sign out of SK Video?"
+          body="Returns to the sign-in screen. The live feed keeps running for everyone else on this server."
+          confirmLabel="Sign out"
+          cancelLabel="Stay signed in"
+          onConfirm={() => {
+            setConfirmSignOut(false);
+            void signOut();
+          }}
+          onCancel={() => setConfirmSignOut(false)}
+        />
+      )}
     </div>
   );
 }
