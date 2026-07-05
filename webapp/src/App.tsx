@@ -1,13 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  fetchSession,
   fetchMobStatus,
   fetchVesselSelf,
   fetchStatus,
   fetchRecordingTimeline,
-  describeAuth,
   SK_ROOT,
-  type ISessionInfo,
   type IMobStatus,
 } from './api';
 import { useHashRoute } from './lib/router';
@@ -23,6 +20,8 @@ import {
   type IAlert,
   type TStreamState,
 } from './lib/sk-stream';
+import { AuthProvider, useAuth } from './lib/auth';
+import type { AuthState } from './lib/auth-state';
 import { NavRail, TabBar } from './components/Nav';
 import { SignIn } from './components/SignIn';
 import { SafetyBanner } from './components/SafetyBanner';
@@ -37,17 +36,38 @@ import { Library } from './screens/Library';
 /** Refresh cadence for the recording tally (a light read; the strip only shows a count). */
 const RECORDING_REFRESH_MS = 60_000;
 
+/** The auth-chip text for a posture. Phase 2 layers the per-state colour treatment on top. */
+function authChipText(state: AuthState, username?: string): string {
+  switch (state) {
+    case 'open':
+      return 'open server';
+    case 'signedIn':
+      return username ? `${username} · full control` : 'secured · signed in';
+    case 'readonly':
+      return 'secured · read-only';
+    case 'signinRequired':
+    case 'signingIn':
+    case 'signinFailed':
+      return 'secured · sign in required';
+    case 'reauth':
+      return 'session expired';
+    case 'unreachable':
+      return 'offline';
+    default:
+      return 'checking…';
+  }
+}
+
 /**
  * The Deference app shell: a side rail (tablet/desktop) or bottom tab bar (phone) around the active
- * screen. Live is the hero. Session, vessel state, MOB, and safety alerts are shell-level concerns:
- * one Signal K delta stream feeds a PERSISTENT status strip (GPS fix, heading/SOG, MOB with its
- * armed-at stamp, reconnecting state) and the reserved safety escalation banner on every screen.
- * On every (re)connect the shell reseeds GET /mob before trusting deltas, so a reconnect can never
- * silently under-report an active MOB.
+ * screen. Live is the hero. Session/auth is owned by the AuthProvider (one source of truth, one
+ * re-probe-and-branch on any 401/403); vessel state, MOB, and safety alerts are shell concerns fed by
+ * one Signal K delta stream. On every (re)connect the shell reseeds GET /mob and re-probes /session
+ * before trusting deltas, so a reconnect can never silently under-report an active MOB or a lapse.
  */
-export function App() {
+function AppShell() {
   const [route, navigate] = useHashRoute();
-  const [session, setSession] = useState<ISessionInfo | null>(null);
+  const { state: authState, session, username, reprobe, adoptSession } = useAuth();
   const [mob, setMob] = useState<IMobStatus | null>(null);
   const [vessel, setVessel] = useState<IVesselState | null>(null);
   const [alerts, setAlerts] = useState<Record<string, IAlert>>({});
@@ -57,8 +77,6 @@ export function App() {
   const [recording, setRecording] = useState(0);
   const [theme, setTheme] = useState<Theme>(() => loadTheme());
   const [density, setDensity] = useState<Density>(() => loadDensity());
-  // True once /session reports a pluginVersion different from the one this shell first saw — the
-  // served bundle has moved on and only a reload picks it up.
   const [staleShell, setStaleShell] = useState(false);
   const firstVersion = useRef<string | null>(null);
   const mobRef = useRef<IMobStatus | null>(null);
@@ -80,15 +98,9 @@ export function App() {
       .catch(() => undefined);
   }, []);
 
+  // Seed the shell's non-auth state on mount (the AuthProvider owns the /session probe).
   useEffect(() => {
     const ctrl = new AbortController();
-    // Best-effort: a failed probe just leaves the chip "checking…" and the strip without MOB state.
-    fetchSession(ctrl.signal)
-      .then((s) => {
-        setSession(s);
-        firstVersion.current ??= s.pluginVersion;
-      })
-      .catch(() => undefined);
     reseedMob();
     fetchVesselSelf(ctrl.signal)
       .then((raw) => setVessel(parseVesselState(raw)))
@@ -109,35 +121,38 @@ export function App() {
     };
   }, [reseedMob]);
 
-  // A long-lived tab (a helm display, a phone left open) can outlive a plugin update; on tab
-  // foreground, recheck /session and offer a reload when the served pluginVersion no longer matches
-  // the shell that's running. Non-modal on purpose — a stale shell still works, it's just old.
+  // A long-lived tab (a helm display) can outlive a plugin update: when the served pluginVersion
+  // changes, offer a non-modal reload. The stale shell keeps working meanwhile.
+  useEffect(() => {
+    const v = session?.pluginVersion;
+    if (!v || v === 'unknown') return;
+    if (firstVersion.current === null) {
+      firstVersion.current = v;
+    } else if (v !== firstVersion.current) {
+      setStaleShell(true);
+    }
+  }, [session?.pluginVersion]);
+
+  // On tab foreground, re-probe /session (picks up a plugin update and any silent session change).
   useEffect(() => {
     const onVisible = (): void => {
-      if (document.visibilityState !== 'visible') return;
-      fetchSession()
-        .then((s) => {
-          setSession(s);
-          firstVersion.current ??= s.pluginVersion;
-          if (s.pluginVersion !== firstVersion.current) setStaleShell(true);
-        })
-        .catch(() => undefined);
+      if (document.visibilityState === 'visible') void reprobe();
     };
     document.addEventListener('visibilitychange', onVisible);
     return () => document.removeEventListener('visibilitychange', onVisible);
-  }, []);
+  }, [reprobe]);
 
   // The one delta stream for the whole shell (vessel + notifications). Unit tests skip it (node's
-  // global WebSocket would attempt real connections under jsdom); the strip then runs on the REST
-  // seeds alone, which the tests exercise — the live stream is covered by the e2e harness.
+  // global WebSocket would attempt real connections under jsdom); the strip then runs on REST seeds.
   useEffect(() => {
     if (typeof WebSocket === 'undefined' || import.meta.env.MODE === 'test') return;
     const stream = new SkStream({
       url: streamUrl(window.location, SK_ROOT),
       onState: setLink,
       onConnect: () => {
-        // Authoritative reseed BEFORE trusting deltas (the plan's reconnect rule).
+        // Authoritative reseed AND a session re-probe BEFORE trusting deltas (the reconnect rule).
         reseedMob();
+        void reprobe();
         setLastSyncAt(Date.now());
       },
       onDelta: (values) => {
@@ -157,14 +172,16 @@ export function App() {
     });
     stream.start();
     return () => stream.stop();
-  }, [reseedMob]);
+  }, [reseedMob, reprobe]);
 
   const authChip = (
     <span className="chip chip--neutral" title="Authentication">
-      {describeAuth(session)}
+      {authChipText(authState, username)}
     </span>
   );
-  const signInRequired = session?.securityEnabled === true && session.authenticated === false;
+  // The in-app sign-in surface appears for a cold sign-in and for a lapsed session (state 7 gets its
+  // dedicated non-modal treatment in Phase 2; for now both reuse the calm SignIn banner).
+  const showSignIn = authState === 'signinRequired' || authState === 'reauth';
 
   return (
     <div className="shell">
@@ -194,7 +211,7 @@ export function App() {
             </button>
           </div>
         )}
-        {signInRequired && <SignIn onSignedIn={setSession} />}
+        {showSignIn && <SignIn onSignedIn={adoptSession} />}
         {route.cluster === 'live' &&
           (route.id ? (
             <CameraFocus cameraId={route.id} onBack={() => navigate('live')} />
@@ -212,5 +229,13 @@ export function App() {
       </div>
       <TabBar current={route.cluster} onNavigate={(c) => navigate(c)} />
     </div>
+  );
+}
+
+export function App() {
+  return (
+    <AuthProvider>
+      <AppShell />
+    </AuthProvider>
   );
 }
