@@ -123,7 +123,7 @@ import { validateTriggerRequest } from './incidents/incident-validation';
 import { go2rtcApiUrl } from './gateway/go2rtc-proxy';
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { readFile as fsReadFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -234,6 +234,10 @@ export = function (app: ServerAPI): Plugin {
   const cameraOnlineNow = new Map<string, boolean>();
   // While go2rtc is down the status line shows the error; the poll must not paint "Ready" over it.
   let gatewayDegraded = false;
+  // The streaming helper (go2rtc) is pre-warmed on start so the first camera is instant. 'pending'
+  // while the one-time download runs; 'offline' if the server had no internet yet (the gateway
+  // retries when a camera needs it); 'ready' once present. Drives a calm, no-action status line.
+  let go2rtcSetup: 'ready' | 'pending' | 'offline' = 'ready';
   let frigateClient: FrigateClient | null = null;
   let frigateMqtt: IMqttConnection | null = null;
   // Live broker-link state so the console can say "Frigate not connected" instead of implying
@@ -353,17 +357,55 @@ export = function (app: ServerAPI): Plugin {
    * streaming/dark counts at a glance. Per-camera detail lives in the data model (cameras.<id>.*).
    */
   function readyStatus(): string {
+    if (go2rtcSetup === 'pending') {
+      // A calm, no-action message while the one-time helper download runs on first enable.
+      return 'Setting up video — one-time setup, no action needed…';
+    }
     const ids = cameras ? Object.keys(cameras.list()) : [];
     let streaming = 0;
     for (const id of ids) {
       if (cameraOnlineNow.get(id)) streaming += 1;
     }
-    return statusLine({
+    const line = statusLine({
       cameras: ids.length,
       streaming,
       dark: watchdog?.alarmedCameras().length ?? 0,
       tier: hardware ? describeTier(hardware) : undefined,
     });
+    return go2rtcSetup === 'offline'
+      ? `${line} · video helper finishes setup when the server is online`
+      : line;
+  }
+
+  /**
+   * Pre-warm the streaming helper (go2rtc) the moment the plugin is switched on, so the operator's
+   * first camera starts instantly instead of waiting on a one-time download. Non-blocking and
+   * fail-soft: an already-present binary is used as-is; if the server is offline right now, the
+   * gateway fetches it later when a camera needs it. Nothing is asked of the operator — the status
+   * line just reads "setting up" briefly, never a permission or an "allow" prompt.
+   */
+  function prewarmGo2rtc(binary: Go2rtcBinaryManager): void {
+    if (existsSync(binary.binaryPath)) {
+      go2rtcSetup = 'ready'; // already downloaded on a prior run (or placed for an offline install)
+      return;
+    }
+    go2rtcSetup = 'pending';
+    app.setPluginStatus(readyStatus());
+    void binary
+      .ensure()
+      .then(() => {
+        go2rtcSetup = 'ready';
+        log('video helper ready');
+      })
+      .catch((err: unknown) => {
+        go2rtcSetup = 'offline';
+        log(
+          `video helper will finish setup when online: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      })
+      .finally(() => {
+        if (!gatewayDegraded) app.setPluginStatus(readyStatus()); // never paint over a live error
+      });
   }
 
   // A1 (experimental): turn one Frigate person detection into a small bounded relativeMove nudge on
@@ -445,9 +487,10 @@ export = function (app: ServerAPI): Plugin {
         hardware = detectHardware({ override });
         cameras = new CameraStore(new FileCameraPersistence(dataDir));
         credentials = new CredentialStore(new FileCredentialPersistence(dataDir));
+        const go2rtcBinary = new Go2rtcBinaryManager({ dataDir, log });
         gateway = new Go2rtcGateway({
           dataDir,
-          binary: new Go2rtcBinaryManager({ dataDir, log }),
+          binary: go2rtcBinary,
           process: new Go2rtcProcess({
             log,
             // go2rtc keeps retrying on its own; surface a down/recovered status so a silent gateway
@@ -460,6 +503,7 @@ export = function (app: ServerAPI): Plugin {
             },
             onHealthy: () => {
               gatewayDegraded = false;
+              go2rtcSetup = 'ready'; // the helper is running, so any pending/failed setup is now done
               app.setPluginStatus(readyStatus());
             },
           }),
@@ -1218,6 +1262,9 @@ export = function (app: ServerAPI): Plugin {
         });
 
         started = true;
+        // Pre-warm the streaming helper now, so the operator's first camera is instant rather than
+        // waiting on a one-time download (and the status reads a calm "setting up", never a prompt).
+        prewarmGo2rtc(go2rtcBinary);
         app.setPluginStatus(readyStatus());
         scheduleSync(); // start go2rtc if cameras are already configured
 
