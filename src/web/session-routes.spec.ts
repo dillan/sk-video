@@ -4,34 +4,75 @@ import { describeSession, registerSessionRoute } from './session-routes';
 import type { ISecurityStrategy } from '../security/request-auth';
 
 describe('describeSession', () => {
-  it('reports an open server: security off, request allowed', () => {
+  it('reports an open server: security off, request allowed and writable', () => {
     expect(describeSession(undefined, {}, '1.2.3')).toEqual({
       securityEnabled: false,
       authenticated: true,
       readOnly: false,
+      loggedIn: true,
+      canWrite: true,
+      anonymous: false,
       pluginVersion: '1.2.3',
     });
     expect(describeSession({ isDummy: () => true }, {}, '1.2.3').securityEnabled).toBe(false);
   });
 
-  it('reports a secured server with an authenticated principal', () => {
+  it('reports a secured server with an authenticated (writable) principal', () => {
     const strategy: ISecurityStrategy = { isDummy: () => false };
     expect(describeSession(strategy, { skPrincipal: { id: 'alice' } }, '1.2.3')).toEqual({
       securityEnabled: true,
       authenticated: true,
       readOnly: false,
+      loggedIn: true,
+      canWrite: true,
+      anonymous: false,
       pluginVersion: '1.2.3',
     });
   });
 
-  it('flags a known read-only principal so the app can disable write controls', () => {
+  it('flags a logged-in read-only principal (write controls off, remedy = ask admin)', () => {
     const strategy: ISecurityStrategy = { isDummy: () => false };
     const session = describeSession(
       strategy,
       { skPrincipal: { identifier: 'guest', permissions: 'readonly' } },
       '1.2.3',
     );
-    expect(session).toMatchObject({ authenticated: true, readOnly: true });
+    expect(session).toMatchObject({
+      authenticated: true,
+      readOnly: true,
+      loggedIn: true,
+      canWrite: false,
+      anonymous: false,
+    });
+  });
+
+  it('flags the anonymous AUTO readonly principal (allow_readonly, remedy = sign in)', () => {
+    const strategy: ISecurityStrategy = { isDummy: () => false };
+    const session = describeSession(
+      strategy,
+      { skPrincipal: { identifier: 'AUTO', permissions: 'readonly' } },
+      '1.2.3',
+    );
+    expect(session).toMatchObject({
+      readOnly: true,
+      loggedIn: false,
+      canWrite: false,
+      anonymous: true,
+    });
+  });
+
+  it('surfaces the identity (username + level) when the strategy exposes it', () => {
+    const strategy: ISecurityStrategy = {
+      isDummy: () => false,
+      getLoginStatus: () => ({ status: 'loggedIn', username: 'skipper', userLevel: 'admin' }),
+    };
+    const session = describeSession(strategy, { skPrincipal: { identifier: 'skipper' } }, '1.2.3');
+    expect(session).toMatchObject({
+      loggedIn: true,
+      canWrite: true,
+      username: 'skipper',
+      userLevel: 'admin',
+    });
   });
 
   it('reports a secured server with an unauthenticated request', () => {
@@ -40,6 +81,9 @@ describe('describeSession', () => {
       securityEnabled: true,
       authenticated: false,
       readOnly: false,
+      loggedIn: false,
+      canWrite: false,
+      anonymous: false,
       pluginVersion: '1.2.3',
     });
   });
@@ -76,6 +120,9 @@ describe('registerSessionRoute', () => {
       securityEnabled: false,
       authenticated: true,
       readOnly: false,
+      loggedIn: true,
+      canWrite: true,
+      anonymous: false,
       pluginVersion: '1.1.0',
     });
   });
@@ -86,6 +133,9 @@ describe('registerSessionRoute', () => {
       securityEnabled: true,
       authenticated: false,
       readOnly: false,
+      loggedIn: false,
+      canWrite: false,
+      anonymous: false,
       pluginVersion: '1.1.0',
     });
   });
