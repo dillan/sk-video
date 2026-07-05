@@ -125,7 +125,17 @@
 /* Library playback (recordings / incidents / uploaded videos / snapshots) gets the same luminance
  * cap as the live player — a bright recorded frame blows out night vision exactly like a live one.
  * This covers the video grid's thumbnails/hover previews and the full-screen modal player too. */
-[data-theme='night'] :is(.vidrow__player, .vidmodal__player, .vidtile__thumb video, .snap__img) {
+[data-theme='night']
+  :is(
+    .vidrow__player,
+    .vidmodal__player,
+    .vidtile__thumb video,
+    .asset__thumb video,
+    .asset__thumb img,
+    .inctile__thumb img,
+    .incident__thumb,
+    .snap__img
+  ) {
   filter: brightness(0.4);
 }
 /* Cool-gray and white chrome floating over video moves onto the warm text ramp (no white at sea). */
@@ -840,6 +850,32 @@ button.tile {
   justify-content: space-between;
   gap: 12px;
 }
+.asset__thumb {
+  flex: 0 0 auto;
+  width: 72px;
+  height: 44px;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--video-mat);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.asset__thumb video,
+.asset__thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.asset__thumb-icon {
+  font-size: 20px;
+  opacity: 0.7;
+}
+.asset__body {
+  flex: 1;
+  min-width: 0;
+}
 .asset__name {
   font-weight: 600;
   text-transform: capitalize;
@@ -861,6 +897,90 @@ button.tile {
   font: inherit;
   text-align: left;
   color: var(--text-primary);
+}
+.incident__thumb {
+  flex: 0 0 auto;
+  width: 84px;
+  height: 48px;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+  background: var(--video-mat);
+}
+.incident__thumb--none {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  opacity: 0.6;
+}
+/* Incident poster grid (Library → Incidents, grid view). */
+.inc-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 14px;
+}
+.inctile {
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--panel, var(--surface-1));
+  box-shadow: var(--shadow-1, 0 1px 2px rgba(0, 0, 0, 0.2));
+}
+.inctile__thumb {
+  position: relative;
+  display: block;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  background: var(--video-mat);
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+}
+.inctile__thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.inctile__noposter {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 30px;
+  opacity: 0.5;
+}
+.inctile__status {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+}
+.inctile__pin {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  font-size: 14px;
+}
+.inctile__label {
+  padding: 8px 10px 10px;
+}
+.inctile__when {
+  font-weight: 600;
+  font-size: 13px;
+}
+.inctile__meta {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .snapgrid {
   display: grid;
@@ -2330,4 +2450,13 @@ button.tile {
   top: 16px;
   right: 16px;
   z-index: 2;
+}
+
+/* Grid/list segmented control for collection views (Videos, Incidents). */
+.viewtoggle {
+  display: inline-flex;
+  gap: 4px;
+}
+.viewtoggle .iconbtn {
+  padding: 6px 8px;
 }

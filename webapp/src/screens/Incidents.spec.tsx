@@ -97,6 +97,12 @@ describe('Incidents', () => {
   });
 
   it('defaults to a grid of poster thumbnails and toggles to a list, remembering the choice', async () => {
+    // This jsdom setup has no working localStorage; stub one so the persistence is observable.
+    const store = new Map<string, string>();
+    vi.stubGlobal('localStorage', {
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => void store.set(k, v),
+    });
     mockApi();
     const { unmount } = render(<Incidents />);
     await waitFor(() => expect(screen.getByText('PARTIAL')).toBeTruthy());
@@ -105,10 +111,11 @@ describe('Incidents', () => {
     const poster = document.querySelector('.inctile__thumb img') as HTMLImageElement;
     expect(poster.getAttribute('src')).toContain('/incidents/inc1/assets/a1');
 
-    // Switch to the list view — persisted per view.
+    // Switch to the list view — persisted per view under its own key.
     fireEvent.click(screen.getByRole('button', { name: /list view/i }));
     expect(document.querySelector('.inc-grid')).toBeNull();
     expect(document.querySelector('.vidlist')).toBeTruthy();
+    expect(store.get('sk-video.view.incidents')).toBe('list');
 
     // Re-mounting (navigating back) restores the last-used list view.
     unmount();
@@ -117,6 +124,7 @@ describe('Incidents', () => {
     await waitFor(() => expect(screen.getByText('PARTIAL')).toBeTruthy());
     expect(document.querySelector('.vidlist')).toBeTruthy();
     expect(document.querySelector('.inc-grid')).toBeNull();
+    vi.unstubAllGlobals();
   });
 
   it('shows a placeholder tile when a bundle has no poster asset', async () => {

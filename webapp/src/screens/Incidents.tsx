@@ -14,6 +14,8 @@ import {
   type TIncidentStatus,
 } from '../api';
 import { formatBytes, formatClock } from '../lib/format';
+import { useViewMode } from '../lib/view-mode';
+import { ViewToggle } from '../components/ViewToggle';
 
 interface Msg {
   kind: 'caution' | 'info';
@@ -47,10 +49,17 @@ function AssetRow({ id, asset }: { id: string; asset: IIncidentAsset }) {
   const [open, setOpen] = useState(false);
   const url = incidentAssetUrl(id, asset.id);
   const who = asset.cameraId ?? 'vessel';
+  const visual = asset.kind === 'clip' || asset.kind === 'snapshot';
   return (
     <li className="panel asset">
       <div className="asset__head">
-        <div>
+        {/* Inline thumbnail: a clip shows its first frame, a snapshot its image; telemetry has none. */}
+        <div className="asset__thumb" aria-hidden="true">
+          {asset.kind === 'clip' && <video src={url} muted preload="metadata" tabIndex={-1} />}
+          {asset.kind === 'snapshot' && <img src={url} alt="" />}
+          {asset.kind === 'telemetry' && <span className="asset__thumb-icon">📄</span>}
+        </div>
+        <div className="asset__body">
           <div className="asset__name">
             {asset.kind} · {who}
           </div>
@@ -59,21 +68,17 @@ function AssetRow({ id, asset }: { id: string; asset: IIncidentAsset }) {
             {asset.coverage && !asset.coverage.contiguous ? ' · spans a gap' : ''}
           </div>
         </div>
-        {asset.kind === 'telemetry' ? (
+        {visual ? (
+          <button type="button" className="iconbtn iconbtn--wide" onClick={() => setOpen((o) => !o)}>
+            {open ? 'Hide' : 'View'}
+          </button>
+        ) : (
           <button
             type="button"
             className="iconbtn iconbtn--wide"
             onClick={() => window.open(url, '_blank', 'noopener')}
           >
             Open
-          </button>
-        ) : (
-          <button
-            type="button"
-            className="iconbtn iconbtn--wide"
-            onClick={() => setOpen((o) => !o)}
-          >
-            {open ? 'Hide' : 'View'}
           </button>
         )}
       </div>
@@ -97,6 +102,7 @@ export function Incidents() {
   const [detail, setDetail] = useState<IIncidentBundle | null>(null);
   const [msg, setMsg] = useState<Msg | null>(null);
   const [confirmDel, setConfirmDel] = useState(false);
+  const [view, setView] = useViewMode('incidents');
 
   const load = useCallback((signal?: AbortSignal) => {
     setErr(null);
@@ -271,7 +277,12 @@ export function Incidents() {
     );
   }
 
-  // ---- List view ----
+  // ---- List / grid view ----
+  const metaText = (inc: IIncidentListItem): string =>
+    `${(inc.cameras ?? []).join(', ') || '—'}${inc.failureCount ? ` · ${inc.failureCount} failed` : ''}${
+      inc.pinned ? ' · pinned' : ''
+    }`;
+
   return (
     <div className="settings">
       <header className="page-head">
@@ -279,6 +290,8 @@ export function Incidents() {
           <h1>Incidents</h1>
           <div className="page-head__sub">Best-effort evidence bundles</div>
         </div>
+        <div className="page-head__spacer" />
+        {list && list.length > 0 && <ViewToggle mode={view} onChange={setView} />}
       </header>
       <p className="muted">
         Evidence bundles from a manual “mark incident” or an auto-trigger — best-effort, never a
@@ -293,20 +306,59 @@ export function Incidents() {
           <p className="muted">Mark one from a camera or the Safety console.</p>
         </div>
       )}
-      {list && list.length > 0 && (
+      {list && list.length > 0 && view === 'grid' && (
+        <ul className="inc-grid">
+          {list.map((inc) => (
+            <li key={inc.id} className="inctile">
+              <button
+                type="button"
+                className="inctile__thumb"
+                aria-label={`Open incident — ${STATUS_LABEL[inc.status]}, ${metaText(inc)}`}
+                onClick={() => setSelected(inc.id)}
+              >
+                {inc.posterAssetId ? (
+                  <img src={incidentAssetUrl(inc.id, inc.posterAssetId)} alt="" />
+                ) : (
+                  <span className="inctile__noposter" aria-hidden="true">
+                    🎬
+                  </span>
+                )}
+                <span className={`chip ${STATUS_TONE[inc.status]} inctile__status`}>
+                  {STATUS_LABEL[inc.status]}
+                </span>
+                {inc.pinned && (
+                  <span className="inctile__pin" aria-label="pinned">
+                    📌
+                  </span>
+                )}
+              </button>
+              <div className="inctile__label">
+                <div className="inctile__when">{new Date(inc.createdAt).toLocaleString()}</div>
+                <div className="inctile__meta mono">{metaText(inc)}</div>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+      {list && list.length > 0 && view === 'list' && (
         <ul className="vidlist">
           {list.map((inc) => (
             <li key={inc.id} className="panel vidrow">
               <button type="button" className="incident__row" onClick={() => setSelected(inc.id)}>
-                <span className={`chip ${STATUS_TONE[inc.status]}`}>
-                  {STATUS_LABEL[inc.status]}
-                </span>
+                {inc.posterAssetId ? (
+                  <img
+                    className="incident__thumb"
+                    src={incidentAssetUrl(inc.id, inc.posterAssetId)}
+                    alt=""
+                  />
+                ) : (
+                  <span className="incident__thumb incident__thumb--none" aria-hidden="true">
+                    🎬
+                  </span>
+                )}
+                <span className={`chip ${STATUS_TONE[inc.status]}`}>{STATUS_LABEL[inc.status]}</span>
                 <span className="vidrow__name">{new Date(inc.createdAt).toLocaleString()}</span>
-                <span className="vidrow__meta mono">
-                  {(inc.cameras ?? []).join(', ') || '—'}
-                  {inc.failureCount ? ` · ${inc.failureCount} failed` : ''}
-                  {inc.pinned ? ' · pinned' : ''}
-                </span>
+                <span className="vidrow__meta mono">{metaText(inc)}</span>
               </button>
             </li>
           ))}
