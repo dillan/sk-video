@@ -82,7 +82,15 @@ test('a signed-in session passes the gate (cookie from /signalk/v1/auth/login)',
   expect(login.ok(), `login -> ${login.status()}`).toBeTruthy();
 
   const session = await ctx.get(`${P}/session`).then((r) => r.json());
-  expect(session).toMatchObject({ securityEnabled: true, authenticated: true, readOnly: false });
+  // The admin login is a real, writable principal — the enriched contract the web app gates on.
+  expect(session).toMatchObject({
+    securityEnabled: true,
+    authenticated: true,
+    readOnly: false,
+    loggedIn: true,
+    canWrite: true,
+    anonymous: false,
+  });
 
   // A representative mutating call now succeeds (and is cleaned up).
   const arm = await ctx.post(`${P}/mob`, { data: {} });
