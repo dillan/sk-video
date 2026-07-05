@@ -1,5 +1,19 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, screen, cleanup, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
+import { render, screen, cleanup, fireEvent, within } from '@testing-library/react';
+
+// Settings reads the auth posture (for the Session/sign-out panel) from the provider; mock it so the
+// screen can render standalone and we can drive each posture.
+const authMock = vi.hoisted(() => ({
+  current: {
+    state: 'open',
+    session: { securityEnabled: false } as Record<string, unknown> | null,
+    username: undefined as string | undefined,
+    userLevel: undefined as string | undefined,
+    signOut: vi.fn(),
+  },
+}));
+vi.mock('../lib/auth', () => ({ useAuth: () => authMock.current }));
+
 import { Settings } from './Settings';
 
 const props = {
@@ -9,6 +23,15 @@ const props = {
   onDensity: vi.fn(),
 };
 
+beforeEach(() => {
+  authMock.current = {
+    state: 'open',
+    session: { securityEnabled: false },
+    username: undefined,
+    userLevel: undefined,
+    signOut: vi.fn(),
+  };
+});
 afterEach(cleanup);
 
 describe('Settings', () => {
@@ -49,5 +72,38 @@ describe('Settings', () => {
     expect(screen.getByRole('button', { name: 'Continuous PTZ: on' })).toBeTruthy();
     // Real (test-setup-provided) localStorage — the pref persists device-locally.
     expect(localStorage.getItem('sk-video.ptz-continuous')).toBe('true');
+  });
+
+  it('hides the Session panel on an open server (no sign-in, nothing to sign out of)', () => {
+    render(<Settings {...props} />);
+    expect(screen.queryByRole('heading', { name: 'Session' })).toBeNull();
+  });
+
+  it('offers a low-prominence sign-out that confirms first (guards a mid-watch sign-out)', () => {
+    const signOut = vi.fn();
+    authMock.current = {
+      state: 'signedIn',
+      session: { securityEnabled: true },
+      username: 'skipper',
+      userLevel: 'admin',
+      signOut,
+    };
+    render(<Settings {...props} />);
+    expect(screen.getByRole('heading', { name: 'Session' })).toBeTruthy();
+    expect(screen.getByText(/skipper/)).toBeTruthy();
+
+    // Cancelling the confirm must NOT sign out.
+    fireEvent.click(screen.getByRole('button', { name: 'Sign out' }));
+    fireEvent.click(
+      within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Stay signed in' }),
+    );
+    expect(signOut).not.toHaveBeenCalled();
+
+    // Confirming does.
+    fireEvent.click(screen.getByRole('button', { name: 'Sign out' }));
+    fireEvent.click(
+      within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Sign out' }),
+    );
+    expect(signOut).toHaveBeenCalledTimes(1);
   });
 });
