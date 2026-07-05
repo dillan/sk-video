@@ -10,6 +10,7 @@ import {
   type ICameraEntry,
 } from '../api';
 import { VideoPlayer } from '../components/VideoPlayer';
+import { useWriteGate } from '../lib/auth';
 import { H264_TRANSPORTS } from '../lib/transport';
 
 interface Msg {
@@ -55,6 +56,9 @@ export function Safety({ onMobChange }: { onMobChange?: (s: IMobStatus) => void 
   const [cams, setCams] = useState<ICameraEntry[]>([]);
   const [msg, setMsg] = useState<Msg | null>(null);
   const holdRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Read-only: disable the safety write controls with an honest reason (the server refuses them
+  // anyway; disabling up front tells the operator to get an admin instead of failing mid-emergency).
+  const gate = useWriteGate('Safety controls need write access — ask an admin.');
 
   const apply = useCallback(
     (s: IMobStatus): void => {
@@ -152,7 +156,13 @@ export function Safety({ onMobChange }: { onMobChange?: (s: IMobStatus) => void 
             Arming aims every capable camera at the casualty’s position, drops a marker, raises the
             alarm, and starts recording.
           </p>
-          <button type="button" className="mob__arm" onClick={arm}>
+          <button
+            type="button"
+            className="mob__arm"
+            onClick={arm}
+            disabled={gate.disabled}
+            title={gate.title}
+          >
             Arm man overboard
           </button>
           {msg && <span className={`chip chip--${msg.kind}`}>{msg.text}</span>}
@@ -179,12 +189,20 @@ export function Safety({ onMobChange }: { onMobChange?: (s: IMobStatus) => void 
             armed {clock(status.armedAt)} · re-aiming every 3 s · last {clock(status.lastReaimAt)}
           </div>
         </div>
-        <button type="button" className="iconbtn iconbtn--wide" onClick={mark}>
+        <button
+          type="button"
+          className="iconbtn iconbtn--wide"
+          onClick={mark}
+          disabled={gate.disabled}
+          title={gate.title}
+        >
           Mark incident
         </button>
         <button
           type="button"
           className="iconbtn iconbtn--wide iconbtn--stop"
+          disabled={gate.disabled}
+          title={gate.title}
           onPointerDown={startHold}
           onPointerUp={cancelHold}
           onPointerLeave={cancelHold}
@@ -215,7 +233,13 @@ export function Safety({ onMobChange }: { onMobChange?: (s: IMobStatus) => void 
             Visual refine {refine.active ? 'active' : 'standby'} · NOT safety-rated
           </span>
         )}
-        <button type="button" className="btn" onClick={slewAll}>
+        <button
+          type="button"
+          className="btn"
+          onClick={slewAll}
+          disabled={gate.disabled}
+          title={gate.title}
+        >
           Slew all to AIS cue
         </button>
         {msg && <span className={`chip chip--${msg.kind}`}>{msg.text}</span>}
