@@ -3,28 +3,50 @@ import { fetchVideos, deleteVideo, videoUrl, ApiError, type IVideoAsset } from '
 import { formatBytes } from '../lib/format';
 import { uploadVideoResumable } from '../lib/resumable-upload';
 import { uploadAll, type IUploadHandle, type IUploadProgress } from '../lib/upload-queue';
+import { useViewMode, type ViewMode } from '../lib/view-mode';
+import { ViewToggle } from '../components/ViewToggle';
 
-/**
- * One video in the library grid: a muted inline <video> serves as both the still thumbnail
- * (its first frame, from preload="metadata") and the hover preview — mousing over it plays the
- * clip muted, leaving stops and rewinds. Clicking the thumbnail opens the full player; the red
- * trashcan (which never opens the player) asks for confirmation before deleting.
- */
-function VideoTile({
-  video,
-  confirming,
-  onPlay,
-  onAskDelete,
-  onConfirmDelete,
-  onCancelDelete,
-}: {
+interface VideoItemProps {
   video: IVideoAsset;
+  variant: ViewMode;
   confirming: boolean;
   onPlay: () => void;
   onAskDelete: () => void;
   onConfirmDelete: () => void;
   onCancelDelete: () => void;
-}) {
+}
+
+/** The shared confirm overlay + delete controls, identical in both layouts. */
+function DeleteConfirm({
+  confirming,
+  onConfirmDelete,
+  onCancelDelete,
+}: Pick<VideoItemProps, 'confirming' | 'onConfirmDelete' | 'onCancelDelete'>) {
+  if (!confirming) return null;
+  return (
+    <div className="vidtile__confirm">
+      <p>Delete this video?</p>
+      <div className="vidtile__confirm-actions">
+        <button type="button" className="iconbtn btn--danger" onClick={onConfirmDelete}>
+          Confirm delete
+        </button>
+        <button type="button" className="iconbtn" onClick={onCancelDelete}>
+          Keep
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * One video in the library. A muted inline <video> serves as both the still thumbnail (its first
+ * frame, from preload="metadata") and the hover preview — mousing over it plays the clip muted,
+ * leaving stops and rewinds. Clicking the thumbnail opens the full player; the red trashcan (which
+ * never opens the player) asks for confirmation before deleting. Renders as a grid tile or a
+ * compact list row depending on `variant`; the preview/confirm behaviour is shared.
+ */
+function VideoTile(props: VideoItemProps) {
+  const { video, variant, onPlay, onAskDelete } = props;
   const ref = useRef<HTMLVideoElement>(null);
   const preview = (on: boolean): void => {
     const el = ref.current;
@@ -38,58 +60,69 @@ function VideoTile({
     }
   };
 
-  return (
-    <li className="vidtile">
-      <button
-        type="button"
-        className="vidtile__thumb"
-        aria-label={`Play ${video.name}`}
-        onClick={onPlay}
-        onMouseEnter={() => preview(true)}
-        onMouseLeave={() => preview(false)}
-      >
-        <video
-          ref={ref}
-          src={videoUrl(video.id)}
-          muted
-          loop
-          playsInline
-          preload="metadata"
-          tabIndex={-1}
-        />
+  const thumb = (
+    <button
+      type="button"
+      className={variant === 'grid' ? 'vidtile__thumb' : 'vidrow-thumb__thumb'}
+      aria-label={`Play ${video.name}`}
+      onClick={onPlay}
+      onMouseEnter={() => preview(true)}
+      onMouseLeave={() => preview(false)}
+    >
+      <video
+        ref={ref}
+        src={videoUrl(video.id)}
+        muted
+        loop
+        playsInline
+        preload="metadata"
+        tabIndex={-1}
+      />
+      {variant === 'grid' && (
         <span className="vidtile__play" aria-hidden="true">
           ▶
         </span>
-      </button>
-      <button
-        type="button"
-        className="vidtile__trash"
-        aria-label={`Delete ${video.name}`}
-        onClick={onAskDelete}
-      >
-        🗑
-      </button>
-      <div className="vidtile__label">
-        <div className="vidtile__name" title={video.name}>
-          {video.name}
-        </div>
-        <div className="vidtile__meta mono">
-          {formatBytes(video.size)} · {new Date(video.createdAt).toLocaleDateString()}
-        </div>
-      </div>
-      {confirming && (
-        <div className="vidtile__confirm">
-          <p>Delete this video?</p>
-          <div className="vidtile__confirm-actions">
-            <button type="button" className="iconbtn btn--danger" onClick={onConfirmDelete}>
-              Confirm delete
-            </button>
-            <button type="button" className="iconbtn" onClick={onCancelDelete}>
-              Keep
-            </button>
-          </div>
-        </div>
       )}
+    </button>
+  );
+  const trash = (
+    <button
+      type="button"
+      className={variant === 'grid' ? 'vidtile__trash' : 'iconbtn vidrow-thumb__trash'}
+      aria-label={`Delete ${video.name}`}
+      onClick={onAskDelete}
+    >
+      🗑
+    </button>
+  );
+  const label = (
+    <>
+      <div className="vidtile__name" title={video.name}>
+        {video.name}
+      </div>
+      <div className="vidtile__meta mono">
+        {formatBytes(video.size)} · {new Date(video.createdAt).toLocaleDateString()}
+      </div>
+    </>
+  );
+
+  if (variant === 'list') {
+    return (
+      <li className="vidrow-thumb">
+        {thumb}
+        <div className="vidrow-thumb__label">{label}</div>
+        {trash}
+        <DeleteConfirm {...props} />
+      </li>
+    );
+  }
+
+  return (
+    <li className="vidtile">
+      {thumb}
+      {trash}
+      <div className="vidtile__label">{label}</div>
+      <DeleteConfirm {...props} />
     </li>
   );
 }
@@ -169,6 +202,7 @@ export function Videos() {
   const [playing, setPlaying] = useState<string | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
+  const [view, setView] = useViewMode('videos');
   const fileRef = useRef<HTMLInputElement>(null);
   const handleRef = useRef<IUploadHandle | null>(null);
   /** The last batch's File objects, by row index — what a per-file Retry re-sends. */
@@ -276,6 +310,7 @@ export function Videos() {
           <div className="page-head__sub">Kept separate from camera footage</div>
         </div>
         <div className="page-head__spacer" />
+        {videos && videos.length > 0 && <ViewToggle mode={view} onChange={setView} />}
         <button
           type="button"
           className="btn"
@@ -366,11 +401,12 @@ export function Videos() {
         </div>
       )}
       {videos && videos.length > 0 && (
-        <ul className="vidgrid">
+        <ul className={view === 'grid' ? 'vidgrid' : 'vidrow-thumb-list'}>
           {videos.map((v) => (
             <VideoTile
               key={v.id}
               video={v}
+              variant={view}
               confirming={confirmId === v.id}
               onPlay={() => setPlaying(v.id)}
               onAskDelete={() => setConfirmId(v.id)}

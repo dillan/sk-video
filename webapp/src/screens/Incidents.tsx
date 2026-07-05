@@ -69,7 +69,11 @@ function AssetRow({ id, asset }: { id: string; asset: IIncidentAsset }) {
           </div>
         </div>
         {visual ? (
-          <button type="button" className="iconbtn iconbtn--wide" onClick={() => setOpen((o) => !o)}>
+          <button
+            type="button"
+            className="iconbtn iconbtn--wide"
+            onClick={() => setOpen((o) => !o)}
+          >
             {open ? 'Hide' : 'View'}
           </button>
         ) : (
@@ -356,7 +360,9 @@ export function Incidents() {
                     🎬
                   </span>
                 )}
-                <span className={`chip ${STATUS_TONE[inc.status]}`}>{STATUS_LABEL[inc.status]}</span>
+                <span className={`chip ${STATUS_TONE[inc.status]}`}>
+                  {STATUS_LABEL[inc.status]}
+                </span>
                 <span className="vidrow__name">{new Date(inc.createdAt).toLocaleString()}</span>
                 <span className="vidrow__meta mono">{metaText(inc)}</span>
               </button>
