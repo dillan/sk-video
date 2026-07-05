@@ -15,6 +15,7 @@ import {
 } from '../api';
 import { formatBytes, formatClock } from '../lib/format';
 import { useViewMode } from '../lib/view-mode';
+import { useWriteGate } from '../lib/auth';
 import { ViewToggle } from '../components/ViewToggle';
 
 interface Msg {
@@ -107,6 +108,8 @@ export function Incidents() {
   const [msg, setMsg] = useState<Msg | null>(null);
   const [confirmDel, setConfirmDel] = useState(false);
   const [view, setView] = useViewMode('incidents');
+  // Read-only: pinning and deleting a bundle are writes. Viewing + the .zip export stay available.
+  const gate = useWriteGate('Managing incidents needs write access — ask an admin.');
 
   const load = useCallback((signal?: AbortSignal) => {
     setErr(null);
@@ -206,6 +209,8 @@ export function Incidents() {
             type="button"
             className={`iconbtn iconbtn--wide${detail.pinned ? ' iconbtn--on' : ''}`}
             onClick={() => void onPin(detail.id, !detail.pinned)}
+            disabled={gate.disabled}
+            title={gate.title}
           >
             {detail.pinned ? 'Pinned' : 'Pin'}
           </button>
@@ -214,6 +219,8 @@ export function Incidents() {
               type="button"
               className="iconbtn iconbtn--wide btn--danger"
               onClick={() => void onDelete(detail.id)}
+              disabled={gate.disabled}
+              title={gate.title}
             >
               Confirm delete
             </button>
@@ -222,6 +229,8 @@ export function Incidents() {
               type="button"
               className="iconbtn iconbtn--wide"
               onClick={() => setConfirmDel(true)}
+              disabled={gate.disabled}
+              title={gate.title}
             >
               Delete
             </button>

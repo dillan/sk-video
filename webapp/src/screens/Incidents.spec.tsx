@@ -1,5 +1,12 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, waitFor, cleanup, fireEvent } from '@testing-library/react';
+
+// Control the read-only write gate; default "not gated" so existing tests are unaffected.
+const gate = vi.hoisted(() => ({
+  current: { disabled: false } as { disabled: boolean; title?: string },
+}));
+vi.mock('../lib/auth', () => ({ useWriteGate: () => gate.current }));
+
 import { Incidents } from './Incidents';
 
 const ok = (json: unknown) => Promise.resolve({ ok: true, json: async () => json });
@@ -81,6 +88,7 @@ afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
   vi.useRealTimers(); // a failed fake-timer test must not starve the rest of the file
+  gate.current = { disabled: false };
   // localStorage (the view-mode preference) is cleared per-test by the shared test-setup.
 });
 
@@ -223,6 +231,22 @@ describe('Incidents', () => {
     // Both the status pill and the failures chip say PARTIAL once settled.
     expect(screen.getAllByText(/PARTIAL/).length).toBeGreaterThan(0);
     vi.useRealTimers();
+  });
+
+  it('disables pin and delete for a read-only session', async () => {
+    gate.current = {
+      disabled: true,
+      title: 'Managing incidents needs write access — ask an admin.',
+    };
+    mockApi();
+    render(<Incidents />);
+    await waitFor(() => expect(screen.getByText('PARTIAL')).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: /bow, stern/ }));
+    await waitFor(() => screen.getByRole('button', { name: 'Pin' }));
+    expect((screen.getByRole('button', { name: 'Pin' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: 'Delete' }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
   });
 
   it('pins a bundle (PATCH)', async () => {

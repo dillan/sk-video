@@ -10,6 +10,12 @@ vi.mock('../lib/resumable-upload', async (importOriginal) => ({
   uploadVideoResumable: uploadMock,
 }));
 
+// Control the read-only write gate; default "not gated" so existing tests are unaffected.
+const gate = vi.hoisted(() => ({
+  current: { disabled: false } as { disabled: boolean; title?: string },
+}));
+vi.mock('../lib/auth', () => ({ useWriteGate: () => gate.current }));
+
 import { Videos } from './Videos';
 import { ApiError } from '../api';
 
@@ -82,9 +88,23 @@ afterEach(() => {
   vi.restoreAllMocks();
   uploadMock.mockReset();
   vi.unstubAllGlobals();
+  gate.current = { disabled: false };
 });
 
 describe('Videos', () => {
+  it('disables upload and per-video delete for a read-only session', async () => {
+    gate.current = { disabled: true, title: 'Managing videos needs write access — ask an admin.' };
+    mockApi(V);
+    render(<Videos />);
+    await waitFor(() => expect(screen.getByText('clip.mp4')).toBeTruthy());
+    expect(
+      (screen.getByRole('button', { name: 'Upload videos' }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    expect(
+      (screen.getByRole('button', { name: 'Delete clip.mp4' }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+  });
+
   it('lists stored videos with a human size', async () => {
     mockApi(V);
     render(<Videos />);
