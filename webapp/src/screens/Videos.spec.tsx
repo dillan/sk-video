@@ -81,6 +81,7 @@ afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
   uploadMock.mockReset();
+  vi.unstubAllGlobals();
 });
 
 describe('Videos', () => {
@@ -122,6 +123,53 @@ describe('Videos', () => {
     expect(tile!.textContent).toContain('clip.mp4');
     expect(tile!.textContent).toMatch(/1\.5 KB/);
     expect(tile!.textContent).toMatch(/\d{4}|\/|\d{1,2}/); // some rendered date
+  });
+
+  it('toggles between grid and list, keeps thumbnails in both, and remembers the choice', async () => {
+    const store = new Map<string, string>();
+    vi.stubGlobal('localStorage', {
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => void store.set(k, v),
+    });
+    mockApi(V);
+    const { unmount } = render(<Videos />);
+    await screen.findByText('clip.mp4');
+    expect(document.querySelector('.vidgrid')).toBeTruthy(); // grid by default
+
+    fireEvent.click(screen.getByRole('button', { name: /list view/i }));
+    expect(document.querySelector('.vidgrid')).toBeNull();
+    const row = document.querySelector('.vidrow-thumb') as HTMLElement;
+    expect(row).toBeTruthy();
+    // The list row still carries a video thumbnail and the labels.
+    expect(row.querySelector('video')).toBeTruthy();
+    expect(row.textContent).toContain('clip.mp4');
+    expect(store.get('sk-video.view.videos')).toBe('list');
+
+    // Re-mounting restores the list view.
+    unmount();
+    mockApi(V);
+    render(<Videos />);
+    await screen.findByText('clip.mp4');
+    expect(document.querySelector('.vidgrid')).toBeNull();
+    expect(document.querySelector('.vidrow-thumb')).toBeTruthy();
+  });
+
+  it('opens the player from a list row and deletes from its trashcan', async () => {
+    const store = new Map<string, string>([['sk-video.view.videos', 'list']]);
+    vi.stubGlobal('localStorage', {
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => void store.set(k, v),
+    });
+    const calls = mockApi(V);
+    render(<Videos />);
+    await screen.findByText('clip.mp4');
+    fireEvent.click(screen.getByRole('button', { name: /Play clip\.mp4/ }));
+    expect(document.querySelector('.vidmodal video')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Close player' }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete clip.mp4' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm delete' }));
+    await waitFor(() => expect(calls.some((c) => c.method === 'DELETE')).toBe(true));
   });
 
   it('opens a full player when a grid tile is clicked', async () => {
