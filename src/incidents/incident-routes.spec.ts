@@ -195,6 +195,48 @@ describe('registerIncidentRoutes', () => {
     expect(res.statusCode).toBe(400);
   });
 
+  it('GET /incidents exposes a poster asset id — the first snapshot, else the first clip', () => {
+    const snap = {
+      id: 'snap1',
+      kind: 'snapshot' as const,
+      cameraId: 'bow',
+      contentType: 'image/jpeg',
+      size: 4,
+      sha256: 'y',
+      name: 'bow.jpg',
+      createdAt: 1001,
+    };
+    const { handlers } = setup({
+      withSnap: bundle('withSnap', { assets: [snap] } as never),
+      clipOnly: bundle('clipOnly'), // only a clip in the default fixture
+      telemetryOnly: bundle('telemetryOnly', {
+        assets: [
+          {
+            id: 'tel1',
+            kind: 'telemetry',
+            cameraId: null,
+            contentType: 'application/json',
+            size: 2,
+            sha256: 'z',
+            name: 't.json',
+            createdAt: 1002,
+          },
+        ],
+      } as never),
+    });
+    const res = new FakeRes();
+    handlers.get('GET /incidents')!(fakeReq(), res as unknown as Response);
+    const byId = Object.fromEntries(
+      (res.body as { incidents: { id: string; posterAssetId?: string }[] }).incidents.map((i) => [
+        i.id,
+        i.posterAssetId,
+      ]),
+    );
+    expect(byId.withSnap).toBe('snap1'); // snapshot preferred as the poster
+    expect(byId.clipOnly).toBe('clip1'); // falls back to the clip
+    expect(byId.telemetryOnly).toBeUndefined(); // telemetry is not a visual poster
+  });
+
   it('GET /incidents merges in-flight (capturing) + finalized, newest first', () => {
     const { handlers } = setup({ a: bundle('a', { createdAt: 1000 }) });
     const res = new FakeRes();

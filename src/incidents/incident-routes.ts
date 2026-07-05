@@ -79,16 +79,23 @@ export function registerIncidentRoutes(
       return;
     }
     const controller = deps.getController();
-    const finalized = store.list().map((b) => ({
-      id: b.id,
-      status: b.status,
-      createdAt: b.createdAt,
-      finalizedAt: b.finalizedAt,
-      cameras: b.cameras,
-      pinned: b.pinned === true,
-      assetCount: b.assets.length,
-      failureCount: b.failures.length,
-    }));
+    const finalized = store.list().map((b) => {
+      // A visual poster for the list/grid: prefer a snapshot, else a clip (its first frame renders).
+      // Telemetry is not a poster. Lets clients show a thumbnail without fetching the manifest.
+      const poster =
+        b.assets.find((a) => a.kind === 'snapshot') ?? b.assets.find((a) => a.kind === 'clip');
+      return {
+        id: b.id,
+        status: b.status,
+        createdAt: b.createdAt,
+        finalizedAt: b.finalizedAt,
+        cameras: b.cameras,
+        pinned: b.pinned === true,
+        assetCount: b.assets.length,
+        failureCount: b.failures.length,
+        ...(poster ? { posterAssetId: poster.id } : {}),
+      };
+    });
     const active = (controller?.activeAssemblies() ?? []).map((a) => ({
       id: a.id,
       status: 'capturing' as const,

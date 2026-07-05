@@ -763,6 +763,8 @@ export interface IIncidentListItem {
   pinned?: boolean;
   assetCount?: number;
   failureCount?: number;
+  /** A snapshot/clip asset to show as the bundle's poster thumbnail, when one exists. */
+  posterAssetId?: string;
 }
 
 export interface IIncidentAsset {

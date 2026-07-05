@@ -41,10 +41,21 @@ const LIST = [
     pinned: false,
     assetCount: 1,
     failureCount: 1,
+    posterAssetId: 'a1',
   },
 ];
 
-function mockApi(opts: { deleteStatus?: number } = {}) {
+/**
+ * Flexible fetch stub. Pass nothing for the defaults; `{ deleteStatus }` to force a delete
+ * response; a bundle-shaped object (has an `id`) to override the DETAIL response; or an array to
+ * override the LIST response.
+ */
+function mockApi(arg: unknown = {}) {
+  const isArray = Array.isArray(arg);
+  const obj = (isArray ? {} : (arg as Record<string, unknown>)) ?? {};
+  const list = isArray ? (arg as unknown[]) : LIST;
+  const detail = !isArray && 'id' in obj ? obj : DETAIL;
+  const deleteStatus = obj.deleteStatus as number | undefined;
   const calls: { url: string; method: string }[] = [];
   vi.stubGlobal(
     'fetch',
@@ -54,12 +65,12 @@ function mockApi(opts: { deleteStatus?: number } = {}) {
       calls.push({ url: u, method });
       if (/\/incidents\/[^/]+$/.test(u) && method === 'PATCH') return ok({});
       if (/\/incidents\/[^/]+$/.test(u) && method === 'DELETE') {
-        return opts.deleteStatus
-          ? bad(opts.deleteStatus)
+        return deleteStatus
+          ? bad(deleteStatus)
           : Promise.resolve({ ok: true, status: 204, json: async () => ({}) });
       }
-      if (/\/incidents\/[^/]+$/.test(u)) return ok(DETAIL);
-      if (u.endsWith('/incidents')) return ok({ incidents: LIST });
+      if (/\/incidents\/[^/]+$/.test(u)) return ok(detail);
+      if (u.endsWith('/incidents')) return ok({ incidents: list });
       return ok({});
     }),
   );
@@ -70,6 +81,11 @@ afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
   vi.useRealTimers(); // a failed fake-timer test must not starve the rest of the file
+  try {
+    localStorage.clear(); // the view-mode preference must not leak across tests
+  } catch {
+    /* jsdom localStorage may be unavailable */
+  }
 });
 
 describe('Incidents', () => {
@@ -80,6 +96,37 @@ describe('Incidents', () => {
     expect(screen.getByText(/bow, stern/)).toBeTruthy();
   });
 
+  it('defaults to a grid of poster thumbnails and toggles to a list, remembering the choice', async () => {
+    mockApi();
+    const { unmount } = render(<Incidents />);
+    await waitFor(() => expect(screen.getByText('PARTIAL')).toBeTruthy());
+    // Default is the grid, and the bundle's poster asset drives the thumbnail.
+    expect(document.querySelector('.inc-grid')).toBeTruthy();
+    const poster = document.querySelector('.inctile__thumb img') as HTMLImageElement;
+    expect(poster.getAttribute('src')).toContain('/incidents/inc1/assets/a1');
+
+    // Switch to the list view — persisted per view.
+    fireEvent.click(screen.getByRole('button', { name: /list view/i }));
+    expect(document.querySelector('.inc-grid')).toBeNull();
+    expect(document.querySelector('.vidlist')).toBeTruthy();
+
+    // Re-mounting (navigating back) restores the last-used list view.
+    unmount();
+    mockApi();
+    render(<Incidents />);
+    await waitFor(() => expect(screen.getByText('PARTIAL')).toBeTruthy());
+    expect(document.querySelector('.vidlist')).toBeTruthy();
+    expect(document.querySelector('.inc-grid')).toBeNull();
+  });
+
+  it('shows a placeholder tile when a bundle has no poster asset', async () => {
+    mockApi([{ ...LIST[0], posterAssetId: undefined, assetCount: 0 }]);
+    render(<Incidents />);
+    await waitFor(() => expect(screen.getByText('PARTIAL')).toBeTruthy());
+    expect(document.querySelector('.inctile__thumb img')).toBeNull();
+    expect(document.querySelector('.inctile__noposter')).toBeTruthy();
+  });
+
   it('opens a bundle showing assets, the failures, and the honest copy', async () => {
     mockApi();
     render(<Incidents />);
@@ -88,6 +135,34 @@ describe('Incidents', () => {
     await waitFor(() => expect(screen.getByText(/no DVR segments overlapped/)).toBeTruthy());
     expect(screen.getByText(/file-integrity check, not/)).toBeTruthy();
     expect(screen.getByText(/clip · bow/)).toBeTruthy();
+  });
+
+  it('shows an inline thumbnail on each detail asset row (clip frame, snapshot image)', async () => {
+    mockApi({
+      ...DETAIL,
+      assets: [
+        DETAIL.assets[0], // a clip
+        {
+          id: 's1',
+          kind: 'snapshot',
+          cameraId: 'bow',
+          contentType: 'image/jpeg',
+          size: 500,
+          sha256: 'deadbeef',
+          name: 'bow.jpg',
+          createdAt: 1,
+        },
+      ],
+    });
+    render(<Incidents />);
+    await waitFor(() => expect(screen.getByText('PARTIAL')).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: /bow, stern/ }));
+    await waitFor(() => expect(screen.getByText(/clip · bow/)).toBeTruthy());
+    // The clip's row carries a <video> thumbnail; the snapshot's an <img> — both pointing at the asset.
+    const clipThumb = document.querySelector('.asset__thumb video') as HTMLVideoElement;
+    const snapThumb = document.querySelector('.asset__thumb img') as HTMLImageElement;
+    expect(clipThumb.getAttribute('src')).toContain('/assets/a1');
+    expect(snapThumb.getAttribute('src')).toContain('/assets/s1');
   });
 
   it('shows the requested-vs-actual capture span in the detail view', async () => {
