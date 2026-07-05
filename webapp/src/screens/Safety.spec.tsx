@@ -1,5 +1,12 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, waitFor, cleanup, fireEvent } from '@testing-library/react';
+
+// Control the read-only write gate; default is "not gated" so the existing tests are unaffected.
+const gate = vi.hoisted(() => ({
+  current: { disabled: false } as { disabled: boolean; title?: string },
+}));
+vi.mock('../lib/auth', () => ({ useWriteGate: () => gate.current }));
+
 import { Safety } from './Safety';
 
 const ok = (json: unknown) => Promise.resolve({ ok: true, json: async () => json });
@@ -32,6 +39,7 @@ afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
   vi.useRealTimers(); // a failed fake-timer test must not starve the rest of the file
+  gate.current = { disabled: false };
 });
 
 describe('Safety / MOB console', () => {
@@ -42,6 +50,17 @@ describe('Safety / MOB console', () => {
       expect(screen.getByRole('button', { name: 'Arm man overboard' })).toBeTruthy(),
     );
     expect(screen.getByText(/not visual person-tracking/)).toBeTruthy();
+  });
+
+  it('disables the safety write controls with a reason for a read-only session', async () => {
+    gate.current = { disabled: true, title: 'Safety controls need write access — ask an admin.' };
+    mockApi({ status: { active: false, targetSource: 'none', aimedCameras: 0 } });
+    render(<Safety />);
+    const arm = (await screen.findByRole('button', {
+      name: 'Arm man overboard',
+    })) as HTMLButtonElement;
+    expect(arm.disabled).toBe(true);
+    expect(arm.getAttribute('title')).toMatch(/write access/);
   });
 
   it('arms on tap and reflects the active console + notifies the shell', async () => {
