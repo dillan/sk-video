@@ -4,12 +4,16 @@ import { formatBytes } from '../lib/format';
 import { uploadVideoResumable } from '../lib/resumable-upload';
 import { uploadAll, type IUploadHandle, type IUploadProgress } from '../lib/upload-queue';
 import { useViewMode, type ViewMode } from '../lib/view-mode';
+import { useWriteGate } from '../lib/auth';
 import { ViewToggle } from '../components/ViewToggle';
 
 interface VideoItemProps {
   video: IVideoAsset;
   variant: ViewMode;
   confirming: boolean;
+  /** Read-only: disable the delete affordance with a reason (viewing/playback stays available). */
+  readOnly?: boolean;
+  readOnlyReason?: string;
   onPlay: () => void;
   onAskDelete: () => void;
   onConfirmDelete: () => void;
@@ -46,7 +50,7 @@ function DeleteConfirm({
  * compact list row depending on `variant`; the preview/confirm behaviour is shared.
  */
 function VideoTile(props: VideoItemProps) {
-  const { video, variant, onPlay, onAskDelete } = props;
+  const { video, variant, onPlay, onAskDelete, readOnly, readOnlyReason } = props;
   const ref = useRef<HTMLVideoElement>(null);
   const preview = (on: boolean): void => {
     const el = ref.current;
@@ -91,6 +95,8 @@ function VideoTile(props: VideoItemProps) {
       className={variant === 'grid' ? 'vidtile__trash' : 'iconbtn vidrow-thumb__trash'}
       aria-label={`Delete ${video.name}`}
       onClick={onAskDelete}
+      disabled={readOnly}
+      title={readOnly ? readOnlyReason : undefined}
     >
       🗑
     </button>
@@ -203,6 +209,8 @@ export function Videos() {
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [view, setView] = useViewMode('videos');
+  // Read-only: uploading and deleting are writes. Browsing + playback stay available.
+  const gate = useWriteGate('Managing videos needs write access — ask an admin.');
   const fileRef = useRef<HTMLInputElement>(null);
   const handleRef = useRef<IUploadHandle | null>(null);
   /** The last batch's File objects, by row index — what a per-file Retry re-sends. */
@@ -264,6 +272,7 @@ export function Videos() {
   const onDrop = (e: DragEvent): void => {
     e.preventDefault();
     setDragOver(false);
+    if (gate.disabled) return; // read-only: dropped files are ignored (upload is a write)
     void startBatch(Array.from(e.dataTransfer?.files ?? []));
   };
 
@@ -315,7 +324,8 @@ export function Videos() {
           type="button"
           className="btn"
           onClick={() => fileRef.current?.click()}
-          disabled={uploading}
+          disabled={uploading || gate.disabled}
+          title={gate.title}
         >
           {uploading ? 'Uploading…' : 'Upload videos'}
         </button>
@@ -408,6 +418,8 @@ export function Videos() {
               video={v}
               variant={view}
               confirming={confirmId === v.id}
+              readOnly={gate.disabled}
+              readOnlyReason={gate.title}
               onPlay={() => setPlaying(v.id)}
               onAskDelete={() => setConfirmId(v.id)}
               onConfirmDelete={() => void onDelete(v.id)}
