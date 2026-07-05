@@ -1,14 +1,20 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
-import { render, screen, waitFor, cleanup, fireEvent } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 
-const api = vi.hoisted(() => ({ login: vi.fn(), fetchSession: vi.fn() }));
-vi.mock('../api', () => api);
+// SignIn drives the AuthProvider now; mock it so we can assert the wiring and render each posture.
+const authMock = vi.hoisted(() => ({
+  current: {
+    signIn: vi.fn(),
+    signInError: null as string | null,
+    state: 'signinRequired' as string,
+  },
+}));
+vi.mock('../lib/auth', () => ({ useAuth: () => authMock.current }));
 
 import { SignIn } from './SignIn';
 
 beforeEach(() => {
-  api.login.mockReset();
-  api.fetchSession.mockReset();
+  authMock.current = { signIn: vi.fn(), signInError: null, state: 'signinRequired' };
 });
 afterEach(cleanup);
 
@@ -18,29 +24,36 @@ function fill(user: string, pass: string) {
 }
 
 describe('SignIn', () => {
-  it('signs in with Signal K credentials and reports the new session', async () => {
-    api.login.mockResolvedValue(undefined);
-    const session = { securityEnabled: true, authenticated: true, pluginVersion: '1' };
-    api.fetchSession.mockResolvedValue(session);
-    const onSignedIn = vi.fn();
-    render(<SignIn onSignedIn={onSignedIn} />);
+  it('signs in through the provider with the Signal K credentials', () => {
+    const signIn = vi.fn().mockResolvedValue(undefined);
+    authMock.current = { signIn, signInError: null, state: 'signinRequired' };
+    render(<SignIn />);
     fill('skipper', 'hunter2');
     fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
-    await waitFor(() => expect(api.login).toHaveBeenCalledWith('skipper', 'hunter2'));
-    await waitFor(() => expect(onSignedIn).toHaveBeenCalledWith(session));
+    expect(signIn).toHaveBeenCalledWith('skipper', 'hunter2');
   });
 
-  it('shows a friendly error and clears the password on bad credentials', async () => {
-    api.login.mockRejectedValue(new Error('Incorrect username or password.'));
-    render(<SignIn onSignedIn={vi.fn()} />);
-    fill('skipper', 'wrong');
-    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
-    await waitFor(() => expect(screen.getByText('Incorrect username or password.')).toBeTruthy());
-    expect((screen.getByPlaceholderText('Password') as HTMLInputElement).value).toBe('');
+  it('shows the provider’s sign-in error (state 6)', () => {
+    authMock.current = {
+      signIn: vi.fn(),
+      signInError: 'Incorrect username or password.',
+      state: 'signinFailed',
+    };
+    render(<SignIn />);
+    expect(screen.getByText('Incorrect username or password.')).toBeTruthy();
+  });
+
+  it('disables the form while signing in — no double-submit (state 5)', () => {
+    const signIn = vi.fn();
+    authMock.current = { signIn, signInError: null, state: 'signingIn' };
+    render(<SignIn />);
+    const btn = screen.getByRole('button', { name: 'Signing in…' }) as HTMLButtonElement;
+    expect(btn.disabled).toBe(true);
+    expect((screen.getByPlaceholderText('Username') as HTMLInputElement).disabled).toBe(true);
   });
 
   it('toggles password visibility', () => {
-    render(<SignIn onSignedIn={vi.fn()} />);
+    render(<SignIn />);
     const pw = screen.getByPlaceholderText('Password') as HTMLInputElement;
     expect(pw.type).toBe('password');
     fireEvent.click(screen.getByRole('button', { name: 'Show password' }));
@@ -48,8 +61,16 @@ describe('SignIn', () => {
   });
 
   it('does not submit without a username', () => {
-    render(<SignIn onSignedIn={vi.fn()} />);
+    const signIn = vi.fn();
+    authMock.current = { signIn, signInError: null, state: 'signinRequired' };
+    render(<SignIn />);
     fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
-    expect(api.login).not.toHaveBeenCalled();
+    expect(signIn).not.toHaveBeenCalled();
+  });
+
+  it('offers the low-prominence redirect fallback to Signal K', () => {
+    render(<SignIn />);
+    const link = screen.getByRole('link', { name: /Go to Signal K to sign in/ });
+    expect(link.getAttribute('href')).toContain('/admin/#/login');
   });
 });
