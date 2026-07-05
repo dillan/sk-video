@@ -211,7 +211,9 @@ export function useAuth(): AuthContextValue {
  * while the session is still unknown (checking) controls stay live, so nothing flickers on load.
  */
 export function useWriteGate(reason: string): { disabled: boolean; title?: string } {
-  const { session } = useAuth();
-  const blocked = session != null && !session.canWrite;
+  // Tolerant of a missing provider: a control rendered outside the AuthProvider (e.g. in an isolated
+  // unit test) is simply not gated. Only a KNOWN read-only session disables it.
+  const ctx = useContext(AuthContext);
+  const blocked = ctx?.session != null && !ctx.session.canWrite;
   return blocked ? { disabled: true, title: reason } : { disabled: false };
 }
