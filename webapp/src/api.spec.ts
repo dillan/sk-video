@@ -8,6 +8,11 @@ import {
   login,
   logout,
   ptzNudge,
+  saveCamera,
+  deleteCamera,
+  negotiateTalk,
+  uploadVideo,
+  setAuthObserver,
   ApiError,
 } from './api';
 
@@ -83,9 +88,129 @@ describe('fetchSession', () => {
     await expect(fetchSession()).resolves.toEqual(info);
   });
 
-  it('throws when the session request is not ok', async () => {
+  it('throws when the session request is a 5xx (unreachable, not a sign-in prompt)', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 500 }));
     await expect(fetchSession()).rejects.toThrow('session 500');
+  });
+
+  it('maps a 401 to secured + not authenticated (never strands the shell on "checking")', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 401 }));
+    await expect(fetchSession()).resolves.toMatchObject({
+      securityEnabled: true,
+      authenticated: false,
+      loggedIn: false,
+      canWrite: false,
+    });
+  });
+});
+
+describe('auth-failure observer (the centralized 401/403 seam)', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    setAuthObserver(null);
+  });
+
+  function record(): { status: number; method: string; url: string }[] {
+    const signals: { status: number; method: string; url: string }[] = [];
+    setAuthObserver((s) => signals.push(s));
+    return signals;
+  }
+
+  const jsonErr = (status: number) => ({
+    ok: false,
+    status,
+    headers: { get: () => 'application/json' },
+    json: async () => ({}),
+  });
+
+  it('fires on a 401 from a read (getJson-based call)', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 401 }));
+    const signals = record();
+    await fetchStatus().catch(() => undefined);
+    expect(signals).toHaveLength(1);
+    expect(signals[0]).toMatchObject({ status: 401, method: 'GET' });
+  });
+
+  it('fires on a 403 from a write (send-based control)', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonErr(403)));
+    const signals = record();
+    await ptzNudge('cam1', { pan: 0.1 }).catch(() => undefined);
+    expect(signals.map((s) => s.status)).toContain(403);
+  });
+
+  it('fires on a 401 from the camera-resource bypasser (saveCamera → /signalk/v2)', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 401 }));
+    const signals = record();
+    await saveCamera('cam1', {
+      name: 'Bow',
+      enabled: true,
+      source: { scheme: 'rtsp', host: 'x' },
+    }).catch(() => undefined);
+    expect(signals.map((s) => s.status)).toContain(401);
+  });
+
+  it('fires on a 401 from deleteCamera', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 401 }));
+    const signals = record();
+    await deleteCamera('cam1').catch(() => undefined);
+    expect(signals).toHaveLength(1);
+  });
+
+  it('fires on a 401 from negotiateTalk (direct fetch bypasser)', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({ ok: false, status: 401, headers: { get: () => 'text/plain' } }),
+    );
+    const signals = record();
+    await negotiateTalk('cam1', 'sdp').catch(() => undefined);
+    expect(signals.map((s) => s.status)).toContain(401);
+  });
+
+  it('fires on a 401 from uploadVideo (XHR bypasser)', async () => {
+    const signals = record();
+    class MockXHR {
+      status = 401;
+      response = {};
+      upload: Record<string, unknown> = {};
+      withCredentials = false;
+      responseType = '';
+      onload?: () => void;
+      open(): void {}
+      setRequestHeader(): void {}
+      addEventListener(): void {}
+      send(): void {
+        this.onload?.();
+      }
+    }
+    vi.stubGlobal('XMLHttpRequest', MockXHR as unknown as typeof XMLHttpRequest);
+    await uploadVideo(new File(['x'], 'v.mp4')).catch(() => undefined);
+    expect(signals.map((s) => s.status)).toContain(401);
+  });
+
+  it('does NOT fire for a login 401 (a form error, never a session challenge)', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 401 }));
+    const signals = record();
+    await login('a', 'b').catch(() => undefined);
+    expect(signals).toHaveLength(0);
+  });
+
+  it('does NOT fire for a logout 401', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 401 }));
+    const signals = record();
+    await logout().catch(() => undefined);
+    expect(signals).toHaveLength(0);
+  });
+
+  it('does NOT fire on success or a 5xx', async () => {
+    const signals = record();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ready: true }) }),
+    );
+    await fetchStatus().catch(() => undefined);
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 503 }));
+    await fetchStatus().catch(() => undefined);
+    expect(signals).toHaveLength(0);
   });
 });
 
