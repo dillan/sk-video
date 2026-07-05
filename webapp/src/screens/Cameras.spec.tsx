@@ -1,5 +1,12 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, waitFor, cleanup, fireEvent } from '@testing-library/react';
+
+// Control the read-only write gate; default is "not gated" so the existing tests are unaffected.
+const gate = vi.hoisted(() => ({
+  current: { disabled: false } as { disabled: boolean; title?: string },
+}));
+vi.mock('../lib/auth', () => ({ useWriteGate: () => gate.current }));
+
 import { Cameras } from './Cameras';
 
 const ok = (json: unknown) => Promise.resolve({ ok: true, json: async () => json });
@@ -44,6 +51,7 @@ function mockApi(
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  gate.current = { disabled: false };
 });
 
 describe('Cameras manage', () => {
@@ -53,6 +61,24 @@ describe('Cameras manage', () => {
     await waitFor(() => expect(screen.getByText('No cameras yet.')).toBeTruthy());
     fireEvent.click(screen.getByRole('button', { name: 'Add a camera' }));
     expect(screen.getByRole('button', { name: 'Scan the network' })).toBeTruthy();
+  });
+
+  it('disables camera management for a read-only session (Add, Enable, Delete, Re-scan)', async () => {
+    gate.current = { disabled: true, title: 'Managing cameras needs write access — ask an admin.' };
+    mockApi({
+      cameras: {
+        bow: { name: 'Bow', enabled: true, source: { scheme: 'rtsp', host: '10.0.0.9' } },
+      },
+    });
+    render(<Cameras />);
+    await waitFor(() => expect(screen.getByText('Bow')).toBeTruthy());
+    for (const name of ['Add a camera', 'Edit', 'Re-scan', 'Disable', 'Delete']) {
+      expect((screen.getByRole('button', { name }) as HTMLButtonElement).disabled).toBe(true);
+    }
+    // Viewing diagnostics stays available.
+    expect(
+      (screen.getByRole('button', { name: 'Diagnostics' }) as HTMLButtonElement).disabled,
+    ).toBe(false);
   });
 
   it('lists cameras with their state and a stored-login chip', async () => {
