@@ -59,6 +59,7 @@ function AppShell() {
   const [density, setDensity] = useState<Density>(() => loadDensity());
   const [staleShell, setStaleShell] = useState(false);
   const firstVersion = useRef<string | null>(null);
+  const streamRef = useRef<SkStream | null>(null);
   const mobRef = useRef<IMobStatus | null>(null);
   mobRef.current = mob;
 
@@ -150,9 +151,27 @@ function AppShell() {
         }
       },
     });
+    streamRef.current = stream;
     stream.start();
-    return () => stream.stop();
+    return () => {
+      stream.stop();
+      streamRef.current = null;
+    };
   }, [reseedMob, reprobe]);
+
+  // Pause the delta stream while the session is blocked (re-auth / sign-in / sign-out) so a lapsed
+  // cookie doesn't loop 401ing WebSocket handshakes; resume once it's usable. The auth state stays
+  // amber re-auth regardless — this only stops the wasteful reconnect churn.
+  const streamActive = !(
+    authState === 'reauth' ||
+    authState === 'signingIn' ||
+    authState === 'signinFailed' ||
+    authState === 'signinRequired' ||
+    authState === 'signingOut'
+  );
+  useEffect(() => {
+    streamRef.current?.setActive(streamActive);
+  }, [streamActive]);
 
   // A lapsed session gets the dedicated non-modal re-auth banner (state 7); a cold, never-signed-in
   // load gets the calm sign-in. While a submit is in flight or after it failed, everLoggedIn keeps us

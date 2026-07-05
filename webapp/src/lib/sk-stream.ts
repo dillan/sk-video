@@ -202,6 +202,20 @@ export class SkStream {
     this.socket = null;
   }
 
+  /**
+   * Pause or resume the stream without discarding it. Pausing closes the socket and halts reconnects
+   * — used while the session is blocked (re-auth / sign-in / sign-out) so a lapsed cookie doesn't
+   * loop 401ing handshakes; resuming reopens once the session is usable. Idempotent.
+   */
+  setActive(active: boolean): void {
+    if (active === !this.stopped) return; // already in the desired state
+    if (active) {
+      this.start();
+    } else {
+      this.stop();
+    }
+  }
+
   private open(state: TStreamState): void {
     if (this.stopped) return;
     this.opts.onState?.(state);
