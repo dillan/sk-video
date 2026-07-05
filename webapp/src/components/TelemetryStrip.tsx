@@ -13,6 +13,9 @@ interface Props {
   link?: TStreamState;
   /** Epoch ms of the last successful sync — the honest "as of" stamp while reconnecting. */
   lastSyncAt?: number | null;
+  /** Session lapsed (re-auth in flight): keep the last-known values but stamp them HELD, never blank
+   *  or zero them — we can't confirm the safety state until the session comes back. */
+  stale?: boolean;
 }
 
 /** HH:MM:SS for the as-of / armed-at stamps. */
@@ -31,6 +34,7 @@ export function TelemetryStrip({
   tierLabel,
   link,
   lastSyncAt,
+  stale = false,
 }: Props) {
   return (
     <div className="telemetry" role="status" aria-label="Vessel telemetry">
@@ -77,8 +81,10 @@ export function TelemetryStrip({
         <span className="chip chip--live">
           MOB ACTIVE
           {typeof mob.armedAt === 'number' && <span className="mono"> · {clock(mob.armedAt)}</span>}
+          {stale && <span className="mono"> · held</span>}
         </span>
       )}
+      {stale && <span className="chip chip--caution">session held · sign in to refresh</span>}
     </div>
   );
 }
