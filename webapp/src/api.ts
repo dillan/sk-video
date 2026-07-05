@@ -34,6 +34,34 @@ export const API_BASE = deriveApiBase(
 /** The Signal K server root (for `/signalk/v1/*`), derived so a proxy prefix is preserved. */
 export const SK_ROOT = API_BASE.replace(/\/plugins\/sk-video$/, '');
 
+/**
+ * The single seam the auth provider hooks to learn a request was refused. Every fetch/XHR helper
+ * reports a 401/403 here — reads included, so a passive watcher still learns of a lapse — EXCEPT the
+ * Signal K login/logout endpoints, where a 401/429 is a sign-in outcome, not a session challenge.
+ * This layer only REPORTS; the provider re-probes /session and decides re-auth vs read-only vs an
+ * honest error. Keeping the decision out of here is what stops a read-only user's write-401 (which
+ * is indistinguishable from a lapse by status code alone) from looping into re-auth.
+ */
+export interface IAuthSignal {
+  status: number;
+  method: string;
+  url: string;
+}
+let authObserver: ((signal: IAuthSignal) => void) | null = null;
+export function setAuthObserver(fn: ((signal: IAuthSignal) => void) | null): void {
+  authObserver = fn;
+}
+const AUTH_ENDPOINT = /\/auth\/(login|logout)\b/;
+function noteHttpStatus(status: number, method: string, url: string): void {
+  if ((status === 401 || status === 403) && !AUTH_ENDPOINT.test(url)) {
+    try {
+      authObserver?.({ status, method, url });
+    } catch {
+      /* an observer must never break a fetch */
+    }
+  }
+}
+
 async function getJson<T>(path: string, what: string, signal?: AbortSignal): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     headers: { Accept: 'application/json' },
@@ -41,6 +69,7 @@ async function getJson<T>(path: string, what: string, signal?: AbortSignal): Pro
     signal,
   });
   if (!res.ok) {
+    noteHttpStatus(res.status, 'GET', `${API_BASE}${path}`);
     throw new Error(`${what} ${res.status}`);
   }
   return (await res.json()) as T;
@@ -105,6 +134,16 @@ export interface ISessionInfo {
   authenticated: boolean;
   /** The principal is KNOWN read-only — write controls should be disabled with a why. */
   readOnly?: boolean;
+  /** A REAL login (not the anonymous AUTO readonly principal). Absent on a pre-enrichment plugin. */
+  loggedIn?: boolean;
+  /** Authoritative write capability — the single flag write controls gate on. */
+  canWrite?: boolean;
+  /** The anonymous AUTO readonly principal reached the route (an allow_readonly open-read). */
+  anonymous?: boolean;
+  /** The signed-in user's name, when the server exposes it. */
+  username?: string;
+  /** The signed-in user's level ('admin' | 'readwrite' | 'readonly'), when the server exposes it. */
+  userLevel?: string;
   pluginVersion: string;
 }
 
@@ -122,8 +161,31 @@ export function describeAuth(session: ISessionInfo | null): string {
   return session.readOnly === true ? 'secured · read-only' : 'secured · signed in';
 }
 
-export function fetchSession(signal?: AbortSignal): Promise<ISessionInfo> {
-  return getJson<ISessionInfo>('/session', 'session', signal);
+export async function fetchSession(signal?: AbortSignal): Promise<ISessionInfo> {
+  const res = await fetch(`${API_BASE}/session`, {
+    headers: { Accept: 'application/json' },
+    credentials: 'include',
+    signal,
+  });
+  // On a secured server the front-door 401s the whole /plugins surface for an unauthenticated
+  // caller. That is an ANSWER ("sign in"), not an outage — report it as secured + not authenticated
+  // so the app shows the sign-in surface instead of hanging on "checking". This is the probe itself,
+  // so it deliberately never notifies the auth observer (that would loop).
+  if (res.status === 401) {
+    return {
+      securityEnabled: true,
+      authenticated: false,
+      readOnly: false,
+      loggedIn: false,
+      canWrite: false,
+      anonymous: false,
+      pluginVersion: 'unknown',
+    };
+  }
+  if (!res.ok) {
+    throw new Error(`session ${res.status}`); // a 5xx/parse failure is unreachable, not sign-in
+  }
+  return (await res.json()) as ISessionInfo;
 }
 
 /** A camera definition from the Signal K `cameras` resource (subset; never includes credentials). */
@@ -296,6 +358,7 @@ async function send(path: string, init: RequestInit, what: string): Promise<Resp
     ...init,
   });
   if (!res.ok) {
+    noteHttpStatus(res.status, init.method ?? 'GET', `${API_BASE}${path}`);
     const body = await readErrorBody(res);
     throw new ApiError(`${what} failed (${res.status})`, res.status, body.error, body.reason);
   }
@@ -342,6 +405,7 @@ export const negotiateTalk = async (id: string, offerSdp: string): Promise<strin
     body: offerSdp,
   });
   if (!res.ok) {
+    noteHttpStatus(res.status, 'POST', `${API_BASE}${cam(id)}/talk`);
     const body = await readErrorBody(res);
     throw new ApiError(`talk failed (${res.status})`, res.status, body.error, body.reason);
   }
@@ -579,23 +643,29 @@ export interface ICameraWrite {
 }
 
 export const saveCamera = async (id: string, body: ICameraWrite): Promise<void> => {
-  const res = await fetch(`${SK_ROOT}/signalk/v2/api/resources/cameras/${encodeURIComponent(id)}`, {
+  const url = `${SK_ROOT}/signalk/v2/api/resources/cameras/${encodeURIComponent(id)}`;
+  const res = await fetch(url, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
     credentials: 'include',
     body: JSON.stringify(body),
   });
   if (!res.ok) {
+    // Camera CRUD hits the SK Resources API directly, which 401s a read-only user just like a lapse.
+    // Report it so the provider can tell the two apart via a /session re-probe.
+    noteHttpStatus(res.status, 'PUT', url);
     throw new ApiError(`save camera (${res.status})`, res.status);
   }
 };
 
 export const deleteCamera = async (id: string): Promise<void> => {
-  const res = await fetch(`${SK_ROOT}/signalk/v2/api/resources/cameras/${encodeURIComponent(id)}`, {
+  const url = `${SK_ROOT}/signalk/v2/api/resources/cameras/${encodeURIComponent(id)}`;
+  const res = await fetch(url, {
     method: 'DELETE',
     credentials: 'include',
   });
   if (!res.ok) {
+    noteHttpStatus(res.status, 'DELETE', url);
     throw new ApiError(`delete camera (${res.status})`, res.status);
   }
 };
@@ -696,6 +766,7 @@ export const uploadVideo = (
       if (xhr.status >= 200 && xhr.status < 300) {
         resolve(xhr.response as IVideoAsset);
       } else {
+        noteHttpStatus(xhr.status, 'POST', `${API_BASE}/videos`);
         reject(new ApiError(`upload failed (${xhr.status})`, xhr.status));
       }
     };
