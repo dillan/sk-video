@@ -66,7 +66,7 @@ If you marked a camera **safety-critical** and it alarms on and off, the camera'
 
 **Do my camera passwords ever leave the boat?** No. Logins are stored write-only on the server, never read back or sent to your devices, and they're discarded automatically if you repoint a camera at a different address.
 
-**Why does the first camera take a moment / need internet?** The first time you add a camera, the plugin downloads a small helper program (go2rtc) once. After that it works offline.
+**Does it need internet to set up?** Once, briefly, and it handles it for you. When you switch the plugin on it fetches a small streaming helper (go2rtc) in the background — the plugin status shows _“Setting up video…”_ while it does, and there's nothing to allow. If the server is offline right then, it finishes automatically once it's back online. After that everything works offline, and your first camera is ready to stream immediately.
 
 **Can I see the same cameras on every phone and tablet?** Yes — cameras are saved on the boat as shared Signal K resources. Set up once, available everywhere.
 

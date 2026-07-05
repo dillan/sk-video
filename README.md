@@ -59,7 +59,7 @@ npm install dillan/sk-video      # or: npm install /path/to/sk-video
 
 Then enable **SK Video** in **Server → Plugin Config** as above.
 
-> The first time you add a camera, the plugin downloads a small helper program ([go2rtc](https://github.com/AlexxIT/go2rtc)) once, so the server needs internet access on that first run. After that it works offline.
+> When you switch the plugin on, it quietly fetches a small streaming helper ([go2rtc](https://github.com/AlexxIT/go2rtc)) once, in the background — nothing to allow or configure. If the server is offline at that moment, it sets itself up automatically the next time it's online. After that it works offline.
 
 ## How to use it
 

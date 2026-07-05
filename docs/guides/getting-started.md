@@ -36,7 +36,7 @@ Then restart Signal K.
 
 That's it — this screen only turns the plugin on and off. There are **no settings to fill in here**: everything you configure (cameras, Frigate, anchor watch, themes, alerts) lives in the **SK Video app**, which you'll open in the next step. The plugin auto-detects what your hardware can do; you can override that later in the app under **Settings → Operational** if it ever guesses wrong.
 
-> **First-run note:** the very first time you add a camera, the plugin downloads a small helper program ([go2rtc](https://github.com/AlexxIT/go2rtc)) once. So the server needs internet access on that first run. After that, everything works offline.
+> **One-time setup, nothing to do:** when you switch the plugin on it quietly fetches a small streaming helper ([go2rtc](https://github.com/AlexxIT/go2rtc)) in the background — the plugin status shows a brief _“Setting up video…”_. There's nothing to allow or configure. If the boat happens to be offline right then, it just finishes setting up automatically the next time it's online. After that, everything works offline — and your first camera streams instantly.
 
 ---
 
