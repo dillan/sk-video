@@ -62,7 +62,27 @@ The virtual device (built from [daniela-hase/onvif-server](https://github.com/da
 
 **WS-Discovery / mDNS need multicast**, which Docker Desktop on macOS/Windows does not pass between the host and containers — so the plugin's "Scan" won't find the device there. On a Linux host you can run the onvif service with `network_mode: host` to make discovery work; otherwise discovery is covered by the plugin's unit tests and you add the camera directly (as the seed script does). Physical PTZ motion is simulated (the device acknowledges moves), so PTZ exercises the request path, not real movement.
 
+## Secured / auth lane (opt-in)
+
+The core stack runs Signal K **open** (anonymous read/write). A separate, security-enabled server runs the auth contract tests. It's just the Signal K server (no camera stream / KIP), so it's fast:
+
+```bash
+./run.sh --secured       # builds the plugin, starts the secured server on :3001
+SECURED_URL=http://localhost:3001 npm run test:auth
+./run.sh --down          # tears down every profile
+```
+
+Fixture logins (`signalk-config-secured/security.json`): **admin** / `e2e-password` (admin), **viewer** / `e2e-password` (read-only). `allow_readonly` is on.
+
+**What the auth lane proves — and a load-bearing fact about signalk-server:** the whole `/plugins/*` surface (SK Video's app **and** API) is gated by signalk-server's **admin** middleware (`app.use('/plugins', adminAuthenticationMiddleware)`). So on a secured server:
+
+- an **admin** login gets the full contract (`/session` → `canWrite:true`, mutations succeed);
+- a **read-only** (or read-write) login is **401 on everything under `/plugins/*`** — including the app bundle — so a non-admin **cannot even load SK Video**; only `/signalk/*` reads open up;
+- unauthenticated callers are 401 on `/plugins/*`.
+
+The upshot: **SK Video is admin-only when secured.** The webapp's read-only mode (and cold in-app sign-in) are therefore designed-but-dormant — they light up only if a future server capability serves the plugin's read routes to non-admins (or the plugin mounts routes outside `/plugins`). The reachable secured-server auth flows are: inherited admin session, re-auth on an admin lapse, and sign-out.
+
 ## Notes
 
-- The stack runs Signal K with no security config (anonymous read/write) for a turnkey local test — do not expose it. The plugin's own security envelope (scheme allow-list, SSRF guard, write-only credentials, Range clamping) is still in force and is what these tests exercise.
+- The core stack runs Signal K with no security config (anonymous read/write) for a turnkey local test — do not expose it. The plugin's own security envelope (scheme allow-list, SSRF guard, write-only credentials, Range clamping) is still in force and is what these tests exercise.
 - Ports: Signal K `3000`, RTSP `8554`, mediamtx HLS `8888` / WebRTC `8889`, ONVIF `8081`.
