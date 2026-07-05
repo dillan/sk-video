@@ -24,6 +24,7 @@ import { AuthProvider, useAuth } from './lib/auth';
 import type { AuthState } from './lib/auth-state';
 import { NavRail, TabBar } from './components/Nav';
 import { SignIn } from './components/SignIn';
+import { ReAuth } from './components/ReAuth';
 import { ReadOnlyRibbon } from './components/ReadOnlyRibbon';
 import { SafetyBanner } from './components/SafetyBanner';
 import { TelemetryStrip } from './components/TelemetryStrip';
@@ -68,7 +69,7 @@ function authChipText(state: AuthState, username?: string): string {
  */
 function AppShell() {
   const [route, navigate] = useHashRoute();
-  const { state: authState, session, username, reprobe } = useAuth();
+  const { state: authState, session, username, everLoggedIn, reprobe } = useAuth();
   const [mob, setMob] = useState<IMobStatus | null>(null);
   const [vessel, setVessel] = useState<IVesselState | null>(null);
   const [alerts, setAlerts] = useState<Record<string, IAlert>>({});
@@ -180,14 +181,12 @@ function AppShell() {
       {authChipText(authState, username)}
     </span>
   );
-  // The in-app sign-in surface appears for a cold sign-in and a lapsed session, and stays up while a
-  // submit is in flight or after it failed (state 7 gets its dedicated non-modal treatment later; for
-  // now both reuse the calm SignIn banner).
-  const showSignIn =
-    authState === 'signinRequired' ||
-    authState === 'reauth' ||
-    authState === 'signingIn' ||
-    authState === 'signinFailed';
+  // A lapsed session gets the dedicated non-modal re-auth banner (state 7); a cold, never-signed-in
+  // load gets the calm sign-in. While a submit is in flight or after it failed, everLoggedIn keeps us
+  // on the right surface (re-auth for a returning operator, sign-in for a first-timer).
+  const midAuth = authState === 'signingIn' || authState === 'signinFailed';
+  const showReauth = authState === 'reauth' || (midAuth && everLoggedIn);
+  const showSignIn = authState === 'signinRequired' || (midAuth && !everLoggedIn);
 
   return (
     <div className="shell">
@@ -201,6 +200,7 @@ function AppShell() {
             tierLabel={tier}
             link={link}
             lastSyncAt={lastSyncAt}
+            stale={showReauth}
           />
         </div>
         <SafetyBanner alerts={alerts} />
@@ -218,6 +218,7 @@ function AppShell() {
             </button>
           </div>
         )}
+        {showReauth && <ReAuth />}
         {showSignIn && <SignIn />}
         {route.cluster === 'live' &&
           (route.id ? (

@@ -41,6 +41,8 @@ export interface AuthContextValue {
   canWrite: boolean;
   username?: string;
   userLevel?: string;
+  /** This shell has held a real session at some point — tells a re-auth (state 7) from a cold sign-in. */
+  everLoggedIn: boolean;
   /** The last sign-in error message, for the sign-in surface (null when none). */
   signInError: string | null;
   signIn: (username: string, password: string) => Promise<void>;
@@ -184,6 +186,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       canWrite: session ? session.canWrite : true,
       username: session?.username,
       userLevel: session?.userLevel,
+      everLoggedIn,
       signInError,
       signIn,
       signOut,
@@ -191,7 +194,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       adoptSession,
       setLinkUnreachable,
     }),
-    [state, session, signInError, signIn, signOut, reprobe, adoptSession],
+    [state, session, everLoggedIn, signInError, signIn, signOut, reprobe, adoptSession],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

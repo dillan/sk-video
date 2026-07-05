@@ -1116,6 +1116,44 @@ button.tile {
   pointer-events: none;
 }
 
+/* Re-auth (state 7): the amber recovery banner. Reuses .reauth; the submit is an amber gradient
+   (the recovery affordance), never the blue primary. On phone/tablet it docks to the bottom so it
+   stays in the thumb zone and never covers the video above it. */
+.reauth--recover {
+  flex-wrap: wrap;
+}
+.reauth__msg {
+  flex: 1 1 100%;
+  color: var(--status-caution-text);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.reauth__msg strong {
+  color: var(--status-caution-bright);
+}
+.reauth__submit {
+  min-height: var(--tap-min);
+  padding: 0 16px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(160deg, #ffc24d, #f59e0b);
+  color: #241a02;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+.reauth__submit:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+@media (max-width: 1280px) {
+  .reauth--recover {
+    position: sticky;
+    bottom: 0;
+    z-index: 5;
+  }
+}
+
 /* ---- Confirm dialog (destructive/deliberate actions, e.g. sign out) ---- */
 .confirm {
   position: fixed;
