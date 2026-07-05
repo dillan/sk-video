@@ -1,5 +1,12 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
+
+// Control the read-only write gate; default is "not gated" so the existing tests are unaffected.
+const gate = vi.hoisted(() => ({
+  current: { disabled: false } as { disabled: boolean; title?: string },
+}));
+vi.mock('../lib/auth', () => ({ useWriteGate: () => gate.current }));
+
 import { CameraControls } from './CameraControls';
 import type { ICameraEntry } from '../api';
 
@@ -50,9 +57,31 @@ const base = {
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  gate.current = { disabled: false };
 });
 
 describe('CameraControls', () => {
+  it('disables every camera control for a read-only session (disabled-with-reason)', () => {
+    gate.current = { disabled: true, title: 'Camera controls need write access — ask an admin.' };
+    mockApi();
+    render(
+      <CameraControls {...base} camera={camera({ ptz: true, spotlight: true, alarm: true })} />,
+    );
+    for (const name of [
+      'Vision mode',
+      'PTZ presets',
+      'Zoom in',
+      'Zoom out',
+      'Stop camera movement',
+      'Snapshot',
+      'Record',
+      'Spotlight',
+      'Alarm',
+    ]) {
+      expect((screen.getByRole('button', { name }) as HTMLButtonElement).disabled).toBe(true);
+    }
+  });
+
   it('applies a vision mode (imaging preset) from the popover', async () => {
     const fetchMock = mockApi();
     render(<CameraControls {...base} camera={camera()} />);

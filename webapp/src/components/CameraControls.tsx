@@ -19,6 +19,7 @@ import {
 import { codecLabel, transportLabel } from '../lib/transport';
 import { allowPadEvent } from '../lib/ptz-prefs';
 import { actionMessage, type IMsg } from '../lib/camera-messages';
+import { useWriteGate } from '../lib/auth';
 import { GlassMenu, type IMenuRow } from './GlassMenu';
 import { PtzPad, type IPtzDetail } from './PtzPad';
 import { useTwoWayTalk } from './useTwoWayTalk';
@@ -113,6 +114,9 @@ export function CameraControls(props: Props) {
   const hasAlarm = camera.capabilities?.alarm === true;
   const phone = formFactor === 'phone';
   const talk = useTwoWayTalk(cameraId, flash);
+  // Read-only: every camera command (aim, zoom, presets, vision, snapshot, record, spotlight, alarm)
+  // is a write, so disable them with a reason. Viewing the feed + listening stay available.
+  const gate = useWriteGate('Camera controls need write access — ask an admin.');
 
   // ONVIF aux fixtures (spotlight / alarm). ONVIF has no reliable read-back, so state is optimistic:
   // reflect the requested state, and roll back + report if the command fails. The alarm is audible, so
@@ -355,6 +359,8 @@ export function CameraControls(props: Props) {
           onClick={toggle}
           aria-expanded={open}
           aria-label="Vision mode"
+          disabled={gate.disabled}
+          title={gate.title}
         >
           <span className="cchip__icon">{svg(ICON.vision, 16, 'var(--cx-accent-ico)')}</span>
           <span className="cchip__strong">{VISION_MODES.find((m) => m.id === vision)?.label}</span>
@@ -383,6 +389,8 @@ export function CameraControls(props: Props) {
           onClick={toggle}
           aria-expanded={open}
           aria-label="PTZ presets"
+          disabled={gate.disabled}
+          title={gate.title}
         >
           <span className="cchip__icon">{svg(ICON.preset, 15, 'var(--cx-accent-ico)')}</span>
           <span>{presetName ?? 'Presets'}</span>
@@ -432,6 +440,8 @@ export function CameraControls(props: Props) {
         className="zoompill__btn"
         aria-label="Zoom in"
         onClick={() => zoomStep(1)}
+        disabled={gate.disabled}
+        title={gate.title}
       >
         {svg(ICON.plus, 17, 'currentColor', 2)}
       </button>
@@ -441,6 +451,8 @@ export function CameraControls(props: Props) {
         className="zoompill__btn"
         aria-label="Zoom out"
         onClick={() => zoomStep(-1)}
+        disabled={gate.disabled}
+        title={gate.title}
       >
         {svg(ICON.minus, 17, 'currentColor', 2)}
       </button>
@@ -450,12 +462,15 @@ export function CameraControls(props: Props) {
   // Discrete steps + the safety stop always pass; continuous drag needs the per-device opt-in AND
   // a live feed (dragging a ~1 fps still-refresh steers blind between frames).
   const onPad = (d: IPtzDetail): void => {
+    if (gate.disabled) return; // read-only: the pad is inert (also dimmed via .aim--readonly)
     if (allowPadEvent(d.type, { continuous: continuousPan, delayed })) onPtzPad(d);
   };
   const aimGroup = ptz && (
-    <div className={`aim${delayed ? ' aim--degraded' : ''}`}>
+    <div
+      className={`aim${delayed ? ' aim--degraded' : ''}${gate.disabled ? ' aim--readonly' : ''}`}
+    >
       {zoomPill}
-      <div className="aim__housing">
+      <div className="aim__housing" title={gate.title}>
         <PtzPad size={padSize} onPtz={onPad} />
       </div>
       <button
@@ -463,6 +478,8 @@ export function CameraControls(props: Props) {
         className={`stopbtn${phone ? ' stopbtn--phone' : ''}`}
         onClick={stopAll}
         aria-label="Stop camera movement"
+        disabled={gate.disabled}
+        title={gate.title}
       >
         STOP
       </button>
@@ -472,15 +489,22 @@ export function CameraControls(props: Props) {
   const recordBlocked = recordGate?.allowed === false;
   const capturePod = (
     <div className="pod">
-      <button type="button" className="pod__btn" aria-label="Snapshot" onClick={snapshot}>
+      <button
+        type="button"
+        className="pod__btn"
+        aria-label="Snapshot"
+        onClick={snapshot}
+        disabled={gate.disabled}
+        title={gate.title}
+      >
         {svg(ICON.snapshot, 21, 'currentColor', 1.8)}
       </button>
       <button
         type="button"
         className={`pod__btn${recording ? ' pod__btn--rec' : ''}`}
         aria-label={recording ? 'Stop recording' : 'Record'}
-        disabled={recordBlocked}
-        title={recordBlocked ? recordGate?.reason : undefined}
+        disabled={gate.disabled || recordBlocked}
+        title={gate.disabled ? gate.title : recordBlocked ? recordGate?.reason : undefined}
         onClick={toggleRecord}
       >
         {svg(ICON.record, 20, 'currentColor', 2)}
@@ -498,6 +522,8 @@ export function CameraControls(props: Props) {
           aria-pressed={c.active}
           aria-label={c.label}
           onClick={c.onToggle}
+          disabled={gate.disabled}
+          title={gate.title}
         >
           {svg(c.icon, 21, 'currentColor', 1.8)}
         </button>
@@ -541,6 +567,8 @@ export function CameraControls(props: Props) {
             onClick={toggle}
             aria-label="More controls"
             aria-expanded={open}
+            disabled={gate.disabled}
+            title={gate.title}
           >
             <span /> <span /> <span />
           </button>

@@ -1109,6 +1109,12 @@ button.tile {
   color: var(--status-caution-text);
   font-size: 13px;
 }
+/* Read-only: the PTZ pad is dimmed and inert (its buttons already disable via useWriteGate). */
+.aim--readonly .aim__housing {
+  opacity: 0.42;
+  filter: grayscale(0.3);
+  pointer-events: none;
+}
 
 /* ---- Confirm dialog (destructive/deliberate actions, e.g. sign out) ---- */
 .confirm {
