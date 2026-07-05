@@ -100,31 +100,26 @@ test('a signed-in session passes the gate (cookie from /signalk/v1/auth/login)',
   await ctx.dispose();
 });
 
-test('a read-only user reads but cannot write — read-only, never a re-auth loop', async () => {
+test('a non-admin user is denied the whole plugin surface — SK Video is admin-only when secured', async () => {
+  // GROUND TRUTH (verified against signalk-server): `app.use('/plugins', adminAuthenticationMiddleware)`
+  // gates ALL of /plugins/* behind ADMIN. A logged-in read-only (or read-write) user can't reach SK
+  // Video's app or API at all — even reads. So the webapp's read-only mode (state 8) is UNREACHABLE
+  // with default security: the only users who can load SK Video on a secured server are admins
+  // (canWrite:true). Read-only stays a designed-but-dormant state, waiting on a server capability that
+  // serves the plugin's read routes to non-admins (the "backend refinement" the design spec named).
   const ctx = await freshContext();
   const login = await ctx.post('/signalk/v1/auth/login', {
     data: { username: 'viewer', password: 'e2e-password' },
   });
   expect(login.ok(), `readonly login -> ${login.status()}`).toBeTruthy();
 
-  // /session reports the enriched read-only contract the web app gates on.
-  const session = await ctx.get(`${P}/session`).then((r) => r.json());
-  expect(session).toMatchObject({
-    securityEnabled: true,
-    authenticated: true,
-    loggedIn: true,
-    readOnly: true,
-    canWrite: false,
-    anonymous: false,
-  });
-
-  // Reads work (a logged-in read-only user passes the /plugins front-door)…
-  expect((await ctx.get(`${P}/status`)).status(), 'readonly GET /status').not.toBe(401);
-  // …but the plugin's own gate refuses a write with 403 for a KNOWN-readonly principal — distinct
-  // from the 401 a lapsed session gets, which is exactly what lets the app show read-only, not re-auth.
-  expect((await ctx.post(`${P}/mob`, { data: {} })).status(), 'readonly POST /mob').toBe(403);
-  // Camera CRUD goes to the SK Resources API directly, which 401s a read-only write.
-  const put = await ctx.put('/signalk/v2/api/resources/cameras/ghost', { data: { name: 'x' } });
-  expect([401, 403], `readonly camera PUT -> ${put.status()}`).toContain(put.status());
+  for (const path of [`${P}/session`, `${P}/status`, `${P}/app/`]) {
+    expect((await ctx.get(path)).status(), `readonly GET ${path}`).toBe(401);
+  }
+  // …while the general Signal K data API still serves a read-only login (allow_readonly).
+  expect(
+    (await ctx.get('/signalk/v1/api/vessels/self')).status(),
+    'readonly GET vessels/self',
+  ).toBe(200);
   await ctx.dispose();
 });
