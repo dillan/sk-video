@@ -8,9 +8,12 @@ See [**For developers → Develop**](README.md#develop) in the README for prereq
 
 ```sh
 npm install
+npm run hooks    # one-time: install the git hooks (commit-message + lint-on-commit checks)
 npm run dev      # rebuild as you edit
 npm test         # run the tests
 ```
+
+`hooks` is a plain script, not an `npm install` lifecycle hook, on purpose: the published plugin must carry **no** install scripts, so end users never see npm's `allow-scripts` warning. Run it once after cloning.
 
 ## Before you open a pull request
 

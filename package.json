@@ -20,7 +20,7 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "prepare": "node scripts/prepare.mjs",
+    "hooks": "node scripts/prepare.mjs",
     "prepublishOnly": "npm --prefix webapp ci && npm run build:webapp && npm run build"
   },
   "simple-git-hooks": {
