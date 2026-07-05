@@ -400,8 +400,9 @@ test.describe('SK Video webapp — Library (Recordings + Incidents)', () => {
     // Each detail asset row carries an inline thumbnail (clip frame / snapshot image).
     await expect(page.locator('.asset__thumb').first()).toBeVisible();
 
-    // The grid/list choice persists across a reload (device-scoped localStorage).
+    // The grid/list choice persists across a full reload (device-scoped localStorage).
     await page.goto(`${APP}#/library/incidents`);
+    await page.reload();
     await expect(page.locator('.incident__row').first()).toBeVisible({ timeout: 15_000 });
     await expect(page.locator('.inctile')).toHaveCount(0);
   });
