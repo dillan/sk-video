@@ -7,6 +7,11 @@
       "username": "admin",
       "type": "admin",
       "password": "$2a$10$uzLKynb2sRbME0gWzhj03O/Ln6GBCN9rEX7gO.8IdoJPMQm0Ha1vy"
+    },
+    {
+      "username": "viewer",
+      "type": "readonly",
+      "password": "$2a$10$uzLKynb2sRbME0gWzhj03O/Ln6GBCN9rEX7gO.8IdoJPMQm0Ha1vy"
     }
   ]
 }

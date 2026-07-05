@@ -99,3 +99,32 @@ test('a signed-in session passes the gate (cookie from /signalk/v1/auth/login)',
   expect(disarm.status()).toBe(200);
   await ctx.dispose();
 });
+
+test('a read-only user reads but cannot write — read-only, never a re-auth loop', async () => {
+  const ctx = await freshContext();
+  const login = await ctx.post('/signalk/v1/auth/login', {
+    data: { username: 'viewer', password: 'e2e-password' },
+  });
+  expect(login.ok(), `readonly login -> ${login.status()}`).toBeTruthy();
+
+  // /session reports the enriched read-only contract the web app gates on.
+  const session = await ctx.get(`${P}/session`).then((r) => r.json());
+  expect(session).toMatchObject({
+    securityEnabled: true,
+    authenticated: true,
+    loggedIn: true,
+    readOnly: true,
+    canWrite: false,
+    anonymous: false,
+  });
+
+  // Reads work (a logged-in read-only user passes the /plugins front-door)…
+  expect((await ctx.get(`${P}/status`)).status(), 'readonly GET /status').not.toBe(401);
+  // …but the plugin's own gate refuses a write with 403 for a KNOWN-readonly principal — distinct
+  // from the 401 a lapsed session gets, which is exactly what lets the app show read-only, not re-auth.
+  expect((await ctx.post(`${P}/mob`, { data: {} })).status(), 'readonly POST /mob').toBe(403);
+  // Camera CRUD goes to the SK Resources API directly, which 401s a read-only write.
+  const put = await ctx.put('/signalk/v2/api/resources/cameras/ghost', { data: { name: 'x' } });
+  expect([401, 403], `readonly camera PUT -> ${put.status()}`).toContain(put.status());
+  await ctx.dispose();
+});
