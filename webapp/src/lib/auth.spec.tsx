@@ -154,4 +154,9 @@ describe('useWriteGate', () => {
     const { result } = renderHook(() => useWriteGate('need write'), { wrapper });
     await waitFor(() => expect(result.current).toEqual({ disabled: false }));
   });
+
+  it('tolerates no provider (a control in an isolated unit test is never gated)', () => {
+    const { result } = renderHook(() => useWriteGate('need write')); // no AuthProvider wrapper
+    expect(result.current).toEqual({ disabled: false });
+  });
 });
