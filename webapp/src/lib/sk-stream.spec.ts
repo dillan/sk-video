@@ -210,6 +210,28 @@ describe('SkStream', () => {
     stream.stop();
   });
 
+  it('setActive pauses (closes + halts reconnect) and resumes, idempotently', () => {
+    const { sockets, makeSocket } = fakeSocketFactory();
+    const stream = new SkStream({ url: 'ws://x/stream', onDelta: () => undefined, makeSocket });
+    stream.start();
+    sockets[0].onopen?.();
+    expect(sockets).toHaveLength(1);
+
+    // Pause: close the socket and do NOT reconnect on the backoff timer.
+    stream.setActive(false);
+    expect(sockets[0].close as ReturnType<typeof vi.fn>).toHaveBeenCalled();
+    vi.advanceTimersByTime(60_000);
+    expect(sockets).toHaveLength(1); // still paused — no reconnect
+    stream.setActive(false); // idempotent
+
+    // Resume: reopen exactly one fresh socket.
+    stream.setActive(true);
+    expect(sockets).toHaveLength(2);
+    stream.setActive(true); // idempotent
+    expect(sockets).toHaveLength(2);
+    stream.stop();
+  });
+
   it('reconnects with backoff after a close, and reseeds again on the reopen', () => {
     const { sockets, makeSocket } = fakeSocketFactory();
     const onConnect = vi.fn();
