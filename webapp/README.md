@@ -18,6 +18,11 @@ npm --prefix webapp run build    # → ../public (what the plugin serves and shi
 
 `vite.config.ts` sets `base: '/plugins/sk-video/app/'` and builds to the repo's `public/` directory. The plugin's `src/web/app-routes.ts` serves that directory under the same path with hashed-asset immutability and a `no-store` `index.html`.
 
+### Test environment notes
+
+- **`localStorage` works in tests.** jsdom disables storage under its default `about:blank` opaque origin, so `vite.config.ts` gives the jsdom environment a real origin (`environmentOptions.jsdom.url`) and `src/test-setup.ts` guarantees a working `window.localStorage`, cleared between tests. Persistence code (theme, density, per-view grid/list preference) runs for real — **don't hand-stub `localStorage` in tests**; assert against it directly.
+- **e2e reload/persistence.** In Playwright, `page.goto()` to the _same_ hash URL doesn't reliably reload in Chromium (it's already that document). To re-mount the app for a persistence check, use `page.reload()`.
+
 ## Boundary
 
 This app owns full **management, playback, review, and the safety console**. Clients like the KIP Video widget own only per-instance presentation and link out here to manage. See the plan and `docs/` for the full client-boundary model.

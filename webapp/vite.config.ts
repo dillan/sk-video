@@ -17,6 +17,10 @@ export default defineConfig({
   },
   test: {
     environment: 'jsdom',
+    // A real (non-opaque) origin so jsdom enables window.localStorage — with the default
+    // about:blank origin it is undefined and every persistence path silently no-ops.
+    environmentOptions: { jsdom: { url: 'http://localhost:3000/' } },
+    setupFiles: ['./src/test-setup.ts'],
     include: ['src/**/*.spec.{ts,tsx}'],
     css: false,
     coverage: {
@@ -24,6 +28,7 @@ export default defineConfig({
       include: ['src/**/*.{ts,tsx}'],
       exclude: [
         'src/**/*.spec.{ts,tsx}',
+        'src/test-setup.ts',
         'src/main.tsx',
         'src/vite-env.d.ts',
         // Media-IO binding (WHEP/HLS/MJPEG) — its WebRTC/native-HLS branches can't run under jsdom and

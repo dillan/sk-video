@@ -126,11 +126,6 @@ describe('Videos', () => {
   });
 
   it('toggles between grid and list, keeps thumbnails in both, and remembers the choice', async () => {
-    const store = new Map<string, string>();
-    vi.stubGlobal('localStorage', {
-      getItem: (k: string) => store.get(k) ?? null,
-      setItem: (k: string, v: string) => void store.set(k, v),
-    });
     mockApi(V);
     const { unmount } = render(<Videos />);
     await screen.findByText('clip.mp4');
@@ -143,7 +138,7 @@ describe('Videos', () => {
     // The list row still carries a video thumbnail and the labels.
     expect(row.querySelector('video')).toBeTruthy();
     expect(row.textContent).toContain('clip.mp4');
-    expect(store.get('sk-video.view.videos')).toBe('list');
+    expect(localStorage.getItem('sk-video.view.videos')).toBe('list');
 
     // Re-mounting restores the list view.
     unmount();
@@ -155,11 +150,7 @@ describe('Videos', () => {
   });
 
   it('opens the player from a list row and deletes from its trashcan', async () => {
-    const store = new Map<string, string>([['sk-video.view.videos', 'list']]);
-    vi.stubGlobal('localStorage', {
-      getItem: (k: string) => store.get(k) ?? null,
-      setItem: (k: string, v: string) => void store.set(k, v),
-    });
+    localStorage.setItem('sk-video.view.videos', 'list');
     const calls = mockApi(V);
     render(<Videos />);
     await screen.findByText('clip.mp4');
