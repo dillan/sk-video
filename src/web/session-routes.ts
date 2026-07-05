@@ -1,8 +1,11 @@
 import type { IRouter, Request, Response } from 'express';
 import {
+  isAnonymousPrincipal,
   isAuthorizedSensitiveRequest,
+  isLoggedInPrincipal,
   isReadOnlyPrincipal,
   isSecurityEnabled,
+  canWriteRequest,
   type IAuthenticatableRequest,
   type ISecurityStrategy,
 } from '../security/request-auth';
@@ -22,6 +25,20 @@ export interface ISessionInfo {
   authenticated: boolean;
   /** The principal is KNOWN read-only — the app disables write controls. Unknown shapes read false. */
   readOnly: boolean;
+  /**
+   * A REAL authenticated principal (a login), not the anonymous `AUTO` readonly principal an
+   * `allow_readonly` server attaches. Lets the app pick the right remedy for "can't write":
+   * loggedIn + !canWrite → ask an admin; !loggedIn → sign in.
+   */
+  loggedIn: boolean;
+  /** The single flag the app gates write controls on. Open server ⇒ true; known-readonly ⇒ false. */
+  canWrite: boolean;
+  /** The anonymous `AUTO` readonly principal reached this route (an `allow_readonly` open-read). */
+  anonymous: boolean;
+  /** The signed-in user's name, when the server exposes it — for the quiet identity indicator. */
+  username?: string;
+  /** The signed-in user's level ('admin' | 'readwrite' | 'readonly'), when the server exposes it. */
+  userLevel?: string;
   /** The plugin's version, so the app can detect a stale shell after a redeploy. */
   pluginVersion: string;
 }
@@ -31,12 +48,24 @@ export function describeSession(
   req: IAuthenticatableRequest,
   pluginVersion: string,
 ): ISessionInfo {
-  return {
+  const info: ISessionInfo = {
     securityEnabled: isSecurityEnabled(strategy),
     authenticated: isAuthorizedSensitiveRequest(strategy, req),
     readOnly: isReadOnlyPrincipal(req),
+    loggedIn: isLoggedInPrincipal(strategy, req),
+    canWrite: canWriteRequest(strategy, req),
+    anonymous: isAnonymousPrincipal(strategy, req),
     pluginVersion,
   };
+  // Best-effort identity — never load-bearing, so a throwing/older strategy just omits it.
+  try {
+    const status = strategy?.getLoginStatus?.(req);
+    if (typeof status?.username === 'string') info.username = status.username;
+    if (typeof status?.userLevel === 'string') info.userLevel = status.userLevel;
+  } catch {
+    // ignore — the app treats username/userLevel as optional
+  }
+  return info;
 }
 
 export interface ISessionRouteDeps {

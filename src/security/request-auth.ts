@@ -18,8 +18,21 @@ import type { Request as ExpressRequest, Response as ExpressResponse } from 'exp
 export interface ISecurityStrategy {
   /** True when the no-security ("dummy") strategy is active — i.e. the server runs fully open. */
   isDummy?: () => boolean;
-  /** The strategy's view of a request's login state; shape varies by server version. */
-  getLoginStatus?: (req: unknown) => { status?: string } | undefined;
+  /**
+   * The strategy's view of a request's login state; shape varies by server version. `status` is
+   * `'loggedIn'` only for a REAL authenticated principal (never the anonymous `AUTO` readonly one),
+   * and `username`/`userLevel` are present only in that case — which is how we tell a signed-in
+   * read-only user (remedy: ask an admin) from an anonymous or lapsed one (remedy: sign in).
+   */
+  getLoginStatus?: (req: unknown) =>
+    | {
+        status?: string;
+        username?: string;
+        userLevel?: string;
+        readOnlyAccess?: boolean;
+        authenticationRequired?: boolean;
+      }
+    | undefined;
 }
 
 export interface IAuthenticatableRequest {
@@ -98,4 +111,81 @@ export function isAuthorizedSensitiveRequest(
   } catch {
     return false; // fail closed on a misbehaving strategy
   }
+}
+
+/**
+ * The principal's identifier when the server exposes one, else null. Signal K uses the reserved
+ * identifier `'AUTO'` for the anonymous read-only principal it synthesises on an `allow_readonly`
+ * server, so this is how a real login is distinguished from an anonymous reader. Reads structurally
+ * (`identifier`, falling back to `id`) because the principal shape is not part of the public API.
+ */
+export function principalIdentifier(req: IAuthenticatableRequest): string | null {
+  const principal = req.skPrincipal;
+  if (principal && typeof principal === 'object') {
+    const p = principal as { identifier?: unknown; id?: unknown };
+    const id = typeof p.identifier === 'string' ? p.identifier : p.id;
+    if (typeof id === 'string') {
+      return id;
+    }
+  }
+  return null;
+}
+
+/**
+ * Whether the request carries a REAL authenticated principal — a login — as opposed to the anonymous
+ * `AUTO` readonly principal an `allow_readonly` server attaches to an unauthenticated request. Used by
+ * the session probe so the app can offer the right remedy: a signed-in read-only user is told to ask
+ * an admin, an anonymous/lapsed one is told to sign in. Fails closed (never claims "logged in" on a
+ * throwing strategy).
+ */
+export function isLoggedInPrincipal(
+  strategy: ISecurityStrategy | undefined,
+  req: IAuthenticatableRequest,
+): boolean {
+  if (!isSecurityEnabled(strategy)) {
+    return true; // open server: nothing to log into, so every caller is trivially "in"
+  }
+  try {
+    if (strategy?.getLoginStatus?.(req)?.status === 'loggedIn') {
+      return true;
+    }
+  } catch {
+    // A misbehaving strategy must never decide "logged in"; fall through to the identity check.
+  }
+  const id = principalIdentifier(req);
+  return id !== null && id !== 'AUTO';
+}
+
+/**
+ * Whether the request is the anonymous `AUTO` read-only principal (an `allow_readonly` server letting
+ * an unauthenticated caller read). Distinct from a named, signed-in read-only user. False on an open
+ * server (there is no such distinction to draw).
+ */
+export function isAnonymousPrincipal(
+  strategy: ISecurityStrategy | undefined,
+  req: IAuthenticatableRequest,
+): boolean {
+  if (!isSecurityEnabled(strategy)) {
+    return false;
+  }
+  if (principalIdentifier(req) === 'AUTO') {
+    return true;
+  }
+  // A readonly principal with no real login is anonymous too (defensive, for odd principal shapes).
+  return principalPermissions(req) === 'readonly' && !isLoggedInPrincipal(strategy, req);
+}
+
+/**
+ * The single authoritative "may this request write?" gate the web app mirrors: a caller must be
+ * authorized AND not known-readonly. An authenticated principal of unknown permission shape is
+ * allowed (only certainty denies — the same rule the plugin's own mutating gate uses).
+ */
+export function canWriteRequest(
+  strategy: ISecurityStrategy | undefined,
+  req: IAuthenticatableRequest,
+): boolean {
+  if (!isAuthorizedSensitiveRequest(strategy, req)) {
+    return false;
+  }
+  return !isReadOnlyPrincipal(req);
 }
