@@ -24,6 +24,7 @@ import { AuthProvider, useAuth } from './lib/auth';
 import type { AuthState } from './lib/auth-state';
 import { NavRail, TabBar } from './components/Nav';
 import { SignIn } from './components/SignIn';
+import { ReadOnlyRibbon } from './components/ReadOnlyRibbon';
 import { SafetyBanner } from './components/SafetyBanner';
 import { TelemetryStrip } from './components/TelemetryStrip';
 import { LiveWall } from './screens/LiveWall';
@@ -203,6 +204,7 @@ function AppShell() {
           />
         </div>
         <SafetyBanner alerts={alerts} />
+        {authState === 'readonly' && <ReadOnlyRibbon />}
         {staleShell && (
           <div className="chip chip--info" role="status" style={{ margin: '8px 0' }}>
             SK Video was updated — reload for the new version.
