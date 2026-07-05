@@ -1,3 +1,6 @@
+/* eslint-disable react-refresh/only-export-components --
+   This is a provider module: the AuthProvider and its useAuth/useWriteGate hooks belong together;
+   splitting them out to satisfy fast-refresh would only scatter one cohesive concern. */
 import {
   createContext,
   useCallback,
@@ -184,7 +187,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signInError,
       signIn,
       signOut,
-      reprobe: () => reprobe(),
+      reprobe,
       adoptSession,
       setLinkUnreachable,
     }),
