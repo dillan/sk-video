@@ -386,11 +386,24 @@ test.describe('SK Video webapp — Library (Recordings + Incidents)', () => {
       30_000,
     );
     await page.goto(`${APP}#/library/incidents`);
+    // Default is a grid of poster tiles.
+    const tile = page.locator('.inctile').first();
+    await expect(tile).toBeVisible({ timeout: 15_000 });
+
+    // Toggle to the list view and open the bundle from a row.
+    await page.getByRole('button', { name: /list view/i }).click();
     const row = page.locator('.incident__row').first();
-    await expect(row).toBeVisible({ timeout: 15_000 });
+    await expect(row).toBeVisible();
     await row.click();
     await expect(page.getByRole('heading', { name: 'Incident' })).toBeVisible();
     await expect(page.getByText(/best-effort/)).toBeVisible();
+    // Each detail asset row carries an inline thumbnail (clip frame / snapshot image).
+    await expect(page.locator('.asset__thumb').first()).toBeVisible();
+
+    // The grid/list choice persists across a reload (device-scoped localStorage).
+    await page.goto(`${APP}#/library/incidents`);
+    await expect(page.locator('.incident__row').first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('.inctile')).toHaveCount(0);
   });
 
   test('Incident export.zip downloads a real archive', async ({ request }) => {
