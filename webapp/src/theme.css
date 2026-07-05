@@ -1101,6 +1101,15 @@ button.tile {
   text-underline-offset: 2px;
 }
 
+/* Read-only ribbon (state 8): a calm, persistent amber band — informational, never an alarm. */
+.ro-ribbon {
+  padding: 10px 20px;
+  background: rgba(255, 159, 10, 0.12);
+  border-bottom: 1px solid rgba(255, 159, 10, 0.3);
+  color: var(--status-caution-text);
+  font-size: 13px;
+}
+
 /* ---- Confirm dialog (destructive/deliberate actions, e.g. sign out) ---- */
 .confirm {
   position: fixed;
