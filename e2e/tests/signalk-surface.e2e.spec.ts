@@ -9,6 +9,8 @@ import {
   waitForReady,
   waitForStatus,
   pollJson,
+  SKIP_LIVE_GATEWAY,
+  SKIP_LIVE_GATEWAY_REASON,
 } from './helpers';
 
 /**
@@ -91,6 +93,7 @@ test.afterAll(async ({ request }) => {
 });
 
 test('publishes per-camera health paths with self-describing meta (F7)', async ({ request }) => {
+  test.skip(SKIP_LIVE_GATEWAY, SKIP_LIVE_GATEWAY_REASON);
   await warmUntilHealthy(request);
 
   const producers = (await request.get(selfModel(`cameras.${CAM}.producers`))).ok();

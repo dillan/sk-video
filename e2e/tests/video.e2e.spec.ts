@@ -1,4 +1,5 @@
 import { test, expect, type APIRequestContext } from '@playwright/test';
+import { SKIP_LIVE_GATEWAY, SKIP_LIVE_GATEWAY_REASON } from './helpers';
 
 const BASE = process.env.SIGNALK_URL || 'http://localhost:3000';
 const CAMERA = 'testcam';
@@ -48,6 +49,7 @@ test.describe('sk-video plugin live contract', () => {
   });
 
   test('serves the camera as browser HLS through the gateway', async ({ request }) => {
+    test.skip(SKIP_LIVE_GATEWAY, SKIP_LIVE_GATEWAY_REASON);
     const url = `${BASE}/plugins/sk-video/cameras/${CAMERA}/stream.m3u8`;
     await waitFor200(request, url);
     const res = await request.get(url);
@@ -56,6 +58,7 @@ test.describe('sk-video plugin live contract', () => {
   });
 
   test('returns a JPEG snapshot frame', async ({ request }) => {
+    test.skip(SKIP_LIVE_GATEWAY, SKIP_LIVE_GATEWAY_REASON);
     const url = `${BASE}/plugins/sk-video/cameras/${CAMERA}/frame.jpeg`;
     // go2rtc transcodes the frame with ffmpeg; poll until a non-empty JPEG comes back.
     const deadline = Date.now() + 45_000;
@@ -211,6 +214,7 @@ test.describe('sk-video plugin live contract', () => {
   });
 
   test('proxies the HLS sub-resources referenced by the master playlist', async ({ request }) => {
+    test.skip(SKIP_LIVE_GATEWAY, SKIP_LIVE_GATEWAY_REASON);
     const masterUrl = `${BASE}/plugins/sk-video/cameras/${CAMERA}/stream.m3u8`;
     await waitFor200(request, masterUrl);
     const master = await (await request.get(masterUrl)).text();
