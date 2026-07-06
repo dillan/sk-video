@@ -49,4 +49,12 @@ describe('ActivityMonitor', () => {
     render(<ActivityMonitor />);
     await waitFor(() => screen.getByText(/Can’t read device activity/));
   });
+
+  it('clamps a meter’s aria-valuenow to 100 even when the value overshoots (hot temperature)', async () => {
+    // 92°C / 85 = 108% — the bar must not report an out-of-range ARIA meter value.
+    api.fetchActivity.mockResolvedValue({ ...SAMPLE, temperatureC: 92 });
+    render(<ActivityMonitor />);
+    const meter = await screen.findByRole('meter', { name: 'Temperature' });
+    expect(Number(meter.getAttribute('aria-valuenow'))).toBeLessThanOrEqual(100);
+  });
 });

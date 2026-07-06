@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   parseProcStat,
   parseProcStatCpu,
+  parseMemInfo,
   takeSnapshot,
   deriveActivity,
   assessCapacity,
@@ -40,6 +41,25 @@ describe('parseProcStatCpu', () => {
   });
   it('returns null without a cpu line', () => {
     expect(parseProcStatCpu('intr 1 2 3')).toBeNull();
+  });
+});
+
+describe('parseMemInfo', () => {
+  it('uses MemAvailable (not MemFree) so reclaimable cache is not counted as used', () => {
+    const text = [
+      'MemTotal:        8000000 kB',
+      'MemFree:          200000 kB', // low — page cache fills it on a device doing video I/O
+      'MemAvailable:    6000000 kB', // the honest "free for new work" figure
+      'Buffers:          100000 kB',
+    ].join('\n');
+    expect(parseMemInfo(text)).toEqual({
+      totalBytes: 8000000 * 1024,
+      availableBytes: 6000000 * 1024,
+    });
+  });
+  it('returns null when the fields are missing', () => {
+    expect(parseMemInfo('MemTotal: 8000000 kB')).toBeNull(); // no MemAvailable
+    expect(parseMemInfo('garbage')).toBeNull();
   });
 });
 
@@ -138,6 +158,39 @@ describe('takeSnapshot + deriveActivity', () => {
     expect(sample.processes).toEqual([]);
     expect(sample.temperatureC).toBeNull();
     expect(sample.cpu.utilization).toBeCloseTo(0.5, 2); // 4/8
+  });
+
+  it('computes memory from /proc/meminfo MemAvailable when memInfo is not injected', () => {
+    // No memInfo override → the default reads the injected /proc/meminfo. MemFree is low (cache), but
+    // MemAvailable says 6 GB free of 8 GB, so used = 2 GB → 25%, not the 95% MemFree would imply.
+    const readers: IActivityReaders = {
+      now: () => 1,
+      cores: () => 4,
+      loadAvg1: () => 1,
+      listPids: () => [],
+      readText: (p) =>
+        p === '/proc/meminfo'
+          ? 'MemTotal: 8000000 kB\nMemFree: 400000 kB\nMemAvailable: 6000000 kB'
+          : null,
+    };
+    const sample = deriveActivity(null, takeSnapshot(readers), { rootPid: 1 });
+    expect(sample.memory.utilization).toBeCloseTo(0.25, 2);
+  });
+
+  it('does not amplify a nonsense CPU% when two polls land within the delta floor', () => {
+    // Shared prevSnapshot: two overlapping polls ~1 ms apart. A 1-jiffie delta over 1 ms must NOT
+    // become 1000% — below MIN_DELTA_SEC we report 0% and fall back to the load-average proxy.
+    const prev = takeSnapshot(
+      fakeReaders({ files: files([100, 1000], { 10: 10, 20: 20, 30: 30 }) }),
+    );
+    const nextReaders = fakeReaders({ files: files([101, 1001], { 10: 11, 20: 21, 30: 31 }) });
+    nextReaders.now = () => 1_001; // +1 ms
+    const sample = deriveActivity(prev, takeSnapshot(nextReaders), {
+      rootPid: 10,
+      clockTicks: 100,
+    });
+    expect(sample.processes.every((p) => p.cpuPercent === 0)).toBe(true);
+    expect(sample.cpu.utilization).toBeCloseTo(0.25, 2); // loadAvg1 1.0 / 4 cores, not the 1 ms delta
   });
 });
 

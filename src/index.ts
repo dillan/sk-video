@@ -311,6 +311,20 @@ export = function (app: ServerAPI): Plugin {
     return false;
   };
 
+  // A separate, more permissive limiter for /activity: each GET does a synchronous /proc scan, so an
+  // unauthenticated caller on an open server could otherwise loop it to pin the event loop. The panel
+  // polls at ~24/min; 90/min leaves generous headroom for a couple of clients while bounding a flood.
+  const activityLimiter = new RateLimiter({ max: 90, windowMs: 60_000 });
+  const tooManyActivityRequests = (req: Request, res: Response): boolean => {
+    const result = activityLimiter.check(clientKey(req));
+    if (!result.ok) {
+      res.setHeader('Retry-After', String(Math.ceil(result.retryAfterMs / 1000)));
+      res.status(429).json({ error: 'too many requests', retryAfterMs: result.retryAfterMs });
+      return true;
+    }
+    return false;
+  };
+
   // The Signal K security strategy isn't in the public ServerAPI types; read it structurally.
   const securityStrategy = (app as unknown as { securityStrategy?: ISecurityStrategy })
     .securityStrategy;
@@ -1455,7 +1469,12 @@ export = function (app: ServerAPI): Plugin {
       // (signalk-server + the go2rtc and ffmpeg children it spawned) and a coarse capacity verdict.
       // Per-process CPU% comes from the delta against the previous poll; the web app polls this only
       // while the panel is open. Public like /status (host-capacity facts, no secrets).
-      router.get('/activity', (_req: Request, res: Response) => {
+      router.get('/activity', (req: Request, res: Response) => {
+        // Rate-limited (not auth-gated, like /status): the sample is host-capacity facts with no
+        // secrets, but each call does a synchronous /proc scan, so cap the flood on an open server.
+        if (tooManyActivityRequests(req, res)) {
+          return;
+        }
         const next = takeSnapshot();
         const sample = deriveActivity(prevActivitySnapshot, next, { rootPid: process.pid });
         prevActivitySnapshot = next;

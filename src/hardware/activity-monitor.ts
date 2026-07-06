@@ -90,6 +90,8 @@ const TEMP_ZONES = [
   '/sys/class/thermal/thermal_zone1/temp',
 ];
 const MAX_PROCESSES = 8; // the biggest few contributors — the wall doesn't need the whole table
+// Minimum wall-clock between two snapshots for a CPU delta to be meaningful (guards concurrent polls).
+const MIN_DELTA_SEC = 0.2;
 
 const defaultReadText = (path: string): string | null => {
   try {
@@ -141,6 +143,24 @@ export function parseProcStatCpu(procStat: string): { busy: number; total: numbe
   return { busy: total - idle, total };
 }
 
+/**
+ * Parse /proc/meminfo into {totalBytes, availableBytes}. `MemAvailable` (not `MemFree`) is the kernel's
+ * own estimate of memory available for new work WITHOUT swapping — it counts reclaimable page cache and
+ * buffers as available. Using MemFree instead would read chronically high on a device doing video I/O
+ * (go2rtc/ffmpeg fill the page cache), so the meter would cry "memory full" when gigabytes are
+ * reclaimable. Values in /proc/meminfo are kB. Returns null if the fields aren't present.
+ */
+export function parseMemInfo(text: string): { totalBytes: number; availableBytes: number } | null {
+  const kb = (key: string): number | null => {
+    const m = new RegExp(`^${key}:\\s+(\\d+)\\s+kB`, 'm').exec(text);
+    return m ? Number(m[1]) * 1024 : null;
+  };
+  const totalBytes = kb('MemTotal');
+  const availableBytes = kb('MemAvailable');
+  if (totalBytes === null || availableBytes === null) return null;
+  return { totalBytes, availableBytes };
+}
+
 /** Read a thermal-zone file (millidegrees C) into °C, trying the common zones. */
 function readTemperature(readText: (p: string) => string | null): number | null {
   for (const zone of TEMP_ZONES) {
@@ -161,7 +181,17 @@ export function takeSnapshot(readers: IActivityReaders = {}): IActivitySnapshot 
   const loadAvg1 = readers.loadAvg1 ?? (() => loadavg()[0]);
   const cores = readers.cores ?? (() => cpus().length);
   const pageSize = readers.pageSize ?? 4096;
-  const memInfo = readers.memInfo ?? (() => ({ totalBytes: totalmem(), freeBytes: freemem() }));
+  // Prefer /proc/meminfo MemAvailable (reclaimable cache counted as free); fall back to node:os on a
+  // host without /proc (macOS dev), where os.freemem() is the best available signal.
+  const memInfo =
+    readers.memInfo ??
+    (() => {
+      const raw = readText('/proc/meminfo');
+      const parsed = raw ? parseMemInfo(raw) : null;
+      return parsed
+        ? { totalBytes: parsed.totalBytes, freeBytes: parsed.availableBytes }
+        : { totalBytes: totalmem(), freeBytes: freemem() };
+    });
 
   const procStat = readText('/proc/stat');
   const cpuTotal = procStat ? parseProcStatCpu(procStat) : null;
@@ -220,8 +250,15 @@ export function deriveActivity(
   const clockTicks = opts.clockTicks ?? 100;
   const cores = next.cores || 1;
 
+  // Only trust a delta when enough wall-clock elapsed. `prevActivitySnapshot` is shared across all
+  // callers, so two overlapping polls (two tabs, a helm + a phone) can land ~1 ms apart; a tiny
+  // interval divides a 1-jiffie delta into a nonsense 1000% spike. Below the floor, fall back to the
+  // load-average proxy / 0% per-process instead of amplifying noise.
+  const elapsedSec = prev ? (next.atMs - prev.atMs) / 1000 : 0;
+  const haveDelta = elapsedSec >= MIN_DELTA_SEC;
+
   let utilization: number;
-  if (prev?.cpuTotal && next.cpuTotal && next.cpuTotal.total > prev.cpuTotal.total) {
+  if (prev?.cpuTotal && next.cpuTotal && haveDelta && next.cpuTotal.total > prev.cpuTotal.total) {
     const busyDelta = next.cpuTotal.busy - prev.cpuTotal.busy;
     const totalDelta = next.cpuTotal.total - prev.cpuTotal.total;
     utilization = clamp01(busyDelta / totalDelta);
@@ -229,7 +266,6 @@ export function deriveActivity(
     utilization = clamp01(next.loadAvg1 / cores); // first poll / no /proc: sustained-load proxy
   }
 
-  const elapsedSec = prev ? Math.max((next.atMs - prev.atMs) / 1000, 0.001) : 0;
   const prevJiffies = new Map(prev?.procs.map((p) => [p.pid, p.cpuJiffies]) ?? []);
   const tree = processTree(next.procs, opts.rootPid);
 
@@ -238,7 +274,7 @@ export function deriveActivity(
     .map((p) => {
       const before = prevJiffies.get(p.pid);
       const cpuPercent =
-        elapsedSec > 0 && before !== undefined
+        haveDelta && before !== undefined
           ? Math.max(0, ((p.cpuJiffies - before) / clockTicks / elapsedSec) * 100)
           : 0;
       return { pid: p.pid, name: p.comm, cpuPercent: round1(cpuPercent), rssBytes: p.rssBytes };

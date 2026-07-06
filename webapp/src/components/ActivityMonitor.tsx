@@ -23,6 +23,7 @@ function Meter({
   value: string;
   tone: Tone;
 }) {
+  const pct = Math.min(100, Math.max(0, Math.round(fraction * 100)));
   return (
     <div className="activity__meter">
       <div className="activity__meterhead">
@@ -33,14 +34,11 @@ function Meter({
         className="activity__track"
         role="meter"
         aria-label={label}
-        aria-valuenow={Math.round(fraction * 100)}
+        aria-valuenow={pct}
         aria-valuemin={0}
         aria-valuemax={100}
       >
-        <div
-          className={`activity__fill activity__fill--${tone}`}
-          style={{ width: `${Math.min(100, Math.max(0, Math.round(fraction * 100)))}%` }}
-        />
+        <div className={`activity__fill activity__fill--${tone}`} style={{ width: `${pct}%` }} />
       </div>
     </div>
   );
@@ -91,6 +89,7 @@ export function ActivityMonitor() {
         <p className="chip chip--caution">Can’t read device activity right now.</p>
       )}
       {!error && !activity && <p className="muted">Reading device activity…</p>}
+      {error && activity && <p className="muted">Couldn’t refresh — showing the last reading.</p>}
 
       {activity && (
         <>
