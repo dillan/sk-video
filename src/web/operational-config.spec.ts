@@ -42,6 +42,13 @@ describe('validateOperationalConfig', () => {
     expect(validateOperationalConfig({ recordingEnabled: 'yes' }).valid).toBe(false);
   });
 
+  it('accepts hardwareAcceleration as a boolean and rejects a non-boolean', () => {
+    const on = validateOperationalConfig({ hardwareAcceleration: true });
+    expect(on.valid).toBe(true);
+    expect(on.value?.hardwareAcceleration).toBe(true);
+    expect(validateOperationalConfig({ hardwareAcceleration: 'yes' }).valid).toBe(false);
+  });
+
   it('clamps frigate minScore into [0,1] and validates the port range', () => {
     expect(validateOperationalConfig({ frigate: { minScore: 5 } }).value?.frigate?.minScore).toBe(
       1,

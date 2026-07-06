@@ -22,6 +22,28 @@ export interface IGo2rtcConfigInput {
    * container whose own interface IP the browser can't reach. Left empty by default (auto-detect).
    */
   webrtcCandidates?: string[];
+  /**
+   * Opt-in hardware transcoding. When true, an H.265 camera that has NO H.264 sub-stream gains a
+   * GPU-accelerated H.264 transcode source so the browser can play it over WebRTC using the GPU
+   * instead of pegging a CPU core (the exact case that otherwise falls to the MJPEG still-refresh
+   * floor). Off by default — go2rtc's own guidance is that hardware transcoding can be unstable, and a
+   * misdetected engine is worse than software. See {@link hardwareH264Source}.
+   */
+  hardwareAcceleration?: boolean;
+}
+
+/**
+ * A go2rtc source that transcodes an RTSP URL to H.264 using auto-detected hardware. The bare
+ * `#hardware` flag lets go2rtc pick the engine (VAAPI / v4l2m2m / videotoolbox / …) and, per its
+ * docs, fall back to a software DECODER where the input codec isn't hardware-decodable — so on a Pi
+ * (which "always uses software decoder") the win is the H.264 ENCODE offload, not the H.265 decode.
+ * go2rtc only transcodes to H.264 (`#video=h265` is unsupported upstream), which is all the browser
+ * needs. The URL comes from {@link buildGo2rtcSource} (validated scheme + host, no `#` possible in a
+ * camera path), and the modifiers are constant, so this deliberate `ffmpeg:` source carries no more
+ * risk than the plain URL it wraps.
+ */
+export function hardwareH264Source(rtspUrl: string): string {
+  return `ffmpeg:${rtspUrl}#video=h264#hardware`;
 }
 
 /**
@@ -49,6 +71,11 @@ export function buildGo2rtcConfig(input: IGo2rtcConfigInput): Record<string, unk
       // suffix can never collide with a real camera id, which forbids underscores. Credentials are
       // injected server-side here exactly as for the main stream.
       streams[`${id}_sub`] = sub;
+    } else if (input.hardwareAcceleration && camera.media?.codec === 'h265') {
+      // H.265 with no H.264 sub-stream: the browser can't play it over WebRTC, so go2rtc must
+      // transcode. Offer the raw H.265 main (HLS/passthrough) AND a hardware H.264 transcode source
+      // that go2rtc serves to a WebRTC client — moving this camera off the CPU-heavy MJPEG floor.
+      streams[id] = [main, hardwareH264Source(main)];
     } else {
       streams[id] = main;
     }

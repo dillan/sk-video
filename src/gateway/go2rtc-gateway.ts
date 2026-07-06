@@ -24,6 +24,8 @@ export interface IGo2rtcGatewayOptions {
   ports?: IGo2rtcPorts;
   /** Explicit WebRTC ICE host candidates to advertise (see IGo2rtcConfigInput.webrtcCandidates). */
   webrtcCandidates?: string[];
+  /** Opt-in hardware transcoding (see IGo2rtcConfigInput.hardwareAcceleration). Off by default. */
+  hardwareAcceleration?: boolean;
   /** Injectable config writer for testing. */
   writeConfig?: (path: string, config: Record<string, unknown>) => void;
   /** Injectable config remover for testing. */
@@ -71,6 +73,7 @@ export class Go2rtcGateway {
       credentials,
       ports: this.opts.ports,
       webrtcCandidates: this.opts.webrtcCandidates,
+      hardwareAcceleration: this.opts.hardwareAcceleration,
     });
     this.write(config);
 

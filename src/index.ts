@@ -101,6 +101,7 @@ import {
   type THardwareTier,
   type IHardwareInfo,
 } from './hardware/tier-detect';
+import { probeFfmpegHwaccel, type IFfmpegHwaccel } from './hardware/ffmpeg-probe';
 import { SignalKBridge, type ISignalKApp, type AlarmState } from './signalk/sk-bridge';
 import { SnapshotService } from './recording/snapshot-service';
 import { FileSnapshotStore } from './recording/file-snapshot-store';
@@ -208,6 +209,9 @@ export = function (app: ServerAPI): Plugin {
   let resumableUploads: ResumableUploadStore | null = null;
   let resumableSweepTimer: ReturnType<typeof setInterval> | null = null;
   let hardware: IHardwareInfo | null = null;
+  // Filled asynchronously at startup by probing the host ffmpeg; null until it resolves. Tells the app
+  // whether a real hardware H.264 encoder exists, so the acceleration toggle can be honest.
+  let ffmpegHwaccel: IFfmpegHwaccel | null = null;
   let bridge: SignalKBridge | null = null;
   let snapshots: SnapshotService | null = null;
   let snapshotStore: FileSnapshotStore | null = null;
@@ -485,6 +489,14 @@ export = function (app: ServerAPI): Plugin {
             ? (options.hardwareTier as THardwareTier)
             : undefined;
         hardware = detectHardware({ override });
+        // Probe the host ffmpeg for a real hardware encode path (non-blocking — startup never waits on
+        // it). go2rtc auto-detects at transcode time; this is only so the app can tell the operator
+        // whether turning acceleration on will actually do anything.
+        void probeFfmpegHwaccel()
+          .then((r) => {
+            ffmpegHwaccel = r;
+          })
+          .catch(() => undefined);
         cameras = new CameraStore(new FileCameraPersistence(dataDir));
         credentials = new CredentialStore(new FileCredentialPersistence(dataDir));
         const go2rtcBinary = new Go2rtcBinaryManager({ dataDir, log });
@@ -514,6 +526,9 @@ export = function (app: ServerAPI): Plugin {
             .split(',')
             .map((c) => c.trim())
             .filter(Boolean),
+          // Opt-in hardware transcoding (Settings → Operational). Applied at gateway construction;
+          // a config change restarts the plugin, so this reflects the current setting each run.
+          hardwareAcceleration: options?.hardwareAcceleration === true,
         });
         ptz = new PtzManager({
           getCamera: (id) => cameras?.get(id) ?? null,
@@ -1387,6 +1402,7 @@ export = function (app: ServerAPI): Plugin {
       }
       resumableUploads = null;
       hardware = null;
+      ffmpegHwaccel = null;
       bridge = null;
       snapshots = null;
       snapshotStore = null;
@@ -1412,6 +1428,11 @@ export = function (app: ServerAPI): Plugin {
           // Whether buffered recording is turned on (Settings). Combined with the hardware tier's
           // recording channels, this lets the app disable the Record button with the right reason.
           recordingEnabled: currentConfig.recordingEnabled !== false,
+          // Whether opt-in hardware transcoding is on (Settings). Default off; the app pairs this with
+          // the hardware probe to tell the operator whether the toggle will actually do anything.
+          hardwareAcceleration: currentConfig.hardwareAcceleration === true,
+          // The host ffmpeg's real hardware-encode capability (null until the async probe resolves).
+          ffmpegHwaccel,
           // Honest Frigate posture: an empty detection feed must be distinguishable from "not wired".
           frigate: { configured: frigateClient !== null, connected: frigateConnected },
         });
