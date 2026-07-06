@@ -1,5 +1,13 @@
 import { test, expect } from '@playwright/test';
-import { plugin, CAMERA, ensureCamera, waitForStatus, pollJson } from './helpers';
+import {
+  plugin,
+  CAMERA,
+  ensureCamera,
+  waitForStatus,
+  pollJson,
+  SKIP_LIVE_GATEWAY,
+  SKIP_LIVE_GATEWAY_REASON,
+} from './helpers';
 
 // DVR recording (C10), stream health (F6) and the substream variant route (C6.2). The harness sets
 // hardwareTier=x86 so recording channels are available; the recorder reads go2rtc's loopback RTSP.
@@ -14,6 +22,7 @@ test.beforeAll(async ({ request }) => {
 
 test.describe('DVR recording (C10)', () => {
   test('records a camera, lists + Range-serves the segment, then stops', async ({ request }) => {
+    test.skip(SKIP_LIVE_GATEWAY, SKIP_LIVE_GATEWAY_REASON);
     const start = await request.post(plugin(`/cameras/${CAMERA}/record`), {
       data: { active: true },
     });
