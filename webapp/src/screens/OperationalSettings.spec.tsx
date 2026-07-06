@@ -6,6 +6,7 @@ const api = vi.hoisted(() => ({
   fetchOperationalConfig: vi.fn(),
   saveOperationalConfig: vi.fn(),
   fetchCameras: vi.fn(),
+  fetchStatus: vi.fn(),
 }));
 vi.mock('../api', () => api);
 
@@ -38,6 +39,7 @@ beforeEach(() => {
   api.fetchOperationalConfig.mockResolvedValue(CONFIG);
   api.saveOperationalConfig.mockResolvedValue({ ok: true });
   api.fetchCameras.mockResolvedValue(CAMERAS);
+  api.fetchStatus.mockResolvedValue({ ready: true, ffmpegHwaccel: null });
 });
 afterEach(() => {
   cleanup();
@@ -67,6 +69,27 @@ describe('OperationalSettings', () => {
     };
     expect('mqttPassword' in payload.frigate).toBe(false); // omitted → server keeps the stored one
     await waitFor(() => expect(screen.getByText(/restarting/)).toBeTruthy());
+  });
+
+  it('sends hardwareAcceleration on save when the operator turns it on', async () => {
+    render(<OperationalSettings />);
+    await waitFor(() => screen.getByDisplayValue('192.168.1.10'));
+    fireEvent.click(screen.getByLabelText(/Hardware video acceleration/));
+    fireEvent.click(screen.getByRole('button', { name: 'Save & apply' }));
+    await waitFor(() => expect(api.saveOperationalConfig).toHaveBeenCalled());
+    const payload = api.saveOperationalConfig.mock.calls[0][0] as { hardwareAcceleration: boolean };
+    expect(payload.hardwareAcceleration).toBe(true);
+  });
+
+  it('warns honestly when acceleration is on but no hardware encoder was detected', async () => {
+    api.fetchStatus.mockResolvedValue({
+      ready: true,
+      hardwareAcceleration: true,
+      ffmpegHwaccel: { ffmpegPresent: true, methods: [], h264Encoders: [], hardwareEncode: false },
+    });
+    api.fetchOperationalConfig.mockResolvedValue({ ...CONFIG, hardwareAcceleration: true });
+    render(<OperationalSettings />);
+    await waitFor(() => screen.getByText(/No hardware H.264 encoder detected/));
   });
 
   it('includes the password only when the operator types one', async () => {

@@ -87,6 +87,15 @@ export interface IPluginStatus {
   } | null;
   /** Whether buffered recording is turned on in Settings (false = the operator disabled it). */
   recordingEnabled?: boolean;
+  /** Whether opt-in hardware transcoding is turned on in Settings (default off). */
+  hardwareAcceleration?: boolean;
+  /** The host ffmpeg's real hardware-encode capability (null until the async startup probe resolves). */
+  ffmpegHwaccel?: {
+    ffmpegPresent: boolean;
+    methods: string[];
+    h264Encoders: string[];
+    hardwareEncode: boolean;
+  } | null;
   /** Frigate posture: an empty detection feed must be distinguishable from "not wired". */
   frigate?: { configured: boolean; connected: boolean };
 }
@@ -1030,6 +1039,7 @@ export interface IOperationalConfigPublic {
   anchorWatchPath?: string;
   mobVisualRefine?: boolean;
   recordingEnabled?: boolean;
+  hardwareAcceleration?: boolean;
   cameraHealthZones?: Record<string, ICameraHealthZonesConfig>;
   frigate: IFrigatePublicConfig;
 }
