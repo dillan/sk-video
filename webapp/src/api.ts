@@ -85,6 +85,8 @@ export interface IPluginStatus {
     label?: string;
     capabilities?: { maxRecordingChannels?: number };
   } | null;
+  /** Whether buffered recording is turned on in Settings (false = the operator disabled it). */
+  recordingEnabled?: boolean;
   /** Frigate posture: an empty detection feed must be distinguishable from "not wired". */
   frigate?: { configured: boolean; connected: boolean };
 }
@@ -1027,6 +1029,7 @@ export interface IOperationalConfigPublic {
   autoTriggerPath?: string;
   anchorWatchPath?: string;
   mobVisualRefine?: boolean;
+  recordingEnabled?: boolean;
   cameraHealthZones?: Record<string, ICameraHealthZonesConfig>;
   frigate: IFrigatePublicConfig;
 }

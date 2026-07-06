@@ -39,6 +39,12 @@ export interface IOperationalConfig {
   autoTriggerPath?: string;
   anchorWatchPath?: string;
   mobVisualRefine?: boolean;
+  /**
+   * Buffered DVR recording (per-camera Record + incident pre-roll). Default ON; set false to disable
+   * recording plugin-wide on a constrained host — the recorders (an ffmpeg remux per camera) stop and
+   * POST /record is refused. Recording is a copy, not a transcode, so this is a modest CPU/disk saving.
+   */
+  recordingEnabled?: boolean;
   /** Keyed by camera id; presence of an entry = zones enabled for that camera. */
   cameraHealthZones?: Record<string, ICameraHealthZonesConfig>;
   frigate?: IFrigateOperationalConfig;
@@ -63,6 +69,7 @@ const TOP_KEYS = new Set([
   'autoTriggerPath',
   'anchorWatchPath',
   'mobVisualRefine',
+  'recordingEnabled',
   'cameraHealthZones',
   'frigate',
 ]);
@@ -121,6 +128,10 @@ export function validateOperationalConfig(input: unknown): IValidation<IOperatio
   if (o.mobVisualRefine !== undefined) {
     if (typeof o.mobVisualRefine !== 'boolean') errors.push('mobVisualRefine must be a boolean');
     else value.mobVisualRefine = o.mobVisualRefine;
+  }
+  if (o.recordingEnabled !== undefined) {
+    if (typeof o.recordingEnabled !== 'boolean') errors.push('recordingEnabled must be a boolean');
+    else value.recordingEnabled = o.recordingEnabled;
   }
 
   if (o.cameraHealthZones !== undefined) {

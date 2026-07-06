@@ -35,6 +35,13 @@ describe('validateOperationalConfig', () => {
     expect(validateOperationalConfig({ hardwareTier: 'supercomputer' }).valid).toBe(false);
   });
 
+  it('accepts recordingEnabled as a boolean and rejects a non-boolean', () => {
+    const on = validateOperationalConfig({ recordingEnabled: false });
+    expect(on.valid).toBe(true);
+    expect(on.value?.recordingEnabled).toBe(false);
+    expect(validateOperationalConfig({ recordingEnabled: 'yes' }).valid).toBe(false);
+  });
+
   it('clamps frigate minScore into [0,1] and validates the port range', () => {
     expect(validateOperationalConfig({ frigate: { minScore: 5 } }).value?.frigate?.minScore).toBe(
       1,

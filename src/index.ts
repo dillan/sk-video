@@ -620,7 +620,12 @@ export = function (app: ServerAPI): Plugin {
             );
             return { stop: () => child.kill('SIGINT') };
           },
-          maxChannels: () => hardware?.capabilities.maxRecordingChannels ?? 0,
+          // Recording is disabled plugin-wide when the operator turns it off in Settings (0 channels),
+          // else capped to the hardware tier. Default (undefined) is ON.
+          maxChannels: () =>
+            options?.recordingEnabled === false
+              ? 0
+              : (hardware?.capabilities.maxRecordingChannels ?? 0),
           limits: () => ({ maxBytes: RECORDING_MAX_BYTES, maxAgeMs: RECORDING_MAX_AGE_MS }),
           listSegments: () => (recordingsDir ? scanRecordings(recordingsDir) : []),
           removeFile: (path) => rmSync(path, { force: true }),
@@ -1404,6 +1409,9 @@ export = function (app: ServerAPI): Plugin {
           ready: cameras !== null,
           cameras: cameras ? Object.keys(cameras.list()).length : 0,
           hardware,
+          // Whether buffered recording is turned on (Settings). Combined with the hardware tier's
+          // recording channels, this lets the app disable the Record button with the right reason.
+          recordingEnabled: currentConfig.recordingEnabled !== false,
           // Honest Frigate posture: an empty detection feed must be distinguishable from "not wired".
           frigate: { configured: frigateClient !== null, connected: frigateConnected },
         });
@@ -1566,7 +1574,9 @@ export = function (app: ServerAPI): Plugin {
           return healths;
         },
         lastGood: (id) => lastGood.get(id),
-        recordingAvailable: () => (hardware?.capabilities.maxRecordingChannels ?? 0) > 0,
+        recordingAvailable: () =>
+          currentConfig.recordingEnabled !== false &&
+          (hardware?.capabilities.maxRecordingChannels ?? 0) > 0,
       });
 
       // Read-only role/placement layout hints for the widget to auto-arrange feeds by area.

@@ -18,6 +18,7 @@ type Form = {
   anchorWatchPath: string;
   autoTriggerPath: string;
   mobVisualRefine: boolean;
+  recordingEnabled: boolean;
   healthZones: Record<string, HealthZoneRow>;
   mqttHost: string;
   mqttPort: string;
@@ -37,6 +38,7 @@ function toForm(c: IOperationalConfigPublic): Form {
     anchorWatchPath: c.anchorWatchPath ?? '',
     autoTriggerPath: c.autoTriggerPath ?? '',
     mobVisualRefine: c.mobVisualRefine ?? false,
+    recordingEnabled: c.recordingEnabled ?? true, // default ON
     healthZones: Object.fromEntries(
       Object.entries(c.cameraHealthZones ?? {}).map(([id, z]) => [
         id,
@@ -73,6 +75,7 @@ function toPayload(f: Form): unknown {
     anchorWatchPath: f.anchorWatchPath,
     autoTriggerPath: f.autoTriggerPath,
     mobVisualRefine: f.mobVisualRefine,
+    recordingEnabled: f.recordingEnabled,
     cameraHealthZones: Object.fromEntries(
       Object.entries(f.healthZones)
         .filter(([, row]) => row.enabled)
@@ -336,6 +339,16 @@ export function OperationalSettings() {
         />
         Experimental visual MOB refine — <b>NOT safety-rated</b>; needs Frigate; fails safe to
         position-based aim
+      </label>
+
+      <label className="field cfg__check">
+        <input
+          type="checkbox"
+          checked={form.recordingEnabled}
+          onChange={(e) => set('recordingEnabled', e.target.checked)}
+        />
+        Buffered recording (per-camera Record + incident pre-roll). Turn off on a constrained host
+        to save CPU and disk — recording is a copy, not a re-encode, so the saving is modest.
       </label>
 
       <h3 className="cfg__group">Advanced</h3>
