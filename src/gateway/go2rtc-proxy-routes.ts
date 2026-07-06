@@ -13,6 +13,9 @@ export interface IProxyContext {
   hasCamera: (id: string) => boolean;
   /** Whether a camera has a low-res substream variant configured. */
   hasSubstream?: (id: string) => boolean;
+  /** Whether a camera has a hardware H.264 transcode source (opt-in accel on + H.265, no sub) — the
+   *  walk leads with WebRTC for these so the client reaches the transcode instead of the MJPEG floor. */
+  hasHardwareTranscode?: (id: string) => boolean;
   /** Whether a camera has a two-way audio backchannel (an ONVIF audio output / speaker). */
   hasBackchannel?: (id: string) => boolean;
   /**
@@ -221,7 +224,12 @@ export function registerProxyRoutes(router: IRouter, ctx: IProxyContext): void {
         fetchImpl: doFetch,
       });
       ctx.noteHealth?.(id, health.online);
-      res.json(transportHints(health));
+      // The hardware transcode source rides the MAIN stream only; a sub request is already H.264.
+      res.json(
+        transportHints(health, {
+          hardwareTranscode: !wantSub && (ctx.hasHardwareTranscode?.(id) ?? false),
+        }),
+      );
     } catch {
       res.status(502).json({ error: 'gateway unavailable' });
     }

@@ -189,8 +189,10 @@ export function VideoPlayer({
   // the feed on the 1 fps MJPEG floor. When we're below the preferred rung, re-attempt it on a backoff;
   // the poster keeps the last frame visible during the reconnect. Give up after the budget so a truly
   // WebRTC-broken camera settles instead of blipping. `top` is a stable string, so this doesn't churn.
+  // Skip while hidden: climbing to a live rung re-establishes a PeerConnection (or a hardware transcode)
+  // nobody can see — it resumes on the visibilitychange that flips docVisible back to true.
   useEffect(() => {
-    if (rung === top) return;
+    if (rung === top || !docVisible) return;
     const delay = upgradeDelayMs(upgradeTries.current);
     if (delay === null) return;
     const timer = setTimeout(() => {
@@ -198,7 +200,7 @@ export function VideoPlayer({
       setRung(top);
     }, delay);
     return () => clearTimeout(timer);
-  }, [rung, top]);
+  }, [rung, top, docVisible]);
 
   // Once the preferred rung has held for a bit, trust it and refill the retry budget for next time.
   useEffect(() => {

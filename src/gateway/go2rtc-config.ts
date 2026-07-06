@@ -47,6 +47,19 @@ export function hardwareH264Source(rtspUrl: string): string {
 }
 
 /**
+ * Whether {@link buildGo2rtcConfig} will give this camera a hardware H.264 transcode source: opt-in
+ * acceleration is on AND it's an H.265 camera with no H.264 sub-stream. The transport walk must key off
+ * the SAME predicate to lead with WebRTC — otherwise the client strands on the MJPEG floor and never
+ * reaches the transcode. Kept here so the config and the walk can never drift apart.
+ */
+export function hasHardwareTranscodeSource(
+  camera: ICamera,
+  hardwareAcceleration: boolean,
+): boolean {
+  return hardwareAcceleration && camera.media?.codec === 'h265' && !camera.media?.substreamPath;
+}
+
+/**
  * Builds the go2rtc configuration object. The API (and thus the web UI) is bound to loopback so only
  * this plugin can reach it; the plugin proxies playback to the browser. Only enabled cameras become
  * streams, keyed by their resource id, with credentials embedded server-side.
@@ -71,7 +84,7 @@ export function buildGo2rtcConfig(input: IGo2rtcConfigInput): Record<string, unk
       // suffix can never collide with a real camera id, which forbids underscores. Credentials are
       // injected server-side here exactly as for the main stream.
       streams[`${id}_sub`] = sub;
-    } else if (input.hardwareAcceleration && camera.media?.codec === 'h265') {
+    } else if (hasHardwareTranscodeSource(camera, input.hardwareAcceleration === true)) {
       // H.265 with no H.264 sub-stream: the browser can't play it over WebRTC, so go2rtc must
       // transcode. Offer the raw H.265 main (HLS/passthrough) AND a hardware H.264 transcode source
       // that go2rtc serves to a WebRTC client — moving this camera off the CPU-heavy MJPEG floor.

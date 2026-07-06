@@ -27,6 +27,7 @@ import { withTimeout } from './security/with-timeout';
 import { Go2rtcBinaryManager } from './gateway/go2rtc-binary-manager';
 import { Go2rtcProcess } from './gateway/go2rtc-process';
 import { Go2rtcGateway } from './gateway/go2rtc-gateway';
+import { hasHardwareTranscodeSource } from './gateway/go2rtc-config';
 import { registerProxyRoutes } from './gateway/go2rtc-proxy-routes';
 import { candidateHost } from './gateway/sdp-scrub';
 import { LastGoodTracker, loadLastGoodSnapshot, saveLastGoodSnapshot } from './gateway/last-good';
@@ -636,9 +637,11 @@ export = function (app: ServerAPI): Plugin {
             return { stop: () => child.kill('SIGINT') };
           },
           // Recording is disabled plugin-wide when the operator turns it off in Settings (0 channels),
-          // else capped to the hardware tier. Default (undefined) is ON.
+          // else capped to the hardware tier. Default (undefined) is ON. Read the live currentConfig
+          // (not the start `options`) so this agrees with /status and recordingAvailable even if the
+          // config is ever applied without a full restart.
           maxChannels: () =>
-            options?.recordingEnabled === false
+            currentConfig.recordingEnabled === false
               ? 0
               : (hardware?.capabilities.maxRecordingChannels ?? 0),
           limits: () => ({ maxBytes: RECORDING_MAX_BYTES, maxAgeMs: RECORDING_MAX_AGE_MS }),
@@ -1566,6 +1569,12 @@ export = function (app: ServerAPI): Plugin {
         apiPort: () => gateway?.apiPort ?? 1984,
         hasCamera: (id: string) => cameras?.get(id) !== null && cameras?.get(id) !== undefined,
         hasSubstream: (id: string) => !!cameras?.get(id)?.media?.substreamPath,
+        hasHardwareTranscode: (id: string) => {
+          const c = cameras?.get(id);
+          return c
+            ? hasHardwareTranscodeSource(c, currentConfig.hardwareAcceleration === true)
+            : false;
+        },
         hasBackchannel: (id: string) => cameras?.get(id)?.capabilities?.audioBackchannel === true,
         gate: unauthorized,
         // Operator-configured explicit candidates always survive ICE scrubbing (they asserted
@@ -1598,6 +1607,7 @@ export = function (app: ServerAPI): Plugin {
         recordingAvailable: () =>
           currentConfig.recordingEnabled !== false &&
           (hardware?.capabilities.maxRecordingChannels ?? 0) > 0,
+        hardwareAcceleration: () => currentConfig.hardwareAcceleration === true,
       });
 
       // Read-only role/placement layout hints for the widget to auto-arrange feeds by area.

@@ -104,6 +104,7 @@ function setup(over: Partial<IProxyContext> = {}) {
     hasCamera,
     hasSubstream,
     hasBackchannel,
+    hasHardwareTranscode: over.hasHardwareTranscode,
     fetchImpl,
     gate: over.gate,
     allowedCandidateHosts: over.allowedCandidateHosts,
@@ -502,6 +503,29 @@ describe('registerProxyRoutes', () => {
       const body = res.body as { recommended: string[]; online: boolean };
       expect(body.recommended).toEqual(['webrtc', 'hls', 'mjpeg']);
       expect(body.online).toBe(true);
+    });
+
+    it('leads with WebRTC for an H.265 camera that has a hardware transcode source', async () => {
+      const fetchImpl = vi.fn().mockResolvedValue({
+        json: () =>
+          Promise.resolve({
+            producers: [{ medias: [{ codecs: [{ name: 'H265' }] }] }],
+            consumers: [],
+          }),
+      });
+      const { handlers } = setup({ fetchImpl, hasHardwareTranscode: () => true });
+      const res = makeRes();
+      await handlers.get('GET /cameras/:id/transport')!(
+        fakeReq({ params: { id: 'foredeck' } as never }),
+        res,
+      );
+      // Without the transcode source this same H.265 health yields ['hls','mjpeg','webrtc'] (see above);
+      // with it, WebRTC leads so the client actually reaches the GPU-transcoded H.264 stream.
+      expect((res.body as { recommended: string[] }).recommended).toEqual([
+        'webrtc',
+        'hls',
+        'mjpeg',
+      ]);
     });
 
     it('404s an unknown camera and 502s an unreachable gateway', async () => {
