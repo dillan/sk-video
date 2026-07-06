@@ -103,6 +103,12 @@ import {
   type IHardwareInfo,
 } from './hardware/tier-detect';
 import { probeFfmpegHwaccel, type IFfmpegHwaccel } from './hardware/ffmpeg-probe';
+import {
+  takeSnapshot,
+  deriveActivity,
+  assessCapacity,
+  type IActivitySnapshot,
+} from './hardware/activity-monitor';
 import { SignalKBridge, type ISignalKApp, type AlarmState } from './signalk/sk-bridge';
 import { SnapshotService } from './recording/snapshot-service';
 import { FileSnapshotStore } from './recording/file-snapshot-store';
@@ -213,6 +219,9 @@ export = function (app: ServerAPI): Plugin {
   // Filled asynchronously at startup by probing the host ffmpeg; null until it resolves. Tells the app
   // whether a real hardware H.264 encoder exists, so the acceleration toggle can be honest.
   let ffmpegHwaccel: IFfmpegHwaccel | null = null;
+  // The previous activity snapshot, so /activity can report per-process CPU% from the delta between
+  // polls. Reset on stop; the first poll after (re)start reports 0% until the next tick.
+  let prevActivitySnapshot: IActivitySnapshot | null = null;
   let bridge: SignalKBridge | null = null;
   let snapshots: SnapshotService | null = null;
   let snapshotStore: FileSnapshotStore | null = null;
@@ -1406,6 +1415,7 @@ export = function (app: ServerAPI): Plugin {
       resumableUploads = null;
       hardware = null;
       ffmpegHwaccel = null;
+      prevActivitySnapshot = null;
       bridge = null;
       snapshots = null;
       snapshotStore = null;
@@ -1439,6 +1449,17 @@ export = function (app: ServerAPI): Plugin {
           // Honest Frigate posture: an empty detection feed must be distinguishable from "not wired".
           frigate: { configured: frigateClient !== null, connected: frigateConnected },
         });
+      });
+
+      // Live activity readout: whole-host CPU / memory / temperature plus the plugin's process tree
+      // (signalk-server + the go2rtc and ffmpeg children it spawned) and a coarse capacity verdict.
+      // Per-process CPU% comes from the delta against the previous poll; the web app polls this only
+      // while the panel is open. Public like /status (host-capacity facts, no secrets).
+      router.get('/activity', (_req: Request, res: Response) => {
+        const next = takeSnapshot();
+        const sample = deriveActivity(prevActivitySnapshot, next, { rootPid: process.pid });
+        prevActivitySnapshot = next;
+        res.json({ ...sample, verdict: assessCapacity(sample) });
       });
 
       // Auth-only whoami the web app calls to learn whether security is on and whether it is signed in,

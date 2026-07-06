@@ -104,6 +104,29 @@ export function fetchStatus(signal?: AbortSignal): Promise<IPluginStatus> {
   return getJson<IPluginStatus>('/status', 'status', signal);
 }
 
+/** One process in the plugin's tree (signalk-server + the go2rtc / ffmpeg children it spawned). */
+export interface IProcessActivity {
+  pid: number;
+  name: string;
+  /** CPU over the last poll window, as a percentage of one core (top-style; can exceed 100). */
+  cpuPercent: number;
+  rssBytes: number;
+}
+
+/** Live device activity + a coarse capacity verdict (see the plugin's activity monitor). */
+export interface IActivity {
+  cpu: { cores: number; utilization: number; loadAvg1: number };
+  memory: { totalBytes: number; usedBytes: number; utilization: number };
+  /** SoC temperature in °C, or null where the host doesn't expose one. */
+  temperatureC: number | null;
+  processes: IProcessActivity[];
+  verdict: { level: 'ok' | 'busy' | 'high' | 'critical'; headline: string; reasons: string[] };
+}
+
+export function fetchActivity(signal?: AbortSignal): Promise<IActivity> {
+  return getJson<IActivity>('/activity', 'activity', signal);
+}
+
 /**
  * Per-camera MOB aim outcome: `aimed` (commanded at the target), `at-limit` (bearing beyond the pan
  * range — pointing at its mechanical limit, not the casualty), `no-solution` (no calibration or
