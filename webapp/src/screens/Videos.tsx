@@ -445,7 +445,6 @@ export function Videos() {
           >
             ✕
           </button>
-          {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions */}
           <div className="vidmodal__stage" onClick={(e) => e.stopPropagation()}>
             <video
               className="vidmodal__player"
