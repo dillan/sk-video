@@ -64,7 +64,11 @@ export function detectHardware(options: ITierDetectOptions = {}): IHardwareInfo 
 
   const { arch, cores, totalMemBytes } = host();
   const totalMemMB = Math.round(totalMemBytes / (1024 * 1024));
-  const hwEncode = deviceExists(VAAPI_NODE);
+  // VAAPI hardware encode (go2rtc's `#hardware` snapshot path) is realistic only on x86: on a Pi the
+  // `renderD128` node is the V3D GPU, which VAAPI can't encode with (the Pi's encoder is V4L2 M2M, and
+  // the Pi 5 has none) — so a present node there is a false positive. Gate the claim to x64 until the
+  // opt-in ffmpeg-encoder probe (a separate change) can confirm a genuinely usable encoder per host.
+  const hwEncode = deviceExists(VAAPI_NODE) && arch === 'x64';
   const accelerator = ACCELERATOR_NODES.find(([node]) => deviceExists(node))?.[1] ?? null;
 
   const detected = deriveTier(arch, cores, totalMemMB, accelerator);
