@@ -125,6 +125,12 @@ export function VideoPlayer({
 }: Props) {
   const [rung, setRung] = useState<TTransport>(() => transports[0] ?? 'mjpeg');
   const [frameTick, setFrameTick] = useState(0);
+  // Whether the app is on-screen. A hidden document (locked helm display or backgrounded PWA) must not
+  // keep the still-refresh loop transcoding a frame nobody can see — the biggest pointless CPU cost on
+  // a small device is a Pi re-encoding H.265 for a screen that's off.
+  const [docVisible, setDocVisible] = useState(
+    () => typeof document === 'undefined' || document.visibilityState !== 'hidden',
+  );
   // The last still-image frame we painted, kept as a poster so a rung switch (incl. an upgrade attempt)
   // shows the last view instead of blanking while the new transport negotiates.
   const [poster, setPoster] = useState<string | null>(null);
@@ -159,16 +165,25 @@ export function VideoPlayer({
 
   const advance = (): void => setRung((cur) => nextTransport(transports, cur) ?? cur);
 
-  // MJPEG still-refresh: bump a counter to cache-bust the <img> src on a timer — fast while a control is
-  // being driven (`responsive`), otherwise the calm ~1 fps idle cadence.
+  // Track document visibility so the still-refresh can stop entirely while the app is hidden.
   useEffect(() => {
-    if (rung !== 'mjpeg') return;
+    if (typeof document === 'undefined') return;
+    const onVis = (): void => setDocVisible(document.visibilityState !== 'hidden');
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  }, []);
+
+  // MJPEG still-refresh: bump a counter to cache-bust the <img> src on a timer — fast while a control is
+  // being driven (`responsive`), otherwise the calm ~1 fps idle cadence. Paused while the document is
+  // hidden: the poster holds the last frame and no transcode fires until the operator returns.
+  useEffect(() => {
+    if (rung !== 'mjpeg' || !docVisible) return;
     const iv = setInterval(
       () => setFrameTick((n) => n + 1),
       responsive ? MJPEG_ACTIVE_MS : MJPEG_INTERVAL_MS,
     );
     return () => clearInterval(iv);
-  }, [rung, responsive]);
+  }, [rung, responsive, docVisible]);
 
   // Recover UP: the walk only falls down, so a transient WebRTC miss (or a go2rtc restart) would strand
   // the feed on the 1 fps MJPEG floor. When we're below the preferred rung, re-attempt it on a backoff;
