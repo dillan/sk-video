@@ -9,6 +9,8 @@ import {
   waitForReady,
   waitForStatus,
   pollJson,
+  SKIP_LIVE_GATEWAY,
+  SKIP_LIVE_GATEWAY_REASON,
 } from './helpers';
 
 /**
@@ -51,6 +53,9 @@ async function pointCamera(
 
 /** Warm the stream (a frame request makes go2rtc connect the producer) and wait for gauge 0. */
 async function warmUntilHealthy(request: Parameters<typeof ensureCamera>[0]): Promise<void> {
+  // Every test that needs a producing go2rtc stream funnels through here, so gate the whole set on the
+  // CI quarantine in one place (F7 health/alarm scenarios all depend on a live frame). See issue #93.
+  test.skip(SKIP_LIVE_GATEWAY, SKIP_LIVE_GATEWAY_REASON);
   await waitForStatus(request, plugin(`/cameras/${CAM}/frame.jpeg`), 200);
   const healthy = await pollJson<ModelNode>(
     request,
