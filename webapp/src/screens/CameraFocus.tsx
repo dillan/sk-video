@@ -13,6 +13,7 @@ import {
 } from '../api';
 import { ptzDelayed, isHevc, transportsForVariant } from '../lib/transport';
 import { loadContinuousPtz, loadTapToAim } from '../lib/ptz-prefs';
+import { tapOffset } from '../lib/tap-aim';
 import { actionMessage, type IMsg } from '../lib/camera-messages';
 import { VideoPlayer } from '../components/VideoPlayer';
 import { usePtzGestures } from '../components/usePtzGestures';
@@ -145,16 +146,14 @@ export function CameraFocus({ cameraId, onBack }: Props) {
     (clientX: number, clientY: number) => {
       const el = surfaceRef.current;
       if (!el) return;
-      const rect = el.getBoundingClientRect();
-      if (!rect.width || !rect.height) return;
-      const nx = (clientX - rect.left) / rect.width; // 0..1 across the frame
-      const ny = (clientY - rect.top) / rect.height;
+      const t = tapOffset(el.getBoundingClientRect(), clientX, clientY);
+      if (!t) return;
       // Drop the crosshair immediately (the move takes a moment), then fade it.
-      setAimMark({ x: nx, y: ny });
+      setAimMark({ x: t.nx, y: t.ny });
       if (aimMarkTimer.current) clearTimeout(aimMarkTimer.current);
       aimMarkTimer.current = setTimeout(() => setAimMark(null), 900);
       bumpPtzActive();
-      void ptzAim(cameraId, nx - 0.5, ny - 0.5)
+      void ptzAim(cameraId, t.dx, t.dy)
         .then((r) => {
           if (r.outcome === 'at-limit') {
             flash({
