@@ -130,11 +130,13 @@ describe('usePtzGestures', () => {
     });
 
     it('taps aim while drags still pan when BOTH continuous and tap are enabled', () => {
-      const { el, onTap, onMove } = setupTap({ enabled: true });
-      // A tap → aim, no meaningful pan.
+      const { el, onTap, onMove, onStop } = setupTap({ enabled: true });
+      // A tap → aim, no pan velocity AND no stop (a stop would race/cancel the aim move).
       fireEvent.pointerDown(el, { pointerId: 1, clientX: 250, clientY: 250 });
       fireEvent.pointerUp(el, { pointerId: 1, clientX: 250, clientY: 250 });
       expect(onTap).toHaveBeenCalledTimes(1);
+      expect(onMove).not.toHaveBeenCalled();
+      expect(onStop).not.toHaveBeenCalled();
       // A drag → pan (onMove), no aim.
       onTap.mockClear();
       fireEvent.pointerDown(el, { pointerId: 2, clientX: 200, clientY: 200 });

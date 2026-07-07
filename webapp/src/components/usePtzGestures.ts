@@ -105,7 +105,9 @@ export function usePtzGestures(opts: {
     }
   }, []);
 
-  const endGesture = useCallback(() => {
+  // Clear all gesture state WITHOUT commanding a stop — used when nothing was moving (a tap issued no
+  // motion, so a stop would only race the aim it's about to send).
+  const resetGesture = useCallback(() => {
     clearFlush();
     origin.current = null;
     pinchStart.current = null;
@@ -113,8 +115,12 @@ export function usePtzGestures(opts: {
     lastSent.current = { t: 0, v: ZERO };
     setActive(false);
     setVector(null);
-    onStopRef.current();
   }, []);
+
+  const endGesture = useCallback(() => {
+    resetGesture();
+    onStopRef.current();
+  }, [resetGesture]);
 
   useEffect(() => {
     const el = elRef.current;
@@ -185,13 +191,15 @@ export function usePtzGestures(opts: {
       pts.current.delete(e.pointerId);
       if (pts.current.size === 0) {
         tap.current = null;
-        if (enabled) {
-          endGesture();
+        if (wasTap) {
+          // A tap moved nothing, so it must NOT command a stop (that would race the aim about to fire).
+          resetGesture();
+          onTapRef.current?.(tapX, tapY);
+        } else if (enabled) {
+          endGesture(); // a real drag ended → stop the motion it was commanding
         } else {
-          setActive(false);
-          setVector(null);
+          resetGesture();
         }
-        if (wasTap) onTapRef.current?.(tapX, tapY);
       } else if (pts.current.size === 1 && enabled) {
         // Lifted one finger out of a pinch: stop zoom and resume panning from the finger that remains.
         pinchStart.current = null;
@@ -238,7 +246,7 @@ export function usePtzGestures(opts: {
     // `active` intentionally omitted: re-binding listeners on every drag tick would drop pointer
     // capture. The cleanup reads `active` via closure only at teardown, which is acceptable here.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, tapEnabled, emit, endGesture]);
+  }, [enabled, tapEnabled, emit, endGesture, resetGesture]);
 
   const setRef = useCallback((el: HTMLElement | null) => {
     elRef.current = el;
