@@ -43,9 +43,13 @@ export interface IPtzGestureApi {
 }
 
 export function usePtzGestures(opts: {
+  /** Continuous drag/pinch/wheel gestures (behind the "continuous PTZ" opt-in). */
   enabled: boolean;
   onMove: (v: IGestureVector) => void;
   onStop: () => void;
+  /** Tap-to-aim: a short, stationary tap fires onTap with its client coords. Independent of `enabled`. */
+  tapEnabled?: boolean;
+  onTap?: (clientX: number, clientY: number) => void;
 }): IPtzGestureApi {
   const { enabled } = opts;
 
@@ -53,8 +57,10 @@ export function usePtzGestures(opts: {
   // through to current closures without re-binding on every render.
   const onMoveRef = useRef(opts.onMove);
   const onStopRef = useRef(opts.onStop);
+  const onTapRef = useRef(opts.onTap);
   onMoveRef.current = opts.onMove;
   onStopRef.current = opts.onStop;
+  onTapRef.current = opts.onTap;
 
   const elRef = useRef<HTMLElement | null>(null);
   const pts = useRef(new Map<number, IPoint>());
