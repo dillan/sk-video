@@ -1,12 +1,7 @@
 import { useState } from 'react';
 import { THEMES, THEME_LABELS, type Theme } from '../lib/theme';
 import { DENSITIES, DENSITY_LABELS, type Density } from '../lib/density';
-import {
-  loadContinuousPtz,
-  saveContinuousPtz,
-  loadTapToAim,
-  saveTapToAim,
-} from '../lib/ptz-prefs';
+import { loadContinuousPtz, saveContinuousPtz, loadTapToAim, saveTapToAim } from '../lib/ptz-prefs';
 import { useAuth } from '../lib/auth';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { ActivityMonitor } from '../components/ActivityMonitor';
@@ -111,9 +106,9 @@ export function Settings({ theme, onTheme, density, onDensity }: Props) {
           {continuousPtz ? 'Continuous PTZ: on' : 'Continuous PTZ: off'}
         </button>
         <p className="muted">
-          Tap-to-aim: tap a point on a PTZ camera’s live view to aim there. It’s a bounded, recoverable
-          move (the tapped point eases toward centre), on by default; it stays off on a still-refresh
-          feed.
+          Tap-to-aim: tap a point on a PTZ camera’s live view to aim there. It’s a bounded,
+          recoverable move (the tapped point eases toward centre), on by default; it stays off on a
+          still-refresh feed.
         </p>
         <button
           type="button"
