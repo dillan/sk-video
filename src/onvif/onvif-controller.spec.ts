@@ -230,11 +230,15 @@ describe('OnvifPtzController — absolute & relative pointing', () => {
     await expect(control(cam).moveAbsolute({ pan: 0.1 })).rejects.toThrow(/absolute failed/);
   });
 
-  it('reads the current normalised status, defaulting missing axes to 0', async () => {
+  it('reads the current normalised status, reporting unreported axes as null (not a fake 0)', async () => {
     const cam = new FakeCam();
     expect(await control(cam).getStatus()).toEqual({ pan: 0.1, tilt: -0.2, zoom: 0.3 });
+    // No position element at all → every axis is unknown, not a fabricated zero.
     cam.status = {};
-    expect(await control(cam).getStatus()).toEqual({ pan: 0, tilt: 0, zoom: 0 });
+    expect(await control(cam).getStatus()).toEqual({ pan: null, tilt: null, zoom: null });
+    // A pan/tilt head with no zoom feedback → pan/tilt known, zoom unknown.
+    cam.status = { position: { x: 0.1, y: -0.2 } };
+    expect(await control(cam).getStatus()).toEqual({ pan: 0.1, tilt: -0.2, zoom: null });
   });
 });
 
@@ -299,6 +303,24 @@ describe('OnvifPtzController — capability probe', () => {
     expect(caps.snapshotUri).toBe('http://cam/snap.jpg');
     // every per-profile stream URI errored too, so no streams could be captured
     expect(caps.streams).toEqual([]);
+  });
+
+  it('does not claim absolute PTZ when getStatus resolves but reports no position at all', async () => {
+    const cam = new FakeCam();
+    cam.status = {}; // GetStatus succeeds, but the camera returns no position element
+    expect((await control(cam).probeCapabilities()).absolutePtz).toBe(false);
+  });
+
+  it('does not claim absolute PTZ from a zoom-only status (no pan/tilt to aim by)', async () => {
+    const cam = new FakeCam();
+    cam.status = { position: { zoom: 0.5 } };
+    expect((await control(cam).probeCapabilities()).absolutePtz).toBe(false);
+  });
+
+  it('claims absolute PTZ when pan/tilt are reported even if zoom feedback is absent', async () => {
+    const cam = new FakeCam();
+    cam.status = { position: { x: 0.1, y: -0.2 } };
+    expect((await control(cam).probeCapabilities()).absolutePtz).toBe(true);
   });
 });
 

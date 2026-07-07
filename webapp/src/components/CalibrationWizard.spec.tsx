@@ -69,6 +69,25 @@ describe('CalibrationWizard', () => {
     expect(onDone).toHaveBeenCalledWith(true);
   });
 
+  it('refuses to capture a sample when the camera reports no position (guards calibration)', async () => {
+    // A camera that answers GetStatus but reports no usable pan/tilt would otherwise seed a null sample.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        const u = String(url);
+        if (u.includes('/ptz/position')) return ok({ pan: null, tilt: null, zoom: null });
+        return ok({});
+      }),
+    );
+    render(<CalibrationWizard id="reolink" name="Foredeck" onDone={vi.fn()} />);
+    const input = screen.getAllByPlaceholderText(/forward|level/)[0];
+    fireEvent.change(input, { target: { value: '-30' } });
+    fireEvent.click(screen.getAllByRole('button', { name: /Capture point/ })[0]);
+    // Honest refusal, and no sample is recorded.
+    await waitFor(() => expect(screen.getByText(/position feedback/i)).toBeTruthy());
+    expect(screen.queryByText(/Captured pan point/i)).toBeNull();
+  });
+
   it('renders the live feed with the aim reticle, playing the H.264 sub when the camera has one', async () => {
     mockApi();
     const camera = {

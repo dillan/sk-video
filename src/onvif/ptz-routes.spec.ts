@@ -404,6 +404,19 @@ describe('registerPtzRoutes', () => {
       expect(res.statusCode).toBe(200);
     });
 
+    it('degrades to a relative nudge when getStatus resolves but pan/tilt are null (no feedback)', async () => {
+      const { handlers, controller } = setupAim({ hasAbsolutePtz: () => true });
+      // The probe let it through, but this read comes back with no usable position.
+      controller.getStatus.mockResolvedValue({ pan: null, tilt: null, zoom: null });
+      const res = await invoke(
+        handlers.get('POST /cameras/:id/ptz/aim')!,
+        fakeReq({ body: { dx: 0.1, dy: 0 } }),
+      );
+      expect(controller.moveAbsolute).not.toHaveBeenCalled(); // null pan/tilt must NOT become NaN absolute
+      expect(controller.moveRelative).toHaveBeenCalledTimes(1);
+      expect(res.body).toMatchObject({ kind: 'relative', outcome: 'aimed' });
+    });
+
     it('returns 502 (redacted) when the aim move itself fails', async () => {
       const { handlers, controller } = setupAim({ hasAbsolutePtz: () => false });
       controller.moveRelative.mockRejectedValue(new Error('camera offline'));

@@ -61,6 +61,27 @@ afterEach(() => {
 });
 
 describe('CameraControls', () => {
+  it('shows the zoom position readout when the camera reports it', async () => {
+    mockApi(); // default /ptz/position → { zoom: 0.24 }
+    const { container } = render(<CameraControls {...base} camera={camera({ ptz: true })} />);
+    expect(await screen.findByText('24%')).toBeTruthy();
+    expect(container.querySelector('.zoompill__read')).not.toBeNull();
+    expect(screen.getByRole('button', { name: 'Zoom in' })).toBeTruthy(); // controls present regardless
+  });
+
+  it('suppresses the zoom readout when the camera reports no zoom position (no fake 0% or —)', async () => {
+    mockApi((u) =>
+      u.includes('/ptz/position') ? ok({ pan: 0.1, tilt: -0.2, zoom: null }) : undefined,
+    );
+    const { container } = render(<CameraControls {...base} camera={camera({ ptz: true })} />);
+    // The zoom in/out controls still work — continuousMove zoom needs no position feedback…
+    expect(await screen.findByRole('button', { name: 'Zoom in' })).toBeTruthy();
+    // …but there is no readout label at all, so the operator never sees a made-up value.
+    await waitFor(() => expect(container.querySelector('.zoompill__read')).toBeNull());
+    expect(screen.queryByText('0%')).toBeNull();
+    expect(screen.queryByText('—')).toBeNull();
+  });
+
   it('disables every camera control for a read-only session (disabled-with-reason)', () => {
     gate.current = { disabled: true, title: 'Camera controls need write access — ask an admin.' };
     mockApi();
