@@ -86,6 +86,8 @@ describe('CalibrationWizard', () => {
     // Honest refusal, and no sample is recorded.
     await waitFor(() => expect(screen.getByText(/position feedback/i)).toBeTruthy());
     expect(screen.queryByText(/Captured pan point/i)).toBeNull();
+    // Pin the no-sample outcome directly: no slot shows a captured count.
+    expect(screen.queryByText(/n=/)).toBeNull();
   });
 
   it('renders the live feed with the aim reticle, playing the H.264 sub when the camera has one', async () => {

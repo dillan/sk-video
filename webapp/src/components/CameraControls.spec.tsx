@@ -70,14 +70,18 @@ describe('CameraControls', () => {
   });
 
   it('suppresses the zoom readout when the camera reports no zoom position (no fake 0% or —)', async () => {
-    mockApi((u) =>
+    const fetchMock = mockApi((u) =>
       u.includes('/ptz/position') ? ok({ pan: 0.1, tilt: -0.2, zoom: null }) : undefined,
     );
     const { container } = render(<CameraControls {...base} camera={camera({ ptz: true })} />);
     // The zoom in/out controls still work — continuousMove zoom needs no position feedback…
     expect(await screen.findByRole('button', { name: 'Zoom in' })).toBeTruthy();
-    // …but there is no readout label at all, so the operator never sees a made-up value.
-    await waitFor(() => expect(container.querySelector('.zoompill__read')).toBeNull());
+    // Prove suppression is BECAUSE the position was fetched and reported no zoom — not because the
+    // fetch never fired (zoomPct also starts null, so the bare absence would pass trivially).
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some(([u]) => String(u).includes('/ptz/position'))).toBe(true),
+    );
+    expect(container.querySelector('.zoompill__read')).toBeNull();
     expect(screen.queryByText('0%')).toBeNull();
     expect(screen.queryByText('—')).toBeNull();
   });

@@ -9,7 +9,7 @@ import {
 
 class FakeCam implements IOnvifCam {
   moves: { x: number; y: number; zoom: number }[] = [];
-  absMoves: { x: number; y: number; zoom: number }[] = [];
+  absMoves: { x: number; y: number; zoom?: number; onlySendPanTilt?: boolean }[] = [];
   relMoves: { x: number; y: number; zoom: number }[] = [];
   imagingWrites: Record<string, unknown>[] = [];
   streamUriOptions: Record<string, unknown>[] = [];
@@ -76,7 +76,10 @@ class FakeCam implements IOnvifCam {
     this.gotos.push(o.preset);
     cb(this.failGoto ? new Error('goto failed') : null);
   }
-  absoluteMove(o: { x: number; y: number; zoom: number }, cb: (err?: Error | null) => void) {
+  absoluteMove(
+    o: { x: number; y: number; zoom?: number; onlySendPanTilt?: boolean },
+    cb: (err?: Error | null) => void,
+  ) {
     this.absMoves.push(o);
     cb(this.failAbsolute ? new Error('absolute failed') : null);
   }
@@ -218,6 +221,14 @@ describe('OnvifPtzController — absolute & relative pointing', () => {
     expect(cam.absMoves[1]).toEqual({ x: -0.5, y: 0.25, zoom: 0 }); // zoom is one-sided
   });
 
+  it('holds the current zoom on a pan/tilt-only absolute move (never commands zoom)', async () => {
+    const cam = new FakeCam();
+    await control(cam).moveAbsolute({ pan: 0.3, tilt: -0.2 }, { holdZoom: true });
+    // onlySendPanTilt makes the ONVIF move omit Zoom entirely, so the lens keeps its position —
+    // a fabricated zoom: 0 would rack it fully wide.
+    expect(cam.absMoves).toEqual([{ x: 0.3, y: -0.2, onlySendPanTilt: true }]);
+  });
+
   it('clamps a relative delta to [-1,1] and issues relativeMove', async () => {
     const cam = new FakeCam();
     await control(cam).moveRelative({ pan: 2, tilt: -0.3, zoom: -9 });
@@ -317,10 +328,32 @@ describe('OnvifPtzController — capability probe', () => {
     expect((await control(cam).probeCapabilities()).absolutePtz).toBe(false);
   });
 
+  it('does not claim absolute PTZ from a pan-only status (tilt missing — needs BOTH axes)', async () => {
+    const cam = new FakeCam();
+    cam.status = { position: { x: 0.1 } };
+    expect((await control(cam).probeCapabilities()).absolutePtz).toBe(false);
+  });
+
   it('claims absolute PTZ when pan/tilt are reported even if zoom feedback is absent', async () => {
     const cam = new FakeCam();
     cam.status = { position: { x: 0.1, y: -0.2 } };
     expect((await control(cam).probeCapabilities()).absolutePtz).toBe(true);
+  });
+
+  it('keeps ptz=true (continuous move works) when GetStatus answers but reports no position; only absolutePtz drops', async () => {
+    const cam = new FakeCam();
+    cam.status = {}; // a continuous-move-only head: answers GetStatus, no position feedback
+    const caps = await control(cam).probeCapabilities();
+    expect(caps.ptz).toBe(true); // manual pan/tilt/zoom must NOT be stripped
+    expect(caps.absolutePtz).toBe(false); // but it can't hold an absolute position
+  });
+
+  it('reports ptz=false only when the camera cannot answer GetStatus at all', async () => {
+    const cam = new FakeCam();
+    cam.failStatus = true;
+    const caps = await control(cam).probeCapabilities();
+    expect(caps.ptz).toBe(false);
+    expect(caps.absolutePtz).toBe(false);
   });
 });
 

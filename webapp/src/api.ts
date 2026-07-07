@@ -535,10 +535,12 @@ export const ackNotification = (key: string): Promise<Response> =>
 
 // ---- PTZ position + calibration (for the calibration wizard) ----
 
+/** Normalised PTZ position from the camera. An axis is `null` when the camera reports no position for
+ * it (GetStatus's Position is optional per axis) — `null` means "unknown", never a fabricated 0. */
 export interface IPtzPosition {
-  pan: number;
-  tilt: number;
-  zoom?: number;
+  pan: number | null;
+  tilt: number | null;
+  zoom: number | null;
 }
 export const fetchPtzPosition = (id: string, signal?: AbortSignal): Promise<IPtzPosition> =>
   getJson<IPtzPosition>(`${cam(id)}/ptz/position`, 'position', signal);

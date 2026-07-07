@@ -8,11 +8,15 @@ import {
 import { auxTokensFromNodes, type IPtzNodeAux } from './aux-commands';
 import type { TImagingControl } from '../cameras/camera-validation';
 
-/** PTZ status in ONVIF normalized space. */
+/**
+ * PTZ status in ONVIF normalized space. An axis is `null` when the camera doesn't report a position
+ * for it: GetStatus's Position is optional per axis, so a continuous-move-only head (or a zoom lens
+ * with no encoder) leaves some or all axes unknown. `null` means "unknown" — never a fabricated 0.
+ */
 export interface IPtzStatus {
-  pan: number;
-  tilt: number;
-  zoom: number;
+  pan: number | null;
+  tilt: number | null;
+  zoom: number | null;
 }
 
 export interface IDeviceInformation {
@@ -72,7 +76,10 @@ export interface IDetectedCapabilities {
   /** Every advertised media profile + its stream (empty when profile enumeration is unavailable). */
   streams: IDetectedStream[];
   snapshotUri: string | null;
-  /** Absolute PTZ pointing is available (getStatus returned a position). */
+  /** PTZ (at least continuous move) is available — the camera answers the PTZ service. Manual pan/tilt/
+   *  zoom and presets gate on this; it must NOT require position feedback (continuousMove has none). */
+  ptz: boolean;
+  /** Absolute PTZ pointing is available — GetStatus returns a usable pan/tilt position, not just a reply. */
   absolutePtz: boolean;
   /** Imaging settings are readable. */
   imaging: boolean;
@@ -92,7 +99,10 @@ export interface IOnvifCam {
   stop(options: { panTilt?: boolean; zoom?: boolean }, cb: Cb): void;
   getPresets(cb: (err: Error | null, presets?: Record<string, string>) => void): void;
   gotoPreset(options: { preset: string }, cb: Cb): void;
-  absoluteMove(options: { x: number; y: number; zoom: number }, cb: Cb): void;
+  absoluteMove(
+    options: { x: number; y: number; zoom?: number; onlySendPanTilt?: boolean },
+    cb: Cb,
+  ): void;
   relativeMove(options: { x: number; y: number; zoom: number }, cb: Cb): void;
   getStatus(
     options: Record<string, unknown>,
@@ -181,14 +191,23 @@ export class OnvifPtzController {
     });
   }
 
-  /** Drive the camera to an absolute position (self-completing; no auto-stop needed). */
-  async moveAbsolute(position: Partial<IPtzPosition>): Promise<void> {
+  /**
+   * Drive the camera to an absolute position (self-completing; no auto-stop needed).
+   * With `holdZoom`, the move omits Zoom entirely (ONVIF onlySendPanTilt) so the lens keeps its
+   * current zoom — for a pan/tilt re-aim (tap-to-aim) that must never command zoom. Without it, an
+   * absent zoom would clamp to 0 and rack the lens fully wide.
+   */
+  async moveAbsolute(
+    position: Partial<IPtzPosition>,
+    opts: { holdZoom?: boolean } = {},
+  ): Promise<void> {
     const p = clampPtzPosition(position);
     const cam = await this.connect();
     await new Promise<void>((resolve, reject) => {
-      cam.absoluteMove({ x: p.pan, y: p.tilt, zoom: p.zoom }, (err) =>
-        err ? reject(err) : resolve(),
-      );
+      const move = opts.holdZoom
+        ? { x: p.pan, y: p.tilt, onlySendPanTilt: true }
+        : { x: p.pan, y: p.tilt, zoom: p.zoom };
+      cam.absoluteMove(move, (err) => (err ? reject(err) : resolve()));
     });
   }
 
@@ -212,7 +231,11 @@ export class OnvifPtzController {
           return;
         }
         const pos = status?.position ?? {};
-        resolve({ pan: pos.x ?? 0, tilt: pos.y ?? 0, zoom: pos.zoom ?? 0 });
+        resolve({
+          pan: finiteOrNull(pos.x),
+          tilt: finiteOrNull(pos.y),
+          zoom: finiteOrNull(pos.zoom),
+        });
       });
     });
   }
@@ -365,7 +388,11 @@ export class OnvifPtzController {
       streamUri: streamUri || null,
       streams,
       snapshotUri: snapshotUri || null,
-      absolutePtz: status !== null,
+      // Any camera that answers the PTZ service has PTZ (continuous move needs no position feedback).
+      ptz: status !== null,
+      // Honest gate: a camera can answer GetStatus yet report no position. Absolute pointing needs a
+      // real pan/tilt to aim from, so require both — a zoom-only or empty status is NOT absolute PTZ.
+      absolutePtz: status !== null && status.pan !== null && status.tilt !== null,
       imaging: imaging !== null,
       imagingControls: imaging ? imagingControlsOf(imaging) : [],
       audioOutput: Array.isArray(audio) && audio.length > 0,
@@ -401,6 +428,11 @@ const SETTABLE_IMAGING = [
   'colorSaturation',
   'sharpness',
 ] as const satisfies readonly (keyof IImagingUpdate)[];
+
+/** A finite number as-is, otherwise `null` — so an absent/NaN ONVIF axis reads as "unknown", not 0. */
+function finiteOrNull(v: number | undefined): number | null {
+  return typeof v === 'number' && Number.isFinite(v) ? v : null;
+}
 
 /** Map an ONVIF encoder `encoding` to the codec vocabulary the rest of the plugin reasons about. An
  * unrecognised encoding passes through lowercased (honest — we don't silently claim a codec). */
