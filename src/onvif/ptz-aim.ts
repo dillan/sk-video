@@ -1,4 +1,9 @@
-import { clampPtzVelocity, type IPtzPosition, type IPtzVelocity } from './ptz-command';
+import {
+  clampPtzPosition,
+  clampPtzVelocity,
+  type IPtzPosition,
+  type IPtzVelocity,
+} from './ptz-command';
 
 /**
  * Plans the PTZ move for a "tap a point on the video to aim there" gesture. A tap is an IMAGE-SPACE
@@ -40,12 +45,41 @@ export type IAimPlan =
 export const DEFAULT_AIM_GAIN = 0.8;
 export const DEFAULT_AIM_MAX_STEP = 0.6;
 
+/** Bound one axis of movement to ±maxStep, coercing a non-finite input to 0 (and −0 to 0). */
+function boundedStep(value: number, maxStep: number): number {
+  if (!Number.isFinite(value)) return 0;
+  const c = Math.max(-maxStep, Math.min(maxStep, value));
+  return c === 0 ? 0 : c;
+}
+
 export function planAim(
-  _caps: IAimCapabilities,
-  _current: IPtzPosition | null,
-  _offset: IAimOffset,
-  _opts: IAimOptions = {},
+  caps: IAimCapabilities,
+  current: IPtzPosition | null,
+  offset: IAimOffset,
+  opts: IAimOptions = {},
 ): IAimPlan {
-  // Not implemented yet (RED): a placeholder that discriminates from every expected behaviour.
-  return { kind: 'relative', delta: clampPtzVelocity(null), outcome: 'aimed' };
+  const gain = opts.gain ?? DEFAULT_AIM_GAIN;
+  const maxStep = opts.maxStep ?? DEFAULT_AIM_MAX_STEP;
+  const dx = Number.isFinite(offset.dx) ? offset.dx : 0;
+  const dy = Number.isFinite(offset.dy) ? offset.dy : 0;
+  // ONVIF convention (mirrors visualCorrection): +pan = right, +tilt = up. A point right of centre
+  // (dx > 0) pans right; a point below centre (dy > 0) tilts DOWN, hence −dy. Bounded per axis so a
+  // stray/edge tap can only nudge, never slew across the scene.
+  const stepPan = boundedStep(dx * gain, maxStep);
+  const stepTilt = boundedStep(-dy * gain, maxStep);
+
+  // Absolute pointing (calibrated PTZ): reposition from where the camera is now. Precise and
+  // self-completing. Clamping past the mechanical range is reported as at-limit, matching MOB.
+  if (caps.absolutePtz && current) {
+    const rawPan = current.pan + stepPan;
+    const rawTilt = current.tilt + stepTilt;
+    const position = clampPtzPosition({ pan: rawPan, tilt: rawTilt, zoom: current.zoom });
+    const outcome: TAimOutcome =
+      position.pan !== rawPan || position.tilt !== rawTilt ? 'at-limit' : 'aimed';
+    return { kind: 'absolute', position, outcome };
+  }
+
+  // Otherwise a self-completing relative nudge toward the tapped point (no calibration needed).
+  const delta = clampPtzVelocity({ pan: stepPan, tilt: stepTilt, zoom: 0 });
+  return { kind: 'relative', delta, outcome: 'aimed' };
 }
