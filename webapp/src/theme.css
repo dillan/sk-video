@@ -1287,7 +1287,7 @@ button.tile {
   width: 40px;
   height: 40px;
   transform: translate(-50%, -50%);
-  pointer-events: none;
+  pointer-events: none; /* decorative — never intercept the next tap */
   border: 1.5px solid var(--status-live);
   border-radius: 50%;
   background:
