@@ -3,6 +3,7 @@ import { redactUrl } from '../security/redact';
 import type { AuthGate } from '../security/request-auth';
 import { CameraNotFoundError, type PtzManager } from './ptz-manager';
 import { categorizeOnvifError } from './onvif-errors';
+import { planAim } from './ptz-aim';
 
 function handleError(err: unknown, res: Response): void {
   if (err instanceof CameraNotFoundError) {
@@ -25,6 +26,11 @@ export interface IPtzRouteOptions {
    * the radar-API idiom for unsupported operations), null/undefined = unknown (attempt it).
    */
   hasPtz?: (id: string) => boolean | null;
+  /**
+   * Whether the camera can hold an absolute position. When true, tap-to-aim reads the current position
+   * and repositions precisely; otherwise it sends a bounded relative nudge. Defaults to false (nudge).
+   */
+  hasAbsolutePtz?: (id: string) => boolean | null;
 }
 
 /**
@@ -69,6 +75,29 @@ export function registerPtzRoutes(
       const body = (req.body ?? {}) as { pan?: number; tilt?: number; zoom?: number };
       await ctrl.move({ pan: body.pan, tilt: body.tilt, zoom: body.zoom });
       res.status(204).end();
+    });
+  });
+
+  // Tap-to-aim: {dx, dy} is the tapped point's offset from the frame centre (image space, +right/+down,
+  // ~[-0.5, 0.5]). planAim turns it into an absolute reposition (calibrated cameras) or a bounded relative
+  // nudge, converging the tapped point toward centre. Returns the outcome so the UI can say "aimed" /
+  // "at limit". A mutating action, so it's gated.
+  router.post('/cameras/:id/ptz/aim', (req: Request, res: Response) => {
+    if (gate(req, res)) return;
+    return withController(req, res, async (ctrl) => {
+      const body = (req.body ?? {}) as { dx?: number; dy?: number };
+      const offset = { dx: Number(body.dx), dy: Number(body.dy) };
+      const absolutePtz = options.hasAbsolutePtz?.(String(req.params.id)) === true;
+      // With absolute pointing, read where the camera is now so the aim is a precise reposition; a
+      // failed read degrades to a relative nudge rather than erroring.
+      const current = absolutePtz ? await ctrl.getStatus().catch(() => null) : null;
+      const plan = planAim({ absolutePtz }, current, offset);
+      if (plan.kind === 'absolute') {
+        await ctrl.moveAbsolute(plan.position);
+      } else {
+        await ctrl.moveRelative(plan.delta);
+      }
+      res.json({ outcome: plan.outcome, kind: plan.kind });
     });
   });
 

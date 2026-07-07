@@ -61,6 +61,8 @@ function makeController() {
     getPresets: vi.fn().mockResolvedValue([{ token: 'p1', name: 'Dock' }]),
     gotoPreset: vi.fn(),
     getStatus: vi.fn().mockResolvedValue({ pan: 0.5, tilt: -0.2, zoom: 0 }),
+    moveAbsolute: vi.fn().mockResolvedValue(undefined),
+    moveRelative: vi.fn().mockResolvedValue(undefined),
   };
 }
 
@@ -91,6 +93,7 @@ async function invoke(
 
 const ROUTE_KEYS = [
   'POST /cameras/:id/ptz',
+  'POST /cameras/:id/ptz/aim',
   'POST /cameras/:id/ptz/stop',
   'GET /cameras/:id/ptz/presets',
   'GET /cameras/:id/ptz/position',
@@ -115,6 +118,7 @@ describe('registerPtzRoutes', () => {
   it('rejects an unauthenticated caller with 401 on every mutating route, before touching the camera', async () => {
     for (const key of [
       'POST /cameras/:id/ptz',
+      'POST /cameras/:id/ptz/aim',
       'POST /cameras/:id/ptz/stop',
       'POST /cameras/:id/ptz/preset',
     ] as const) {
@@ -347,6 +351,69 @@ describe('registerPtzRoutes', () => {
     const res = await invoke(handlers.get('POST /cameras/:id/ptz/stop')!);
     expect(res.statusCode).toBe(502);
     expect(res.body).toMatchObject({ detail: 'PTZ command failed' });
+  });
+
+  describe('POST ptz/aim (tap-to-aim)', () => {
+    const setupAim = (over: { hasAbsolutePtz?: (id: string) => boolean | null } = {}) => {
+      const controller = makeController();
+      const { router, handlers } = fakeRouter();
+      registerPtzRoutes(router, () => makeManager(controller), ALLOW, over);
+      return { handlers, controller };
+    };
+
+    it('repositions absolutely from the current position for an absolute-PTZ camera', async () => {
+      const { handlers, controller } = setupAim({ hasAbsolutePtz: () => true });
+      // current pan 0.5, tilt -0.2 (from makeController.getStatus)
+      const res = await invoke(
+        handlers.get('POST /cameras/:id/ptz/aim')!,
+        fakeReq({ body: { dx: 0.25, dy: -0.1 } }),
+      );
+      expect(controller.getStatus).toHaveBeenCalledTimes(1);
+      expect(controller.moveAbsolute).toHaveBeenCalledTimes(1);
+      expect(controller.moveRelative).not.toHaveBeenCalled();
+      const arg = controller.moveAbsolute.mock.calls[0][0] as { pan: number; tilt: number };
+      expect(arg.pan).toBeGreaterThan(0.5); // panned right from 0.5
+      expect(arg.tilt).toBeGreaterThan(-0.2); // tilted up from -0.2 (dy < 0)
+      expect(res.statusCode).toBe(200);
+      expect(res.body).toMatchObject({ kind: 'absolute', outcome: 'aimed' });
+    });
+
+    it('sends a bounded relative nudge when the camera lacks absolute PTZ', async () => {
+      const { handlers, controller } = setupAim({ hasAbsolutePtz: () => false });
+      const res = await invoke(
+        handlers.get('POST /cameras/:id/ptz/aim')!,
+        fakeReq({ body: { dx: 0.3, dy: 0.2 } }),
+      );
+      expect(controller.getStatus).not.toHaveBeenCalled(); // no absolute → no position read
+      expect(controller.moveRelative).toHaveBeenCalledTimes(1);
+      const arg = controller.moveRelative.mock.calls[0][0] as { pan: number; tilt: number };
+      expect(arg.pan).toBeGreaterThan(0); // right
+      expect(arg.tilt).toBeLessThan(0); // down (dy > 0)
+      expect(res.body).toMatchObject({ kind: 'relative', outcome: 'aimed' });
+    });
+
+    it('degrades to a relative nudge when an absolute camera cannot report its position', async () => {
+      const { handlers, controller } = setupAim({ hasAbsolutePtz: () => true });
+      controller.getStatus.mockRejectedValue(new Error('status unavailable'));
+      const res = await invoke(
+        handlers.get('POST /cameras/:id/ptz/aim')!,
+        fakeReq({ body: { dx: 0.1, dy: 0 } }),
+      );
+      expect(controller.moveAbsolute).not.toHaveBeenCalled();
+      expect(controller.moveRelative).toHaveBeenCalledTimes(1);
+      expect(res.statusCode).toBe(200);
+    });
+
+    it('returns 502 (redacted) when the aim move itself fails', async () => {
+      const { handlers, controller } = setupAim({ hasAbsolutePtz: () => false });
+      controller.moveRelative.mockRejectedValue(new Error('camera offline'));
+      const res = await invoke(
+        handlers.get('POST /cameras/:id/ptz/aim')!,
+        fakeReq({ body: { dx: 0.2, dy: 0 } }),
+      );
+      expect(res.statusCode).toBe(502);
+      expect(res.body).toMatchObject({ detail: 'camera offline' });
+    });
   });
 
   /**
