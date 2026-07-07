@@ -32,6 +32,9 @@ const SEND_INTERVAL_MS = 140;
 const WHEEL_STOP_MS = 280;
 /** Drag distance (px) that maps to full pan/tilt speed. */
 const DRAG_RADIUS = 170;
+/** A press-release within this long, having moved less than TAP_MOVE_PX, counts as a tap (not a drag). */
+const TAP_MAX_MS = 250;
+const TAP_MOVE_PX = 10;
 
 export interface IPtzGestureApi {
   /** A drag/pinch is in progress (drives cursor + joystick visual). */
@@ -52,6 +55,7 @@ export function usePtzGestures(opts: {
   onTap?: (clientX: number, clientY: number) => void;
 }): IPtzGestureApi {
   const { enabled } = opts;
+  const tapEnabled = opts.tapEnabled ?? false;
 
   // Hold the latest callbacks in refs so the native listeners (bound once per enable) always call
   // through to current closures without re-binding on every render.
@@ -66,6 +70,8 @@ export function usePtzGestures(opts: {
   const pts = useRef(new Map<number, IPoint>());
   const origin = useRef<IPoint | null>(null);
   const pinchStart = useRef<number | null>(null);
+  // Single-pointer tap candidate: cleared on a second finger, marked `moved` past the threshold.
+  const tap = useRef<{ id: number; x: number; y: number; t: number; moved: boolean } | null>(null);
   const lastSent = useRef<{ t: number; v: IGestureVector }>({ t: 0, v: ZERO });
   const flush = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wheelStop = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -112,26 +118,39 @@ export function usePtzGestures(opts: {
 
   useEffect(() => {
     const el = elRef.current;
-    if (!el || !enabled) return;
+    if (!el || (!enabled && !tapEnabled)) return;
     const points = pts.current; // stable Map we own; capture for the cleanup closure
 
     const down = (e: PointerEvent) => {
       el.setPointerCapture?.(e.pointerId);
       pts.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
       if (pts.current.size === 1) {
-        origin.current = { x: e.clientX, y: e.clientY };
-        setActive(true);
-        setVector(ZERO);
+        tap.current = { id: e.pointerId, x: e.clientX, y: e.clientY, t: Date.now(), moved: false };
+        if (enabled) {
+          origin.current = { x: e.clientX, y: e.clientY };
+          setActive(true);
+          setVector(ZERO);
+        }
       } else if (pts.current.size === 2) {
-        const [a, b] = [...pts.current.values()];
-        pinchStart.current = fingerDistance(a, b);
-        origin.current = null; // suspend pan while two fingers pinch
+        tap.current = null; // a second finger means this is a pinch, never a tap
+        if (enabled) {
+          const [a, b] = [...pts.current.values()];
+          pinchStart.current = fingerDistance(a, b);
+          origin.current = null; // suspend pan while two fingers pinch
+        }
       }
     };
 
     const move = (e: PointerEvent) => {
       if (!pts.current.has(e.pointerId)) return;
       pts.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      // Past the movement threshold this is a drag, not a tap.
+      if (tap.current && tap.current.id === e.pointerId && !tap.current.moved) {
+        if (Math.hypot(e.clientX - tap.current.x, e.clientY - tap.current.y) > TAP_MOVE_PX) {
+          tap.current.moved = true;
+        }
+      }
+      if (!enabled) return; // drag/pinch pan only when continuous PTZ is on
       if (pts.current.size >= 2 && pinchStart.current) {
         const [a, b] = [...pts.current.values()];
         const v = { ...ZERO, zoom: pinchToZoom(pinchStart.current, fingerDistance(a, b)) };
@@ -154,10 +173,26 @@ export function usePtzGestures(opts: {
     const up = (e: PointerEvent) => {
       if (!pts.current.has(e.pointerId)) return;
       el.releasePointerCapture?.(e.pointerId);
+      const cand = tap.current;
+      const wasTap =
+        tapEnabled &&
+        cand !== null &&
+        cand.id === e.pointerId &&
+        !cand.moved &&
+        Date.now() - cand.t <= TAP_MAX_MS;
+      const tapX = cand?.x ?? 0;
+      const tapY = cand?.y ?? 0;
       pts.current.delete(e.pointerId);
       if (pts.current.size === 0) {
-        endGesture();
-      } else if (pts.current.size === 1) {
+        tap.current = null;
+        if (enabled) {
+          endGesture();
+        } else {
+          setActive(false);
+          setVector(null);
+        }
+        if (wasTap) onTapRef.current?.(tapX, tapY);
+      } else if (pts.current.size === 1 && enabled) {
         // Lifted one finger out of a pinch: stop zoom and resume panning from the finger that remains.
         pinchStart.current = null;
         const [p] = [...pts.current.values()];
@@ -169,6 +204,7 @@ export function usePtzGestures(opts: {
     };
 
     const wheel = (e: WheelEvent) => {
+      if (!enabled) return; // wheel-zoom is a continuous gesture
       const zoom = wheelToZoom(e.deltaY);
       if (!zoom) return;
       e.preventDefault(); // keep the page from zooming/scrolling under a trackpad pinch
@@ -202,7 +238,7 @@ export function usePtzGestures(opts: {
     // `active` intentionally omitted: re-binding listeners on every drag tick would drop pointer
     // capture. The cleanup reads `active` via closure only at teardown, which is acceptable here.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, emit, endGesture]);
+  }, [enabled, tapEnabled, emit, endGesture]);
 
   const setRef = useCallback((el: HTMLElement | null) => {
     elRef.current = el;
