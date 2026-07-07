@@ -410,6 +410,26 @@ export const ptzNudge = (
 export const ptzStop = (id: string): Promise<Response> =>
   send(`${cam(id)}/ptz/stop`, { method: 'POST' }, 'ptz stop');
 
+/** Outcome of a tap-to-aim: whether it aimed cleanly or hit the camera's mechanical limit. */
+export interface IAimResult {
+  outcome: 'aimed' | 'at-limit';
+  kind: 'absolute' | 'relative';
+}
+
+/**
+ * Tap-to-aim: `dx`/`dy` are the tapped point's offset from the frame centre (image space, +right/+down,
+ * roughly [-0.5, 0.5]). The server aims the camera toward that point (a bounded, recoverable move) and
+ * returns the outcome so the UI can say "aimed" / "at limit".
+ */
+export const ptzAim = async (id: string, dx: number, dy: number): Promise<IAimResult> => {
+  const res = await send(
+    `${cam(id)}/ptz/aim`,
+    { method: 'POST', body: JSON.stringify({ dx, dy }) },
+    'aim',
+  );
+  return (await res.json()) as IAimResult;
+};
+
 /** Toggle an ONVIF auxiliary fixture — a white-light spotlight or an audible alarm/siren. */
 export const setSpotlight = (id: string, on: boolean): Promise<Response> =>
   send(`${cam(id)}/spotlight`, { method: 'POST', body: JSON.stringify({ on }) }, 'spotlight');
