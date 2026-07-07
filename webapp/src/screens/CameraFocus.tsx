@@ -5,13 +5,15 @@ import {
   fetchTransport,
   ptzNudge,
   ptzStop,
+  ptzAim,
   type ICameraEntry,
   type ITransportHints,
   type TTransport,
   type TStreamVariant,
 } from '../api';
 import { ptzDelayed, isHevc, transportsForVariant } from '../lib/transport';
-import { loadContinuousPtz } from '../lib/ptz-prefs';
+import { loadContinuousPtz, loadTapToAim } from '../lib/ptz-prefs';
+import { tapOffset } from '../lib/tap-aim';
 import { actionMessage, type IMsg } from '../lib/camera-messages';
 import { VideoPlayer } from '../components/VideoPlayer';
 import { usePtzGestures } from '../components/usePtzGestures';
@@ -54,6 +56,8 @@ export function CameraFocus({ cameraId, onBack }: Props) {
   const [forced, setForced] = useState<TTransport | null>(null);
   // Continuous press-and-hold PTZ is a per-device opt-in; discrete nudges are the default.
   const continuousPtz = loadContinuousPtz();
+  // Single-tap-to-aim is on by default (a tap is a discrete, recoverable move).
+  const tapToAim = loadTapToAim();
   // Whether the operator is listening to camera audio (unmutes the player); off by default.
   const [listening, setListening] = useState(false);
   const msgTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -131,6 +135,39 @@ export function CameraFocus({ cameraId, onBack }: Props) {
   // Full-frame drag/pinch/scroll gestures over the video, in addition to the dock pad — a quick way
   // to nudge the camera without reaching for the control. Continuous PTZ is unsafe on a 1 fps still-
   // refresh feed (you can't see where you're aiming for 1–2 s), so it's live-feed only.
+  // Tap-to-aim: a single tap on the video aims the camera at that point. The gesture surface is the
+  // element we measure the tap against (composed with the hook's own ref below).
+  const surfaceRef = useRef<HTMLDivElement | null>(null);
+  // A brief crosshair at the last tapped point (normalised 0..1 within the surface), cleared after a beat.
+  const [aimMark, setAimMark] = useState<{ x: number; y: number } | null>(null);
+  const aimMarkTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleTap = useCallback(
+    (clientX: number, clientY: number) => {
+      const el = surfaceRef.current;
+      if (!el) return;
+      const t = tapOffset(el.getBoundingClientRect(), clientX, clientY);
+      if (!t) return;
+      // Drop the crosshair immediately (the move takes a moment), then fade it.
+      setAimMark({ x: t.nx, y: t.ny });
+      if (aimMarkTimer.current) clearTimeout(aimMarkTimer.current);
+      aimMarkTimer.current = setTimeout(() => setAimMark(null), 900);
+      bumpPtzActive();
+      void ptzAim(cameraId, t.dx, t.dy)
+        .then((r) => {
+          if (r.outcome === 'at-limit') {
+            flash({
+              kind: 'caution',
+              text: 'Camera is at its limit — can’t pan further that way.',
+            });
+          }
+        })
+        .catch((err: unknown) => flash(actionMessage(err, 'aim the camera')));
+    },
+    [cameraId, bumpPtzActive, flash],
+  );
+  useEffect(() => () => void (aimMarkTimer.current && clearTimeout(aimMarkTimer.current)), []);
+
   const gestures = usePtzGestures({
     enabled: ptz && !delayed && continuousPtz,
     onMove: (v) => {
@@ -140,6 +177,8 @@ export function CameraFocus({ cameraId, onBack }: Props) {
       );
     },
     onStop: () => void ptzStop(cameraId).catch(() => undefined),
+    tapEnabled: ptz && !delayed && tapToAim,
+    onTap: handleTap,
   });
 
   // The browser can't decode an H.265 main stream live, so when the camera has an H.264 substream we
@@ -194,7 +233,10 @@ export function CameraFocus({ cameraId, onBack }: Props) {
         )}
         {ptz && !delayed && (
           <div
-            ref={gestures.setRef}
+            ref={(el) => {
+              gestures.setRef(el);
+              surfaceRef.current = el;
+            }}
             className={`focus__gestures${gestures.active ? ' focus__gestures--active' : ''}`}
             aria-hidden="true"
           >
@@ -209,6 +251,13 @@ export function CameraFocus({ cameraId, onBack }: Props) {
                   }}
                 />
               </div>
+            )}
+            {aimMark && (
+              <span
+                className="tap-aim__mark"
+                style={{ left: `${aimMark.x * 100}%`, top: `${aimMark.y * 100}%` }}
+                aria-hidden="true"
+              />
             )}
           </div>
         )}

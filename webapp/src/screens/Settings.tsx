@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { THEMES, THEME_LABELS, type Theme } from '../lib/theme';
 import { DENSITIES, DENSITY_LABELS, type Density } from '../lib/density';
-import { loadContinuousPtz, saveContinuousPtz } from '../lib/ptz-prefs';
+import { loadContinuousPtz, saveContinuousPtz, loadTapToAim, saveTapToAim } from '../lib/ptz-prefs';
 import { useAuth } from '../lib/auth';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { ActivityMonitor } from '../components/ActivityMonitor';
@@ -22,12 +22,18 @@ interface Props {
  */
 export function Settings({ theme, onTheme, density, onDensity }: Props) {
   const [continuousPtz, setContinuousPtz] = useState(() => loadContinuousPtz());
+  const [tapToAim, setTapToAim] = useState(() => loadTapToAim());
   const { state: authState, session, username, userLevel, signOut } = useAuth();
   const [confirmSignOut, setConfirmSignOut] = useState(false);
   const toggleContinuous = (): void => {
     const next = !continuousPtz;
     setContinuousPtz(next);
     saveContinuousPtz(next);
+  };
+  const toggleTapToAim = (): void => {
+    const next = !tapToAim;
+    setTapToAim(next);
+    saveTapToAim(next);
   };
   // Sign-out only makes sense on a secured server where this device holds a session.
   const showSession =
@@ -98,6 +104,19 @@ export function Settings({ theme, onTheme, density, onDensity }: Props) {
           onClick={toggleContinuous}
         >
           {continuousPtz ? 'Continuous PTZ: on' : 'Continuous PTZ: off'}
+        </button>
+        <p className="muted">
+          Tap-to-aim: tap a point on a PTZ camera’s live view to aim there. It’s a bounded,
+          recoverable move (the tapped point eases toward centre), on by default; it stays off on a
+          still-refresh feed.
+        </p>
+        <button
+          type="button"
+          className={`iconbtn iconbtn--wide${tapToAim ? ' iconbtn--on' : ''}`}
+          aria-pressed={tapToAim}
+          onClick={toggleTapToAim}
+        >
+          {tapToAim ? 'Tap to aim: on' : 'Tap to aim: off'}
         </button>
       </section>
 

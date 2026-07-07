@@ -1280,6 +1280,45 @@ button.tile {
 .focus__gestures--active {
   cursor: grabbing;
 }
+/* Tap-to-aim: a brief red crosshair marking where the operator tapped. Positioned by inline left/top;
+   red is safe in Night-Red, and the glow is dropped at night per the theme contract. Fades on its own. */
+.tap-aim__mark {
+  position: absolute;
+  width: 40px;
+  height: 40px;
+  transform: translate(-50%, -50%);
+  pointer-events: none; /* decorative — never intercept the next tap */
+  border: 1.5px solid var(--status-live);
+  border-radius: 50%;
+  background:
+    linear-gradient(var(--status-live), var(--status-live)) center / 1.5px 16px no-repeat,
+    linear-gradient(var(--status-live), var(--status-live)) center / 16px 1.5px no-repeat;
+  box-shadow: 0 0 10px rgba(229, 52, 42, 0.5);
+  animation: tap-aim-fade 0.9s ease-out forwards;
+}
+@keyframes tap-aim-fade {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1.4);
+  }
+  18% {
+    opacity: 0.95;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+[data-theme='night'] .tap-aim__mark {
+  box-shadow: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .tap-aim__mark {
+    animation: none;
+    opacity: 0.9;
+  }
+}
 /* Holds the frameless glass PTZ pad in the dock; the pad sizes itself from its `size` attribute. */
 .ptzpad {
   flex: none;

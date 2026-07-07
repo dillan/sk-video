@@ -1661,6 +1661,9 @@ export = function (app: ServerAPI): Plugin {
           if (!camera) return null; // unknown here → the ONVIF path reports unknown-camera itself
           return camera.capabilities?.ptz === true;
         },
+        // Tap-to-aim repositions precisely on cameras that can hold an absolute position; others get a
+        // bounded relative nudge.
+        hasAbsolutePtz: (id) => cameras?.get(id)?.capabilities?.absolutePtz === true,
       });
 
       // ONVIF auxiliary-command controls (spotlight / alarm), capability-gated on the tokens the camera

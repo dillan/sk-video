@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { loadContinuousPtz, saveContinuousPtz, allowPadEvent } from './ptz-prefs';
+import {
+  loadContinuousPtz,
+  saveContinuousPtz,
+  loadTapToAim,
+  saveTapToAim,
+  allowPadEvent,
+} from './ptz-prefs';
 
 const mem = () => {
   const map = new Map<string, string>();
@@ -30,6 +36,30 @@ describe('continuous-PTZ preference', () => {
     };
     expect(loadContinuousPtz(throwing)).toBe(false);
     expect(() => saveContinuousPtz(true, throwing)).not.toThrow();
+  });
+});
+
+describe('tap-to-aim preference', () => {
+  it('defaults ON (a tap is a discrete recoverable move) and round-trips', () => {
+    const storage = mem();
+    expect(loadTapToAim(storage)).toBe(true); // default on
+    saveTapToAim(false, storage);
+    expect(loadTapToAim(storage)).toBe(false);
+    saveTapToAim(true, storage);
+    expect(loadTapToAim(storage)).toBe(true);
+  });
+
+  it('survives a throwing storage (privacy mode) as ON (the default)', () => {
+    const throwing = {
+      getItem: () => {
+        throw new Error('denied');
+      },
+      setItem: () => {
+        throw new Error('denied');
+      },
+    };
+    expect(loadTapToAim(throwing)).toBe(true);
+    expect(() => saveTapToAim(false, throwing)).not.toThrow();
   });
 });
 

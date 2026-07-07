@@ -196,6 +196,12 @@ export function buildOpenApiDoc(): object {
       ...cameraPath('/ptz', {
         post: op('PTZ & imaging', 'Continuous/relative/absolute PTZ move (velocities clamped).'),
       }),
+      ...cameraPath('/ptz/aim', {
+        post: op(
+          'PTZ & imaging',
+          'Tap-to-aim: {dx,dy} image-centre offset → a bounded aim toward that point.',
+        ),
+      }),
       ...cameraPath('/ptz/stop', { post: op('PTZ & imaging', 'Stop any PTZ motion now.') }),
       ...cameraPath('/ptz/presets', { get: op('PTZ & imaging', 'List the camera PTZ presets.') }),
       ...cameraPath('/ptz/position', {

@@ -8,6 +8,7 @@ import {
   login,
   logout,
   ptzNudge,
+  ptzAim,
   saveCamera,
   deleteCamera,
   negotiateTalk,
@@ -260,6 +261,40 @@ describe('login / logout (delegated to Signal K auth)', () => {
     const [url, opts] = fetchMock.mock.calls[0];
     expect(url).toBe('/signalk/v1/auth/logout');
     expect(opts).toMatchObject({ method: 'PUT', credentials: 'include' });
+  });
+});
+
+describe('ptzAim (tap-to-aim)', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('POSTs the {dx,dy} offset to the aim route and returns the parsed outcome', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ outcome: 'aimed', kind: 'absolute' }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const result = await ptzAim('front-deck', 0.2, -0.1);
+    const [url, opts] = fetchMock.mock.calls[0];
+    expect(url).toContain('/cameras/front-deck/ptz/aim');
+    expect(opts.method).toBe('POST');
+    expect(JSON.parse(opts.body)).toEqual({ dx: 0.2, dy: -0.1 });
+    expect(result).toEqual({ outcome: 'aimed', kind: 'absolute' });
+  });
+
+  it('throws an ApiError when the aim is refused', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 501,
+        headers: { get: () => 'application/json' },
+        json: async () => ({ error: 'camera does not support PTZ' }),
+      }),
+    );
+    const err = await ptzAim('cam1', 0.1, 0).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ApiError);
+    expect(err).toMatchObject({ status: 501 });
   });
 });
 

@@ -74,6 +74,15 @@ describe('Settings', () => {
     expect(localStorage.getItem('sk-video.ptz-continuous')).toBe('true');
   });
 
+  it('offers the tap-to-aim toggle, defaulting ON and persisting per device', () => {
+    render(<Settings {...props} />);
+    const toggle = screen.getByRole('button', { name: 'Tap to aim: on' });
+    expect(toggle.getAttribute('aria-pressed')).toBe('true'); // on by default
+    fireEvent.click(toggle);
+    expect(screen.getByRole('button', { name: 'Tap to aim: off' })).toBeTruthy();
+    expect(localStorage.getItem('sk-video.ptz-tap-to-aim')).toBe('false');
+  });
+
   it('hides the Session panel on an open server (no sign-in, nothing to sign out of)', () => {
     render(<Settings {...props} />);
     expect(screen.queryByRole('heading', { name: 'Session' })).toBeNull();

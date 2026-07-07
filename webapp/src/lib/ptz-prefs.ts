@@ -6,6 +6,7 @@
  */
 
 const STORAGE_KEY = 'sk-video.ptz-continuous';
+const TAP_AIM_KEY = 'sk-video.ptz-tap-to-aim';
 
 /** Whether continuous press-and-hold PTZ is enabled on this device (default: off). */
 export function loadContinuousPtz(storage: Pick<Storage, 'getItem'> = localStorage): boolean {
@@ -22,6 +23,27 @@ export function saveContinuousPtz(
 ): void {
   try {
     storage.setItem(STORAGE_KEY, on ? 'true' : 'false');
+  } catch {
+    /* persistence is best-effort */
+  }
+}
+
+/**
+ * Whether single-tap-to-aim is enabled on this device. Default: ON — unlike continuous pan, a tap is a
+ * discrete, recoverable move (it nudges the tapped point toward centre, bounded), so it's safe to have
+ * on by default and matches the click-to-centre convention operators expect.
+ */
+export function loadTapToAim(storage: Pick<Storage, 'getItem'> = localStorage): boolean {
+  try {
+    return storage.getItem(TAP_AIM_KEY) !== 'false';
+  } catch {
+    return true;
+  }
+}
+
+export function saveTapToAim(on: boolean, storage: Pick<Storage, 'setItem'> = localStorage): void {
+  try {
+    storage.setItem(TAP_AIM_KEY, on ? 'true' : 'false');
   } catch {
     /* persistence is best-effort */
   }
