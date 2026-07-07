@@ -41,10 +41,18 @@ describe('detectHardware', () => {
     });
   });
 
-  it('reports hardware snapshots when a VAAPI render node is present', () => {
-    const info = detect({ arch: 'arm64', cores: 4, totalMemMB: 4096 }, ['/dev/dri/renderD128']);
+  it('reports hardware snapshots on x86 when a VAAPI render node is present', () => {
+    const info = detect({ arch: 'x64', cores: 8, totalMemMB: 16384 }, ['/dev/dri/renderD128']);
     expect(info.hwEncode).toBe(true);
     expect(info.capabilities.hardwareSnapshots).toBe(true);
+  });
+
+  it('does NOT claim VAAPI hardware snapshots on a Pi (the render node is the V3D GPU, not encodable)', () => {
+    // A present /dev/dri/renderD128 on ARM is the V3D GPU node — VAAPI can't encode with it, so the
+    // node alone must not promise hardware snapshots (the Pi false positive we refuse to claim).
+    const info = detect({ arch: 'arm64', cores: 4, totalMemMB: 4096 }, ['/dev/dri/renderD128']);
+    expect(info.hwEncode).toBe(false);
+    expect(info.capabilities.hardwareSnapshots).toBe(false);
   });
 
   it('classifies an accelerator-equipped device as accelerated (analytics on)', () => {
@@ -104,7 +112,7 @@ describe('describeTier', () => {
 
   it('names the accelerator and HW snapshots when present', () => {
     const text = describeTier(
-      detect({ arch: 'arm64', cores: 4, totalMemMB: 8192 }, ['/dev/hailo0', '/dev/dri/renderD128']),
+      detect({ arch: 'x64', cores: 8, totalMemMB: 16384 }, ['/dev/hailo0', '/dev/dri/renderD128']),
     );
     expect(text).toContain('hailo');
     expect(text).toContain('HW snapshots');

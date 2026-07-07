@@ -27,6 +27,7 @@ import { withTimeout } from './security/with-timeout';
 import { Go2rtcBinaryManager } from './gateway/go2rtc-binary-manager';
 import { Go2rtcProcess } from './gateway/go2rtc-process';
 import { Go2rtcGateway } from './gateway/go2rtc-gateway';
+import { hasHardwareTranscodeSource } from './gateway/go2rtc-config';
 import { registerProxyRoutes } from './gateway/go2rtc-proxy-routes';
 import { candidateHost } from './gateway/sdp-scrub';
 import { LastGoodTracker, loadLastGoodSnapshot, saveLastGoodSnapshot } from './gateway/last-good';
@@ -101,6 +102,13 @@ import {
   type THardwareTier,
   type IHardwareInfo,
 } from './hardware/tier-detect';
+import { probeFfmpegHwaccel, type IFfmpegHwaccel } from './hardware/ffmpeg-probe';
+import {
+  takeSnapshot,
+  deriveActivity,
+  assessCapacity,
+  type IActivitySnapshot,
+} from './hardware/activity-monitor';
 import { SignalKBridge, type ISignalKApp, type AlarmState } from './signalk/sk-bridge';
 import { SnapshotService } from './recording/snapshot-service';
 import { FileSnapshotStore } from './recording/file-snapshot-store';
@@ -123,7 +131,7 @@ import { validateTriggerRequest } from './incidents/incident-validation';
 import { go2rtcApiUrl } from './gateway/go2rtc-proxy';
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { readFile as fsReadFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -208,6 +216,12 @@ export = function (app: ServerAPI): Plugin {
   let resumableUploads: ResumableUploadStore | null = null;
   let resumableSweepTimer: ReturnType<typeof setInterval> | null = null;
   let hardware: IHardwareInfo | null = null;
+  // Filled asynchronously at startup by probing the host ffmpeg; null until it resolves. Tells the app
+  // whether a real hardware H.264 encoder exists, so the acceleration toggle can be honest.
+  let ffmpegHwaccel: IFfmpegHwaccel | null = null;
+  // The previous activity snapshot, so /activity can report per-process CPU% from the delta between
+  // polls. Reset on stop; the first poll after (re)start reports 0% until the next tick.
+  let prevActivitySnapshot: IActivitySnapshot | null = null;
   let bridge: SignalKBridge | null = null;
   let snapshots: SnapshotService | null = null;
   let snapshotStore: FileSnapshotStore | null = null;
@@ -234,6 +248,10 @@ export = function (app: ServerAPI): Plugin {
   const cameraOnlineNow = new Map<string, boolean>();
   // While go2rtc is down the status line shows the error; the poll must not paint "Ready" over it.
   let gatewayDegraded = false;
+  // The streaming helper (go2rtc) is pre-warmed on start so the first camera is instant. 'pending'
+  // while the one-time download runs; 'offline' if the server had no internet yet (the gateway
+  // retries when a camera needs it); 'ready' once present. Drives a calm, no-action status line.
+  let go2rtcSetup: 'ready' | 'pending' | 'offline' = 'ready';
   let frigateClient: FrigateClient | null = null;
   let frigateMqtt: IMqttConnection | null = null;
   // Live broker-link state so the console can say "Frigate not connected" instead of implying
@@ -285,6 +303,20 @@ export = function (app: ServerAPI): Plugin {
   /** Writes a 429 and returns true when the caller is over the limit. */
   const tooManyRequests = (req: Request, res: Response): boolean => {
     const result = rateLimit(req);
+    if (!result.ok) {
+      res.setHeader('Retry-After', String(Math.ceil(result.retryAfterMs / 1000)));
+      res.status(429).json({ error: 'too many requests', retryAfterMs: result.retryAfterMs });
+      return true;
+    }
+    return false;
+  };
+
+  // A separate, more permissive limiter for /activity: each GET does a synchronous /proc scan, so an
+  // unauthenticated caller on an open server could otherwise loop it to pin the event loop. The panel
+  // polls at ~24/min; 90/min leaves generous headroom for a couple of clients while bounding a flood.
+  const activityLimiter = new RateLimiter({ max: 90, windowMs: 60_000 });
+  const tooManyActivityRequests = (req: Request, res: Response): boolean => {
+    const result = activityLimiter.check(clientKey(req));
     if (!result.ok) {
       res.setHeader('Retry-After', String(Math.ceil(result.retryAfterMs / 1000)));
       res.status(429).json({ error: 'too many requests', retryAfterMs: result.retryAfterMs });
@@ -353,17 +385,55 @@ export = function (app: ServerAPI): Plugin {
    * streaming/dark counts at a glance. Per-camera detail lives in the data model (cameras.<id>.*).
    */
   function readyStatus(): string {
+    if (go2rtcSetup === 'pending') {
+      // A calm, no-action message while the one-time helper download runs on first enable.
+      return 'Setting up video — one-time setup, no action needed…';
+    }
     const ids = cameras ? Object.keys(cameras.list()) : [];
     let streaming = 0;
     for (const id of ids) {
       if (cameraOnlineNow.get(id)) streaming += 1;
     }
-    return statusLine({
+    const line = statusLine({
       cameras: ids.length,
       streaming,
       dark: watchdog?.alarmedCameras().length ?? 0,
       tier: hardware ? describeTier(hardware) : undefined,
     });
+    return go2rtcSetup === 'offline'
+      ? `${line} · video helper finishes setup when the server is online`
+      : line;
+  }
+
+  /**
+   * Pre-warm the streaming helper (go2rtc) the moment the plugin is switched on, so the operator's
+   * first camera starts instantly instead of waiting on a one-time download. Non-blocking and
+   * fail-soft: an already-present binary is used as-is; if the server is offline right now, the
+   * gateway fetches it later when a camera needs it. Nothing is asked of the operator — the status
+   * line just reads "setting up" briefly, never a permission or an "allow" prompt.
+   */
+  function prewarmGo2rtc(binary: Go2rtcBinaryManager): void {
+    if (existsSync(binary.binaryPath)) {
+      go2rtcSetup = 'ready'; // already downloaded on a prior run (or placed for an offline install)
+      return;
+    }
+    go2rtcSetup = 'pending';
+    app.setPluginStatus(readyStatus());
+    void binary
+      .ensure()
+      .then(() => {
+        go2rtcSetup = 'ready';
+        log('video helper ready');
+      })
+      .catch((err: unknown) => {
+        go2rtcSetup = 'offline';
+        log(
+          `video helper will finish setup when online: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      })
+      .finally(() => {
+        if (!gatewayDegraded) app.setPluginStatus(readyStatus()); // never paint over a live error
+      });
   }
 
   // A1 (experimental): turn one Frigate person detection into a small bounded relativeMove nudge on
@@ -443,11 +513,20 @@ export = function (app: ServerAPI): Plugin {
             ? (options.hardwareTier as THardwareTier)
             : undefined;
         hardware = detectHardware({ override });
+        // Probe the host ffmpeg for a real hardware encode path (non-blocking — startup never waits on
+        // it). go2rtc auto-detects at transcode time; this is only so the app can tell the operator
+        // whether turning acceleration on will actually do anything.
+        void probeFfmpegHwaccel()
+          .then((r) => {
+            ffmpegHwaccel = r;
+          })
+          .catch(() => undefined);
         cameras = new CameraStore(new FileCameraPersistence(dataDir));
         credentials = new CredentialStore(new FileCredentialPersistence(dataDir));
+        const go2rtcBinary = new Go2rtcBinaryManager({ dataDir, log });
         gateway = new Go2rtcGateway({
           dataDir,
-          binary: new Go2rtcBinaryManager({ dataDir, log }),
+          binary: go2rtcBinary,
           process: new Go2rtcProcess({
             log,
             // go2rtc keeps retrying on its own; surface a down/recovered status so a silent gateway
@@ -460,6 +539,7 @@ export = function (app: ServerAPI): Plugin {
             },
             onHealthy: () => {
               gatewayDegraded = false;
+              go2rtcSetup = 'ready'; // the helper is running, so any pending/failed setup is now done
               app.setPluginStatus(readyStatus());
             },
           }),
@@ -470,6 +550,9 @@ export = function (app: ServerAPI): Plugin {
             .split(',')
             .map((c) => c.trim())
             .filter(Boolean),
+          // Opt-in hardware transcoding (Settings → Operational). Applied at gateway construction;
+          // a config change restarts the plugin, so this reflects the current setting each run.
+          hardwareAcceleration: options?.hardwareAcceleration === true,
         });
         ptz = new PtzManager({
           getCamera: (id) => cameras?.get(id) ?? null,
@@ -576,7 +659,14 @@ export = function (app: ServerAPI): Plugin {
             );
             return { stop: () => child.kill('SIGINT') };
           },
-          maxChannels: () => hardware?.capabilities.maxRecordingChannels ?? 0,
+          // Recording is disabled plugin-wide when the operator turns it off in Settings (0 channels),
+          // else capped to the hardware tier. Default (undefined) is ON. Read the live currentConfig
+          // (not the start `options`) so this agrees with /status and recordingAvailable even if the
+          // config is ever applied without a full restart.
+          maxChannels: () =>
+            currentConfig.recordingEnabled === false
+              ? 0
+              : (hardware?.capabilities.maxRecordingChannels ?? 0),
           limits: () => ({ maxBytes: RECORDING_MAX_BYTES, maxAgeMs: RECORDING_MAX_AGE_MS }),
           listSegments: () => (recordingsDir ? scanRecordings(recordingsDir) : []),
           removeFile: (path) => rmSync(path, { force: true }),
@@ -1218,6 +1308,9 @@ export = function (app: ServerAPI): Plugin {
         });
 
         started = true;
+        // Pre-warm the streaming helper now, so the operator's first camera is instant rather than
+        // waiting on a one-time download (and the status reads a calm "setting up", never a prompt).
+        prewarmGo2rtc(go2rtcBinary);
         app.setPluginStatus(readyStatus());
         scheduleSync(); // start go2rtc if cameras are already configured
 
@@ -1335,6 +1428,8 @@ export = function (app: ServerAPI): Plugin {
       }
       resumableUploads = null;
       hardware = null;
+      ffmpegHwaccel = null;
+      prevActivitySnapshot = null;
       bridge = null;
       snapshots = null;
       snapshotStore = null;
@@ -1357,9 +1452,33 @@ export = function (app: ServerAPI): Plugin {
           ready: cameras !== null,
           cameras: cameras ? Object.keys(cameras.list()).length : 0,
           hardware,
+          // Whether buffered recording is turned on (Settings). Combined with the hardware tier's
+          // recording channels, this lets the app disable the Record button with the right reason.
+          recordingEnabled: currentConfig.recordingEnabled !== false,
+          // Whether opt-in hardware transcoding is on (Settings). Default off; the app pairs this with
+          // the hardware probe to tell the operator whether the toggle will actually do anything.
+          hardwareAcceleration: currentConfig.hardwareAcceleration === true,
+          // The host ffmpeg's real hardware-encode capability (null until the async probe resolves).
+          ffmpegHwaccel,
           // Honest Frigate posture: an empty detection feed must be distinguishable from "not wired".
           frigate: { configured: frigateClient !== null, connected: frigateConnected },
         });
+      });
+
+      // Live activity readout: whole-host CPU / memory / temperature plus the plugin's process tree
+      // (signalk-server + the go2rtc and ffmpeg children it spawned) and a coarse capacity verdict.
+      // Per-process CPU% comes from the delta against the previous poll; the web app polls this only
+      // while the panel is open. Public like /status (host-capacity facts, no secrets).
+      router.get('/activity', (req: Request, res: Response) => {
+        // Rate-limited (not auth-gated, like /status): the sample is host-capacity facts with no
+        // secrets, but each call does a synchronous /proc scan, so cap the flood on an open server.
+        if (tooManyActivityRequests(req, res)) {
+          return;
+        }
+        const next = takeSnapshot();
+        const sample = deriveActivity(prevActivitySnapshot, next, { rootPid: process.pid });
+        prevActivitySnapshot = next;
+        res.json({ ...sample, verdict: assessCapacity(sample) });
       });
 
       // Auth-only whoami the web app calls to learn whether security is on and whether it is signed in,
@@ -1490,6 +1609,12 @@ export = function (app: ServerAPI): Plugin {
         apiPort: () => gateway?.apiPort ?? 1984,
         hasCamera: (id: string) => cameras?.get(id) !== null && cameras?.get(id) !== undefined,
         hasSubstream: (id: string) => !!cameras?.get(id)?.media?.substreamPath,
+        hasHardwareTranscode: (id: string) => {
+          const c = cameras?.get(id);
+          return c
+            ? hasHardwareTranscodeSource(c, currentConfig.hardwareAcceleration === true)
+            : false;
+        },
         hasBackchannel: (id: string) => cameras?.get(id)?.capabilities?.audioBackchannel === true,
         gate: unauthorized,
         // Operator-configured explicit candidates always survive ICE scrubbing (they asserted
@@ -1519,7 +1644,10 @@ export = function (app: ServerAPI): Plugin {
           return healths;
         },
         lastGood: (id) => lastGood.get(id),
-        recordingAvailable: () => (hardware?.capabilities.maxRecordingChannels ?? 0) > 0,
+        recordingAvailable: () =>
+          currentConfig.recordingEnabled !== false &&
+          (hardware?.capabilities.maxRecordingChannels ?? 0) > 0,
+        hardwareAcceleration: () => currentConfig.hardwareAcceleration === true,
       });
 
       // Read-only role/placement layout hints for the widget to auto-arrange feeds by area.

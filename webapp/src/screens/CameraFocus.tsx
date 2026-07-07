@@ -96,12 +96,16 @@ export function CameraFocus({ cameraId, onBack }: Props) {
   useEffect(() => {
     const ctrl = new AbortController();
     fetchStatus(ctrl.signal)
-      .then((s) =>
+      .then((s) => {
+        const enabled = s.recordingEnabled !== false; // undefined (older server) = on
+        const hasChannels = (s.hardware?.capabilities?.maxRecordingChannels ?? 1) > 0;
         setRecordGate({
-          allowed: (s.hardware?.capabilities?.maxRecordingChannels ?? 1) > 0,
-          reason: 'Recording isn’t available on this hardware tier — live viewing still works.',
-        }),
-      )
+          allowed: enabled && hasChannels,
+          reason: !enabled
+            ? 'Recording is turned off in Settings → Operational — live viewing still works.'
+            : 'Recording isn’t available on this hardware tier — live viewing still works.',
+        });
+      })
       .catch(() => undefined);
     return () => ctrl.abort();
   }, []);

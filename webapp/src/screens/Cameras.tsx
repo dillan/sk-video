@@ -229,7 +229,11 @@ export function Cameras() {
               </div>
               <div className="camrow__chips">
                 {capabilityBadges(c).map((b) => (
-                  <span key={b.key} className="chip chip--info" title={b.title}>
+                  <span
+                    key={b.key}
+                    className={`chip chip--${b.tone === 'caution' ? 'caution' : 'info'}`}
+                    title={b.title}
+                  >
                     {b.label}
                   </span>
                 ))}

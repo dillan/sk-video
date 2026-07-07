@@ -48,6 +48,30 @@ describe('Go2rtcBinaryManager', () => {
     expect(readFileSync(path, 'utf8')).toBe('BINARY');
   });
 
+  it('coalesces concurrent ensure() calls into a single download (pre-warm + gateway race)', async () => {
+    let fetchCount = 0;
+    const fetchImpl = (async () => {
+      fetchCount += 1;
+      await Promise.resolve(); // both callers are in-flight before this settles
+      return {
+        ok: true,
+        status: 200,
+        arrayBuffer: async () => new TextEncoder().encode('BINARY').buffer,
+      };
+    }) as unknown as typeof fetch;
+
+    const mgr = new Go2rtcBinaryManager({
+      dataDir: dir,
+      platform: 'linux',
+      arch: 'x64',
+      fetchImpl,
+    });
+    const [a, b] = await Promise.all([mgr.ensure(), mgr.ensure()]);
+    expect(fetchCount).toBe(1); // one download shared by both callers, not two writing the same tmp file
+    expect(a).toBe(b);
+    expect(existsSync(a)).toBe(true);
+  });
+
   it('extracts the binary from a zip archive (macOS/Windows assets)', async () => {
     const zip = new AdmZip();
     zip.addFile('go2rtc', Buffer.from('MAC-BINARY'));

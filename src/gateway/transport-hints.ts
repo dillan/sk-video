@@ -22,13 +22,28 @@ export interface ITransportHints {
 const NOTE =
   'Client-side fallback order — the widget walks it on stall and recovers automatically. MJPEG is a still-refresh (frames on a loop), not continuous video; this is not an ABR ladder.';
 
+/** Extra signals that reorder the walk beyond the negotiated codecs. */
+export interface ITransportHintOptions {
+  /**
+   * The server has added a hardware H.264 transcode source for this camera (opt-in acceleration for an
+   * H.265 camera with no H.264 sub-stream). That source is reachable ONLY over WebRTC, so WebRTC must
+   * lead — otherwise the client's downward walk strands on the MJPEG floor and never reaches it.
+   */
+  hardwareTranscode?: boolean;
+}
+
 /** Recommend a transport walk for a camera, ordered by the codecs go2rtc negotiated. */
-export function transportHints(health: IStreamHealth): ITransportHints {
+export function transportHints(
+  health: IStreamHealth,
+  opts: ITransportHintOptions = {},
+): ITransportHints {
   const hasH265 = health.codecs.some((c) => /h\.?265|hevc/i.test(c));
   // WebRTC is lowest-latency and broadly supported; HLS is the robust fallback; MJPEG still-refresh is
   // the last resort that survives a starved link. Browser WebRTC/HLS support for H.265 is spotty, so
-  // for an H.265 stream put the more-compatible options first.
-  const recommended: TTransport[] = hasH265
+  // for an H.265 stream put the more-compatible options first — UNLESS a hardware H.264 transcode
+  // source exists, in which case WebRTC now serves browser-friendly H.264 and must lead.
+  const demoteWebrtc = hasH265 && !opts.hardwareTranscode;
+  const recommended: TTransport[] = demoteWebrtc
     ? ['hls', 'mjpeg', 'webrtc']
     : ['webrtc', 'hls', 'mjpeg'];
   return { recommended, codecs: health.codecs, online: health.online, note: NOTE };

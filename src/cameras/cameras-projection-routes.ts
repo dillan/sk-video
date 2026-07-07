@@ -4,6 +4,7 @@ import { computeLayoutHints, type ILayoutHints } from './layout-hints';
 import { buildCameraManifest, type ICameraManifest } from './camera-manifest';
 import type { IStreamHealth } from '../gateway/stream-health';
 import { transportHints, type ITransportHints } from '../gateway/transport-hints';
+import { hasHardwareTranscodeSource } from '../gateway/go2rtc-config';
 import type { ILastGood } from '../gateway/last-good';
 
 /**
@@ -48,6 +49,9 @@ export interface ICamerasProjectionDeps {
   lastGood: (id: string) => ILastGood;
   /** Whether this install can record at all (tier/channel budget) — drives control availability. */
   recordingAvailable?: () => boolean;
+  /** Whether opt-in hardware transcoding is on — reorders the walk to WebRTC-first for the cameras
+   *  that get a hardware H.264 transcode source. */
+  hardwareAcceleration?: () => boolean;
 }
 
 export function registerCamerasProjectionRoute(
@@ -68,6 +72,7 @@ export function registerCamerasProjectionRoute(
     } catch {
       healths = null; // gateway down — defs still render, health/transport read null (honest)
     }
+    const hwAccel = deps.hardwareAcceleration?.() ?? false;
     const cameras: ICameraProjectionEntry[] = Object.entries(cams).map(([id, c]) => {
       const health = healths?.[id] ?? null;
       return {
@@ -81,7 +86,9 @@ export function registerCamerasProjectionRoute(
         media: c.media,
         device: c.device,
         health: health ? { ...health, ...deps.lastGood(id) } : null,
-        transport: health ? transportHints(health) : null,
+        transport: health
+          ? transportHints(health, { hardwareTranscode: hasHardwareTranscodeSource(c, hwAccel) })
+          : null,
         manifest: buildCameraManifest(id, c, {
           recordingAvailable: deps.recordingAvailable?.() ?? false,
         }),

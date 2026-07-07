@@ -31,6 +31,8 @@ export interface ICapabilityBadge {
   label: string;
   /** Fuller description for the title tooltip. */
   title: string;
+  /** 'caution' flags a cost/limitation (e.g. an H.265 camera the server must transcode); default info. */
+  tone?: 'info' | 'caution';
 }
 
 /**
@@ -60,6 +62,16 @@ export function capabilityBadges(c: ICamera): ICapabilityBadge[] {
   }
   if (caps.substreams) {
     badges.push({ key: 'sub', label: 'H.264 sub', title: 'Low-latency H.264 substream' });
+  } else if (c.media?.codec === 'h265') {
+    // H.265 with no H.264 substream: browsers can't decode it live, so the server software-transcodes
+    // it (heavy on a Pi). Flag it so the operator can add an H.264 substream on the camera.
+    badges.push({
+      key: 'transcode',
+      label: 'H.265 · transcodes',
+      title:
+        'H.265 with no H.264 sub-stream — live view is software-transcoded (heavy CPU). Add an H.264 sub-stream on the camera for smooth, low-CPU playback.',
+      tone: 'caution',
+    });
   }
   if (caps.spotlight) {
     badges.push({ key: 'spotlight', label: 'Spotlight', title: 'White-light spotlight' });

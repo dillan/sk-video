@@ -102,6 +102,31 @@ describe('GET /cameras (aggregate projection)', () => {
     expect(body.layout.groups.length).toBeGreaterThan(0);
   });
 
+  it('leads the walk with WebRTC for an H.265 camera with a hardware transcode source', async () => {
+    // H.265, no sub-stream, hardware acceleration ON → the gateway added a hardware H.264 transcode
+    // source only WebRTC can reach, so the walk must lead with WebRTC (not strand on the MJPEG floor).
+    const hwCam: Record<string, ICamera> = {
+      mast: {
+        name: 'Mast',
+        enabled: true,
+        source: { scheme: 'rtsp', host: '10.0.0.9', path: '/main' },
+        media: { codec: 'h265' },
+      },
+    };
+    const { handlers } = setup({
+      listCameras: () => hwCam,
+      fetchAllHealth: vi.fn(async () => ({
+        mast: { online: true, producers: 1, consumers: 0, codecs: ['H265'], sources: [] },
+      })),
+      hardwareAcceleration: () => true,
+    });
+    const res = makeRes();
+    await handlers.get('GET /cameras')!({} as Request, res);
+    const body = res.body as { cameras: Array<Record<string, unknown>> };
+    const mast = body.cameras.find((c) => c.id === 'mast')!;
+    expect((mast.transport as { recommended: string[] }).recommended[0]).toBe('webrtc');
+  });
+
   it('still serves defs (health/transport null) when the gateway is down', async () => {
     const { handlers } = setup({
       fetchAllHealth: vi.fn(async () => {

@@ -46,6 +46,8 @@ export class Go2rtcBinaryManager {
   private readonly fetchImpl: typeof fetch;
   private readonly expectedSha256?: string;
   private readonly log: (msg: string) => void;
+  /** A download already running — so a pre-warm and the gateway's first-camera call share one fetch. */
+  private inFlight: Promise<string> | null = null;
 
   constructor(opts: IGo2rtcBinaryOptions) {
     this.platform = opts.platform ?? process.platform;
@@ -65,6 +67,18 @@ export class Go2rtcBinaryManager {
     if (existsSync(this.binaryPath)) {
       return this.binaryPath;
     }
+    // Single-flight: coalesce concurrent callers (pre-warm on start + the gateway's first-camera
+    // call) into one download. Cleared on settle so a failed attempt can be retried later.
+    if (this.inFlight) {
+      return this.inFlight;
+    }
+    this.inFlight = this.download().finally(() => {
+      this.inFlight = null;
+    });
+    return this.inFlight;
+  }
+
+  private async download(): Promise<string> {
     const url = go2rtcDownloadUrl(GO2RTC_VERSION, this.platform, this.arch);
     if (!url) {
       throw new Error(

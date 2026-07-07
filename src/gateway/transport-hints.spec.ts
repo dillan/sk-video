@@ -25,6 +25,14 @@ describe('transportHints', () => {
     expect(transportHints(health(['h.265'])).recommended[0]).toBe('hls');
   });
 
+  it('puts WebRTC FIRST for an H.265 stream that has a hardware transcode source', () => {
+    // With opt-in acceleration the server added a GPU H.264 transcode source that only WebRTC can use.
+    // If we left WebRTC last, the client's downward walk would strand on the MJPEG floor and never
+    // reach the transcode — the exact thing the feature exists to avoid.
+    const h = transportHints(health(['H265']), { hardwareTranscode: true });
+    expect(h.recommended).toEqual(['webrtc', 'hls', 'mjpeg']);
+  });
+
   it('still recommends the walk for an offline / codec-less stream', () => {
     const h = transportHints(health([], false));
     expect(h.online).toBe(false);

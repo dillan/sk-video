@@ -42,6 +42,20 @@ describe('capabilityBadges', () => {
     expect(capabilityBadges(base)).toEqual([]);
   });
 
+  it('flags an H.265 camera with no H.264 sub-stream as a caution (it gets software-transcoded)', () => {
+    const c: ICamera = { ...base, capabilities: {}, media: { codec: 'h265' } };
+    const badge = capabilityBadges(c).find((b) => b.key === 'transcode');
+    expect(badge?.label).toBe('H.265 · transcodes');
+    expect(badge?.tone).toBe('caution');
+  });
+
+  it('does NOT flag an H.265 camera that has an H.264 sub-stream (no transcode needed)', () => {
+    const c: ICamera = { ...base, capabilities: { substreams: true }, media: { codec: 'h265' } };
+    const labels = capabilityBadges(c).map((b) => b.label);
+    expect(labels).toContain('H.264 sub');
+    expect(labels).not.toContain('H.265 · transcodes');
+  });
+
   it('labels PTZ by whether absolute pointing was detected', () => {
     expect(capabilityBadges(cam({ ptz: true }))[0].title).toMatch(/Pan\/tilt\/zoom/);
     expect(capabilityBadges(cam({ absolutePtz: true }))[0].title).toMatch(/absolute/);

@@ -702,8 +702,10 @@ export function CameraWizard({ onDone, edit, hasStoredLogin = false }: Props) {
           )}
           {draft.media?.codec === 'h265' && !draft.capabilities.substreams && (
             <p className="muted">
-              Heads up: the main stream is H.265 and no H.264 sub-stream was found, so live view may
-              be blank in most browsers. It still records. Enable an H.264 sub-stream on the camera.
+              Heads up: the main stream is H.265 with no H.264 sub-stream. Browsers can’t decode
+              H.265 for live view, so the server falls back to a still-refresh mode it has to
+              software-transcode — heavy on a small device like a Pi. It still records fine. For
+              smooth, low-CPU live view, enable an H.264 sub-stream on the camera.
             </p>
           )}
           <label className="field">

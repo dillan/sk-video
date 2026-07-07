@@ -39,6 +39,20 @@ export interface IOperationalConfig {
   autoTriggerPath?: string;
   anchorWatchPath?: string;
   mobVisualRefine?: boolean;
+  /**
+   * Buffered DVR recording (per-camera Record + incident pre-roll). Default ON; set false to disable
+   * recording plugin-wide on a constrained host — the recorders (an ffmpeg remux per camera) stop and
+   * POST /record is refused. Recording is a copy, not a transcode, so this is a modest CPU/disk saving.
+   */
+  recordingEnabled?: boolean;
+  /**
+   * Opt-in hardware transcoding. Default OFF. When true, an H.265 camera with no H.264 sub-stream
+   * gains a GPU-accelerated H.264 transcode source so the browser plays it over WebRTC on the GPU
+   * instead of a CPU core. Off by default because go2rtc's own guidance is that hardware transcoding
+   * can be unstable and a misdetected engine is worse than software; on a Pi the H.265 decode stays
+   * on the CPU (only the H.264 encode is offloaded). A change restarts the gateway.
+   */
+  hardwareAcceleration?: boolean;
   /** Keyed by camera id; presence of an entry = zones enabled for that camera. */
   cameraHealthZones?: Record<string, ICameraHealthZonesConfig>;
   frigate?: IFrigateOperationalConfig;
@@ -63,6 +77,8 @@ const TOP_KEYS = new Set([
   'autoTriggerPath',
   'anchorWatchPath',
   'mobVisualRefine',
+  'recordingEnabled',
+  'hardwareAcceleration',
   'cameraHealthZones',
   'frigate',
 ]);
@@ -121,6 +137,15 @@ export function validateOperationalConfig(input: unknown): IValidation<IOperatio
   if (o.mobVisualRefine !== undefined) {
     if (typeof o.mobVisualRefine !== 'boolean') errors.push('mobVisualRefine must be a boolean');
     else value.mobVisualRefine = o.mobVisualRefine;
+  }
+  if (o.recordingEnabled !== undefined) {
+    if (typeof o.recordingEnabled !== 'boolean') errors.push('recordingEnabled must be a boolean');
+    else value.recordingEnabled = o.recordingEnabled;
+  }
+  if (o.hardwareAcceleration !== undefined) {
+    if (typeof o.hardwareAcceleration !== 'boolean')
+      errors.push('hardwareAcceleration must be a boolean');
+    else value.hardwareAcceleration = o.hardwareAcceleration;
   }
 
   if (o.cameraHealthZones !== undefined) {

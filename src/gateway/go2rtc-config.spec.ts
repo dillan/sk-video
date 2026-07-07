@@ -60,4 +60,52 @@ describe('buildGo2rtcConfig', () => {
       foredeck_sub: 'rtsp://u:p@cam1:554/sub', // explicit low-res variant, credentials server-side
     });
   });
+
+  describe('hardware acceleration (opt-in)', () => {
+    const h265NoSub: ICamera = { ...foredeck, media: { codec: 'h265' } };
+
+    it('adds a GPU H.264 transcode source for an H.265 camera with no sub-stream when enabled', () => {
+      const cfg = buildGo2rtcConfig({
+        cameras: { foredeck: h265NoSub },
+        credentials: { foredeck: { username: 'u', password: 'p' } },
+        hardwareAcceleration: true,
+      });
+      // The raw H.265 main stays (HLS/passthrough); go2rtc serves the hardware-transcoded H.264 source
+      // to a WebRTC client. `#hardware` (bare) lets go2rtc auto-detect the engine.
+      expect(cfg.streams).toEqual({
+        foredeck: ['rtsp://u:p@cam1:554/s', 'ffmpeg:rtsp://u:p@cam1:554/s#video=h264#hardware'],
+      });
+    });
+
+    it('does nothing when hardware acceleration is off (the default) — plain H.265 source', () => {
+      const cfg = buildGo2rtcConfig({
+        cameras: { foredeck: h265NoSub },
+        credentials: { foredeck: { username: 'u', password: 'p' } },
+      });
+      expect(cfg.streams).toEqual({ foredeck: 'rtsp://u:p@cam1:554/s' });
+    });
+
+    it('leaves an H.265 camera that already has an H.264 sub-stream alone (no transcode needed)', () => {
+      const withSub: ICamera = { ...foredeck, media: { codec: 'h265', substreamPath: '/sub' } };
+      const cfg = buildGo2rtcConfig({
+        cameras: { foredeck: withSub },
+        credentials: { foredeck: { username: 'u', password: 'p' } },
+        hardwareAcceleration: true,
+      });
+      expect(cfg.streams).toEqual({
+        foredeck: ['rtsp://u:p@cam1:554/s', 'rtsp://u:p@cam1:554/sub'],
+        foredeck_sub: 'rtsp://u:p@cam1:554/sub',
+      });
+    });
+
+    it('does not transcode a plain H.264 camera even when acceleration is on (already playable)', () => {
+      const h264: ICamera = { ...foredeck, media: { codec: 'h264' } };
+      const cfg = buildGo2rtcConfig({
+        cameras: { foredeck: h264 },
+        credentials: {},
+        hardwareAcceleration: true,
+      });
+      expect(cfg.streams).toEqual({ foredeck: 'rtsp://cam1:554/s' });
+    });
+  });
 });

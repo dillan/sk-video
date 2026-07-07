@@ -2627,3 +2627,74 @@ button.tile {
   background: var(--danger, #c0392b);
   border: 0;
 }
+
+/* Device activity monitor (Settings). Colours come from the semantic --status-* tokens so Night-Red
+   adapts automatically (green → amber at sea); no theme-scoped colour literals here. */
+.activity__verdict {
+  margin: 12px 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  border-left: 3px solid var(--status-online);
+}
+.activity__verdict--busy {
+  border-left-color: var(--status-caution);
+}
+.activity__verdict--high,
+.activity__verdict--critical {
+  border-left-color: var(--status-live);
+}
+.activity__reasons {
+  color: var(--text-secondary);
+}
+.activity__meters {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 4px;
+}
+.activity__meterhead {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+.activity__track {
+  height: 8px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+.activity__fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.4s ease;
+  background: var(--status-online);
+}
+.activity__fill--busy {
+  background: var(--status-caution);
+}
+.activity__fill--high {
+  background: var(--status-live);
+}
+.activity__procs {
+  width: 100%;
+  margin-top: 16px;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.activity__procs th {
+  text-align: left;
+  color: var(--text-dim);
+  font-weight: 500;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--hairline);
+}
+.activity__procs td {
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--hairline);
+}
+.activity__procs th:not(:first-child),
+.activity__procs td:not(:first-child) {
+  text-align: right;
+}

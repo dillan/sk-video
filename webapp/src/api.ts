@@ -85,12 +85,46 @@ export interface IPluginStatus {
     label?: string;
     capabilities?: { maxRecordingChannels?: number };
   } | null;
+  /** Whether buffered recording is turned on in Settings (false = the operator disabled it). */
+  recordingEnabled?: boolean;
+  /** Whether opt-in hardware transcoding is turned on in Settings (default off). */
+  hardwareAcceleration?: boolean;
+  /** The host ffmpeg's real hardware-encode capability (null until the async startup probe resolves). */
+  ffmpegHwaccel?: {
+    ffmpegPresent: boolean;
+    methods: string[];
+    h264Encoders: string[];
+    hardwareEncode: boolean;
+  } | null;
   /** Frigate posture: an empty detection feed must be distinguishable from "not wired". */
   frigate?: { configured: boolean; connected: boolean };
 }
 
 export function fetchStatus(signal?: AbortSignal): Promise<IPluginStatus> {
   return getJson<IPluginStatus>('/status', 'status', signal);
+}
+
+/** One process in the plugin's tree (signalk-server + the go2rtc / ffmpeg children it spawned). */
+export interface IProcessActivity {
+  pid: number;
+  name: string;
+  /** CPU over the last poll window, as a percentage of one core (top-style; can exceed 100). */
+  cpuPercent: number;
+  rssBytes: number;
+}
+
+/** Live device activity + a coarse capacity verdict (see the plugin's activity monitor). */
+export interface IActivity {
+  cpu: { cores: number; utilization: number; loadAvg1: number };
+  memory: { totalBytes: number; usedBytes: number; utilization: number };
+  /** SoC temperature in °C, or null where the host doesn't expose one. */
+  temperatureC: number | null;
+  processes: IProcessActivity[];
+  verdict: { level: 'ok' | 'busy' | 'high' | 'critical'; headline: string; reasons: string[] };
+}
+
+export function fetchActivity(signal?: AbortSignal): Promise<IActivity> {
+  return getJson<IActivity>('/activity', 'activity', signal);
 }
 
 /**
@@ -1027,6 +1061,8 @@ export interface IOperationalConfigPublic {
   autoTriggerPath?: string;
   anchorWatchPath?: string;
   mobVisualRefine?: boolean;
+  recordingEnabled?: boolean;
+  hardwareAcceleration?: boolean;
   cameraHealthZones?: Record<string, ICameraHealthZonesConfig>;
   frigate: IFrigatePublicConfig;
 }

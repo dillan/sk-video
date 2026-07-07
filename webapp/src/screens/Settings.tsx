@@ -4,6 +4,7 @@ import { DENSITIES, DENSITY_LABELS, type Density } from '../lib/density';
 import { loadContinuousPtz, saveContinuousPtz } from '../lib/ptz-prefs';
 import { useAuth } from '../lib/auth';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { ActivityMonitor } from '../components/ActivityMonitor';
 import { SafetyAlerts } from './SafetyAlerts';
 import { OperationalSettings } from './OperationalSettings';
 
@@ -118,6 +119,8 @@ export function Settings({ theme, onTheme, density, onDensity }: Props) {
           </button>
         </section>
       )}
+
+      <ActivityMonitor />
 
       <SafetyAlerts />
 

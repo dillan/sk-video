@@ -3,8 +3,10 @@ import {
   fetchOperationalConfig,
   saveOperationalConfig,
   fetchCameras,
+  fetchStatus,
   type ICameraEntry,
   type IOperationalConfigPublic,
+  type IPluginStatus,
 } from '../api';
 
 const TIERS = ['auto', 'minimal', 'pi4', 'accelerated', 'x86'];
@@ -18,6 +20,8 @@ type Form = {
   anchorWatchPath: string;
   autoTriggerPath: string;
   mobVisualRefine: boolean;
+  recordingEnabled: boolean;
+  hardwareAcceleration: boolean;
   healthZones: Record<string, HealthZoneRow>;
   mqttHost: string;
   mqttPort: string;
@@ -37,6 +41,8 @@ function toForm(c: IOperationalConfigPublic): Form {
     anchorWatchPath: c.anchorWatchPath ?? '',
     autoTriggerPath: c.autoTriggerPath ?? '',
     mobVisualRefine: c.mobVisualRefine ?? false,
+    recordingEnabled: c.recordingEnabled ?? true, // default ON
+    hardwareAcceleration: c.hardwareAcceleration ?? false, // default OFF (can be unstable)
     healthZones: Object.fromEntries(
       Object.entries(c.cameraHealthZones ?? {}).map(([id, z]) => [
         id,
@@ -73,6 +79,8 @@ function toPayload(f: Form): unknown {
     anchorWatchPath: f.anchorWatchPath,
     autoTriggerPath: f.autoTriggerPath,
     mobVisualRefine: f.mobVisualRefine,
+    recordingEnabled: f.recordingEnabled,
+    hardwareAcceleration: f.hardwareAcceleration,
     cameraHealthZones: Object.fromEntries(
       Object.entries(f.healthZones)
         .filter(([, row]) => row.enabled)
@@ -93,6 +101,7 @@ function toPayload(f: Form): unknown {
  */
 export function OperationalSettings() {
   const [form, setForm] = useState<Form | null>(null);
+  const [status, setStatus] = useState<IPluginStatus | null>(null);
   const [cameraRows, setCameraRows] = useState<ICameraEntry[]>([]);
   const [passwordSet, setPasswordSet] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -114,6 +123,10 @@ export function OperationalSettings() {
     fetchCameras()
       .then((cams) => setCameraRows(cams.filter((c) => c.enabled)))
       .catch(() => setCameraRows([]));
+    // Best-effort: the ffmpeg probe tells us whether hardware acceleration can do anything here.
+    fetchStatus()
+      .then(setStatus)
+      .catch(() => setStatus(null));
   };
   useEffect(load, []);
 
@@ -337,6 +350,41 @@ export function OperationalSettings() {
         Experimental visual MOB refine — <b>NOT safety-rated</b>; needs Frigate; fails safe to
         position-based aim
       </label>
+
+      <label className="field cfg__check">
+        <input
+          type="checkbox"
+          checked={form.recordingEnabled}
+          onChange={(e) => set('recordingEnabled', e.target.checked)}
+        />
+        Buffered recording (per-camera Record + incident pre-roll). Turn off on a constrained host
+        to save CPU and disk — recording is a copy, not a re-encode, so the saving is modest.
+      </label>
+
+      <label className="field cfg__check">
+        <input
+          type="checkbox"
+          checked={form.hardwareAcceleration}
+          onChange={(e) => set('hardwareAcceleration', e.target.checked)}
+        />
+        Hardware video acceleration (experimental). Uses the GPU to transcode H.265 cameras that
+        have no H.264 sub-stream, so they play smoothly instead of falling to the low-frame-rate
+        still image. Off by default — it can be unstable, and on a Raspberry Pi only the encode is
+        offloaded (the H.265 decode stays on the CPU).
+      </label>
+      {form.hardwareAcceleration &&
+        status?.ffmpegHwaccel != null &&
+        (status.ffmpegHwaccel.hardwareEncode ? (
+          <p className="muted">
+            Hardware encoder detected: {status.ffmpegHwaccel.h264Encoders.join(', ')}.
+          </p>
+        ) : (
+          <p className="chip chip--caution">
+            {status.ffmpegHwaccel.ffmpegPresent
+              ? 'No hardware H.264 encoder detected on this host — this setting will have no effect (software transcode).'
+              : 'ffmpeg was not found on this host — transcoding (and this setting) can’t work until it’s installed.'}
+          </p>
+        ))}
 
       <h3 className="cfg__group">Advanced</h3>
       <label className="field">

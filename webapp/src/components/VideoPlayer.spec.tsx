@@ -31,6 +31,23 @@ describe('VideoPlayer MJPEG cadence', () => {
     act(() => vi.advanceTimersByTime(1100));
     expect(src()).not.toBe(s0); // refreshes by the ~1.2 s idle cadence
   });
+
+  it('stops transcoding (no still-refresh) while the document is hidden, and resumes when visible', () => {
+    vi.useFakeTimers();
+    const vis = vi.spyOn(document, 'visibilityState', 'get');
+    render(<VideoPlayer cameraId="cam" transports={['mjpeg']} />);
+    const s0 = src();
+    // Go hidden: a locked helm display shouldn't keep the Pi re-encoding a frame nobody sees.
+    vis.mockReturnValue('hidden');
+    act(() => document.dispatchEvent(new Event('visibilitychange')));
+    act(() => vi.advanceTimersByTime(5000));
+    expect(src()).toBe(s0); // no refresh while hidden — the poster holds the last frame
+    // Return to the app: the loop resumes.
+    vis.mockReturnValue('visible');
+    act(() => document.dispatchEvent(new Event('visibilitychange')));
+    act(() => vi.advanceTimersByTime(1300));
+    expect(src()).not.toBe(s0);
+  });
 });
 
 describe('VideoPlayer recovers up to the preferred transport', () => {
