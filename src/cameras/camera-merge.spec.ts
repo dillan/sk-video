@@ -52,6 +52,19 @@ describe('mergeDiscovered', () => {
     expect(m.media?.projection).toBe('equirectangular');
   });
 
+  it('preserves operator-declared sensors and geolocation across a rescan (never ONVIF-discovered)', () => {
+    const withSensorsGeo: ICamera = {
+      ...existing,
+      capabilities: { ptz: true, sensors: ['bearing'] },
+      geolocation: { latitude: 37.8, longitude: -122.4, orientationDeg: 180 },
+    };
+    const m = mergeDiscovered(withSensorsGeo, fresh);
+    // capabilities are rebuilt from the probe, but the operator's sensor declaration must survive it.
+    expect(m.capabilities?.sensors).toEqual(['bearing']);
+    // geolocation is top-level and operator-set — it rides through untouched.
+    expect(m.geolocation).toEqual({ latitude: 37.8, longitude: -122.4, orientationDeg: 180 });
+  });
+
   it('adopts a safe substream + codec but drops an unsafe substream path', () => {
     const ok = mergeDiscovered(existing, {
       ...fresh,

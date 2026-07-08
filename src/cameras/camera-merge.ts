@@ -50,6 +50,11 @@ export function mergeDiscovered(existing: ICamera, r: IIntrospectResult): ICamer
   if (r.auxCommands && r.auxCommands.length) {
     capabilities.auxCommands = r.auxCommands;
   }
+  // Sensors are an operator declaration, never ONVIF-discovered — carry them through a rescan that
+  // otherwise rebuilds capabilities from the probe. (geolocation is top-level and rides ...existing.)
+  if (existing.capabilities?.sensors?.length) {
+    capabilities.sensors = existing.capabilities.sensors;
+  }
 
   const media = { ...existing.media };
   if (r.codec && (CAMERA_CODECS as readonly string[]).includes(r.codec)) {

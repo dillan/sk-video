@@ -12,6 +12,7 @@ import {
   isStableSerial,
   draftFromHint,
   parseStreamUrl,
+  parseGeolocation,
   plainStreamDraft,
   streamSchemeHints,
 } from './onboard';
@@ -212,6 +213,69 @@ describe('toResourceBody', () => {
     expect(toResourceBody(draft).enabled).toBe(true);
     expect(toResourceBody({ ...draft, enabled: false }).enabled).toBe(false);
   });
+
+  it('includes a declared sensor and a camera geolocation when set', () => {
+    const draft = draftFromIntrospect(result, '192.168.1.100');
+    const body = toResourceBody({
+      ...draft,
+      capabilities: { ...draft.capabilities, sensors: ['bearing'] },
+      geolocation: { latitude: 37.8, longitude: -122.4, orientationDeg: 90 },
+    });
+    expect(body.capabilities?.sensors).toEqual(['bearing']);
+    expect(body.geolocation).toEqual({ latitude: 37.8, longitude: -122.4, orientationDeg: 90 });
+  });
+
+  it('omits geolocation entirely when it is not set', () => {
+    expect(
+      toResourceBody(draftFromIntrospect(result, '192.168.1.100')).geolocation,
+    ).toBeUndefined();
+  });
+});
+
+describe('parseGeolocation (fixed-location form)', () => {
+  it('returns no location and no error when every field is blank', () => {
+    expect(parseGeolocation({})).toEqual({});
+    expect(parseGeolocation({ latitude: '', longitude: '' })).toEqual({});
+  });
+
+  it('builds a geolocation from latitude/longitude, carrying elevation and heading', () => {
+    expect(
+      parseGeolocation({
+        latitude: '37.8',
+        longitude: '-122.4',
+        elevationM: '15',
+        orientationDeg: '90',
+      }),
+    ).toEqual({
+      geolocation: { latitude: 37.8, longitude: -122.4, elevationM: 15, orientationDeg: 90 },
+    });
+  });
+
+  it('errors when only one of latitude/longitude is filled (a fix needs both)', () => {
+    expect(parseGeolocation({ latitude: '37.8' }).error).toBeTruthy();
+    expect(parseGeolocation({ longitude: '-122.4' }).geolocation).toBeUndefined();
+    // elevation/heading alone are meaningless without a position
+    expect(parseGeolocation({ elevationM: '15' }).error).toBeTruthy();
+  });
+
+  it('errors on a non-numeric coordinate rather than silently dropping it', () => {
+    expect(parseGeolocation({ latitude: 'north', longitude: '-122.4' }).error).toBeTruthy();
+  });
+
+  it('rejects out-of-range values with a field-specific message (matches the backend bounds)', () => {
+    expect(parseGeolocation({ latitude: '91', longitude: '0' }).error).toMatch(/latitude/i);
+    expect(parseGeolocation({ latitude: '0', longitude: '181' }).error).toMatch(/longitude/i);
+    expect(parseGeolocation({ latitude: '0', longitude: '0', elevationM: '20000' }).error).toMatch(
+      /elevation/i,
+    );
+    expect(
+      parseGeolocation({ latitude: '0', longitude: '0', orientationDeg: '400' }).error,
+    ).toMatch(/heading/i);
+    // in-range still passes
+    expect(
+      parseGeolocation({ latitude: '-90', longitude: '180', orientationDeg: '360' }).error,
+    ).toBeUndefined();
+  });
 });
 
 describe('draftFromEntry (edit flow)', () => {
@@ -226,6 +290,16 @@ describe('draftFromEntry (edit flow)', () => {
     media: { codec: 'h265', substreamPath: '/sub' },
     device: { manufacturer: 'REOLINK' },
   } as unknown as ICameraEntry;
+
+  it('reads a declared sensor and a geolocation from the stored camera', () => {
+    const d = draftFromEntry({
+      ...entry,
+      capabilities: { ...entry.capabilities, sensors: ['bearing'] },
+      geolocation: { latitude: 1, longitude: 2, elevationM: 3 },
+    } as unknown as ICameraEntry);
+    expect(d.capabilities.sensors).toEqual(['bearing']);
+    expect(d.geolocation).toEqual({ latitude: 1, longitude: 2, elevationM: 3 });
+  });
 
   it('pre-fills the form fields from the stored camera, keeping the id and enabled state', () => {
     const d = draftFromEntry(entry);
@@ -321,6 +395,26 @@ describe('mergeEdit (edit flow)', () => {
     delete (d as { enabled?: boolean }).enabled;
     expect(mergeEdit(existing, d).enabled).toBe(true);
   });
+
+  it('applies an edited geolocation + sensor and clears them when emptied, keeping ONVIF capabilities', () => {
+    const withGeo = { ...existing, geolocation: { latitude: 1, longitude: 2 } } as ICameraEntry;
+    const set = mergeEdit(withGeo, {
+      ...draftFromEntry(withGeo),
+      geolocation: { latitude: 10, longitude: 20, orientationDeg: 45 },
+      capabilities: { ...draftFromEntry(withGeo).capabilities, sensors: ['bearing'] },
+    });
+    expect(set.geolocation).toEqual({ latitude: 10, longitude: 20, orientationDeg: 45 });
+    expect(set.capabilities?.sensors).toEqual(['bearing']);
+    expect(set.capabilities?.ptz).toBe(true); // ONVIF-derived caps preserved alongside the sensor edit
+
+    const cleared = mergeEdit(withGeo, {
+      ...draftFromEntry(withGeo),
+      geolocation: undefined,
+      capabilities: { ...draftFromEntry(withGeo).capabilities, sensors: [] },
+    });
+    expect(cleared.geolocation).toBeUndefined();
+    expect(cleared.capabilities?.sensors).toBeUndefined();
+  });
 });
 
 describe('mergeRescan', () => {
@@ -371,6 +465,28 @@ describe('mergeRescan', () => {
     expect(body.media?.projection).toBe('equirect');
     // The resource body must not carry the entry id (that's the URL param).
     expect(body).not.toHaveProperty('id');
+  });
+
+  it('preserves an operator-declared sensor across a rescan (the probe never reports it)', () => {
+    const withSensor = {
+      ...existing,
+      capabilities: { ptz: true, sensors: ['bearing'] },
+    } as unknown as ICameraEntry;
+    const body = mergeRescan(withSensor, fresh);
+    expect(body.capabilities?.sensors).toEqual(['bearing']); // survived the capability refresh
+    expect(body.capabilities?.spotlight).toBe(true); // and the refreshed caps still applied
+  });
+
+  it('preserves an operator-set geolocation across a rescan (top-level, never probed)', () => {
+    const withGeo = {
+      ...existing,
+      geolocation: { latitude: 37.8, longitude: -122.4, orientationDeg: 90 },
+    } as unknown as ICameraEntry;
+    expect(mergeRescan(withGeo, fresh).geolocation).toEqual({
+      latitude: 37.8,
+      longitude: -122.4,
+      orientationDeg: 90,
+    });
   });
 });
 

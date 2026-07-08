@@ -3,6 +3,7 @@ import type {
   IIntrospectResult,
   ICameraWrite,
   ICameraEntry,
+  ICameraGeolocation,
   IDeviceHint,
   IOnboardingSource,
 } from '../api';
@@ -96,7 +97,11 @@ export interface ICameraDraft {
     alarm?: boolean;
     imaging?: string[];
     auxCommands?: string[];
+    /** Sensor readouts the camera reports (e.g. 'bearing') — an operator declaration, not probed. */
+    sensors?: string[];
   };
+  /** An absolute geographic fix for a fixed-position camera (shore/dock); operator-entered, never probed. */
+  geolocation?: ICameraGeolocation;
   /** Main-stream codec + the H.264 substream path captured by introspection (drives live routing),
    *  and the stream geometry for 360 sources (equirectangular/dualfisheye → client-side vPTZ). */
   media?: { codec?: string; substreamPath?: string; projection?: string };
@@ -207,9 +212,15 @@ export function mergeRescan(existing: ICameraEntry, r: IIntrospectResult): ICame
   const media = mediaFromIntrospect(r);
   const device = deviceFromIntrospect(r);
   const existingMedia = (rest.media ?? {}) as { projection?: string };
+  const capabilities = capabilitiesFromIntrospect(r);
+  // Sensors are operator-declared and never come back from the probe — carry them across the rescan.
+  const existingSensors = existing.capabilities?.sensors;
+  if (existingSensors && existingSensors.length > 0) {
+    capabilities.sensors = existingSensors;
+  }
   return {
     ...rest,
-    capabilities: capabilitiesFromIntrospect(r),
+    capabilities,
     // Refresh codec/substream from the scan; keep a projection (360 geometry) the operator may have set.
     ...(media.codec || media.substreamPath || existingMedia.projection
       ? {
@@ -311,6 +322,65 @@ export function parseStreamUrl(raw: string): IParsedStreamUrl | null {
   return parsed;
 }
 
+/** The fixed-location form fields, as the raw strings the inputs hold. */
+export interface IGeolocationFields {
+  latitude?: string;
+  longitude?: string;
+  elevationM?: string;
+  orientationDeg?: string;
+}
+
+const finiteNumber = (s?: string): number | undefined => {
+  if (s === undefined || s.trim() === '') return undefined;
+  const n = Number(s);
+  return Number.isFinite(n) ? n : undefined;
+};
+
+/**
+ * Turn the fixed-location form fields into a geolocation, or an error message the form can show.
+ * A fix needs BOTH latitude and longitude (elevation/heading are add-ons), so a lone coordinate — or
+ * a non-numeric one — is an error, not a silent drop. All-blank means "no location", not an error.
+ */
+export function parseGeolocation(fields: IGeolocationFields): {
+  geolocation?: ICameraGeolocation;
+  error?: string;
+} {
+  const anyTyped = [
+    fields.latitude,
+    fields.longitude,
+    fields.elevationM,
+    fields.orientationDeg,
+  ].some((v) => v !== undefined && v.trim() !== '');
+  if (!anyTyped) return {};
+  const latitude = finiteNumber(fields.latitude);
+  const longitude = finiteNumber(fields.longitude);
+  if (latitude === undefined || longitude === undefined) {
+    return { error: 'Enter both latitude and longitude, or clear the location.' };
+  }
+  // Mirror the plugin's validateGeolocation bounds so an out-of-range fix fails here with a specific
+  // message, not server-side with a generic save error.
+  if (latitude < -90 || latitude > 90) return { error: 'Latitude must be between -90 and 90.' };
+  if (longitude < -180 || longitude > 180) {
+    return { error: 'Longitude must be between -180 and 180.' };
+  }
+  const geolocation: ICameraGeolocation = { latitude, longitude };
+  const elevationM = finiteNumber(fields.elevationM);
+  if (elevationM !== undefined) {
+    if (elevationM < -100 || elevationM > 10000) {
+      return { error: 'Elevation must be between -100 and 10000 metres.' };
+    }
+    geolocation.elevationM = elevationM;
+  }
+  const orientationDeg = finiteNumber(fields.orientationDeg);
+  if (orientationDeg !== undefined) {
+    if (orientationDeg < 0 || orientationDeg > 360) {
+      return { error: 'Heading must be between 0 and 360.' };
+    }
+    geolocation.orientationDeg = orientationDeg;
+  }
+  return { geolocation };
+}
+
 /**
  * A bare draft for a plain (non-ONVIF) stream. Nothing was introspected, so capabilities are
  * honestly all-false and the id/name default from the host for the operator to refine.
@@ -375,8 +445,12 @@ export function draftFromEntry(entry: ICameraEntry): ICameraDraft {
       ...(caps.alarm !== undefined ? { alarm: caps.alarm } : {}),
       ...(caps.imaging ? { imaging: caps.imaging } : {}),
       ...(caps.auxCommands ? { auxCommands: caps.auxCommands } : {}),
+      ...(caps.sensors ? { sensors: caps.sensors } : {}),
     },
   };
+  if (entry.geolocation) {
+    draft.geolocation = entry.geolocation;
+  }
   if (entry.role && (ROLES as readonly string[]).includes(entry.role)) {
     draft.role = entry.role as Role;
   }
@@ -424,6 +498,20 @@ export function mergeEdit(existing: ICameraEntry, d: ICameraDraft): ICameraWrite
   }
   if (Object.keys(placement).length > 0) body.placement = placement as ICameraWrite['placement'];
   else delete body.placement;
+  // Capabilities are ONVIF-derived and ride through verbatim, EXCEPT the operator-declared sensors,
+  // which this form edits — rebuild them from the draft while keeping the discovered flags.
+  const capabilities = { ...(existing.capabilities ?? {}) } as Record<string, unknown>;
+  if (d.capabilities?.sensors && d.capabilities.sensors.length > 0) {
+    capabilities.sensors = d.capabilities.sensors;
+  } else {
+    delete capabilities.sensors;
+  }
+  if (Object.keys(capabilities).length > 0)
+    body.capabilities = capabilities as ICameraWrite['capabilities'];
+  else delete body.capabilities;
+  // Geolocation is fully form-owned: set it from the draft, or clear it when the operator empties it.
+  if (d.geolocation) body.geolocation = d.geolocation;
+  else delete body.geolocation;
   return body;
 }
 
@@ -453,6 +541,9 @@ export function toResourceBody(d: ICameraDraft): ICameraWrite {
   }
   if (Object.keys(placement).length > 0) {
     body.placement = placement;
+  }
+  if (d.geolocation) {
+    body.geolocation = d.geolocation;
   }
   return body;
 }

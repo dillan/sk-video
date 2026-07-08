@@ -65,6 +65,10 @@ export function buildCameraManifest(
   feature(caps.spotlight, 'spotlight');
   feature(caps.alarm, 'alarm');
   feature((caps.imaging ?? []).length > 0, 'imaging');
+  // Declared sensor readouts, one feature each (e.g. sensor:bearing) so a generic client can discover them.
+  for (const sensor of caps.sensors ?? []) {
+    supportedFeatures.push(`sensor:${sensor}`);
+  }
   supportedFeatures.push('snapshots');
   if (options.recordingAvailable) supportedFeatures.push('recording');
 

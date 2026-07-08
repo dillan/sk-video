@@ -1727,6 +1727,23 @@ button.tile {
   outline-offset: 1px;
 }
 
+/* Fixed-location group in the camera wizard: a fieldset reset to the app's stacked-field layout. */
+.wizard__geo {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  border: none;
+  padding: 0;
+  margin: 0;
+  min-inline-size: 0; /* let inputs shrink inside the fieldset instead of forcing overflow */
+}
+.wizard__geo legend {
+  padding: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
 /* ---- Operational settings form ---- */
 .cfg__group {
   font-size: 14px;
