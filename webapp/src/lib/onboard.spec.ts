@@ -12,6 +12,7 @@ import {
   isStableSerial,
   draftFromHint,
   parseStreamUrl,
+  parseGeolocation,
   plainStreamDraft,
   streamSchemeHints,
 } from './onboard';
@@ -228,6 +229,37 @@ describe('toResourceBody', () => {
     expect(
       toResourceBody(draftFromIntrospect(result, '192.168.1.100')).geolocation,
     ).toBeUndefined();
+  });
+});
+
+describe('parseGeolocation (fixed-location form)', () => {
+  it('returns no location and no error when every field is blank', () => {
+    expect(parseGeolocation({})).toEqual({});
+    expect(parseGeolocation({ latitude: '', longitude: '' })).toEqual({});
+  });
+
+  it('builds a geolocation from latitude/longitude, carrying elevation and heading', () => {
+    expect(
+      parseGeolocation({
+        latitude: '37.8',
+        longitude: '-122.4',
+        elevationM: '15',
+        orientationDeg: '90',
+      }),
+    ).toEqual({
+      geolocation: { latitude: 37.8, longitude: -122.4, elevationM: 15, orientationDeg: 90 },
+    });
+  });
+
+  it('errors when only one of latitude/longitude is filled (a fix needs both)', () => {
+    expect(parseGeolocation({ latitude: '37.8' }).error).toBeTruthy();
+    expect(parseGeolocation({ longitude: '-122.4' }).geolocation).toBeUndefined();
+    // elevation/heading alone are meaningless without a position
+    expect(parseGeolocation({ elevationM: '15' }).error).toBeTruthy();
+  });
+
+  it('errors on a non-numeric coordinate rather than silently dropping it', () => {
+    expect(parseGeolocation({ latitude: 'north', longitude: '-122.4' }).error).toBeTruthy();
   });
 });
 

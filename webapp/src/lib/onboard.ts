@@ -322,6 +322,49 @@ export function parseStreamUrl(raw: string): IParsedStreamUrl | null {
   return parsed;
 }
 
+/** The fixed-location form fields, as the raw strings the inputs hold. */
+export interface IGeolocationFields {
+  latitude?: string;
+  longitude?: string;
+  elevationM?: string;
+  orientationDeg?: string;
+}
+
+const finiteNumber = (s?: string): number | undefined => {
+  if (s === undefined || s.trim() === '') return undefined;
+  const n = Number(s);
+  return Number.isFinite(n) ? n : undefined;
+};
+
+/**
+ * Turn the fixed-location form fields into a geolocation, or an error message the form can show.
+ * A fix needs BOTH latitude and longitude (elevation/heading are add-ons), so a lone coordinate — or
+ * a non-numeric one — is an error, not a silent drop. All-blank means "no location", not an error.
+ */
+export function parseGeolocation(fields: IGeolocationFields): {
+  geolocation?: ICameraGeolocation;
+  error?: string;
+} {
+  const anyTyped = [
+    fields.latitude,
+    fields.longitude,
+    fields.elevationM,
+    fields.orientationDeg,
+  ].some((v) => v !== undefined && v.trim() !== '');
+  if (!anyTyped) return {};
+  const latitude = finiteNumber(fields.latitude);
+  const longitude = finiteNumber(fields.longitude);
+  if (latitude === undefined || longitude === undefined) {
+    return { error: 'Enter both latitude and longitude, or clear the location.' };
+  }
+  const geolocation: ICameraGeolocation = { latitude, longitude };
+  const elevationM = finiteNumber(fields.elevationM);
+  if (elevationM !== undefined) geolocation.elevationM = elevationM;
+  const orientationDeg = finiteNumber(fields.orientationDeg);
+  if (orientationDeg !== undefined) geolocation.orientationDeg = orientationDeg;
+  return { geolocation };
+}
+
 /**
  * A bare draft for a plain (non-ONVIF) stream. Nothing was introspected, so capabilities are
  * honestly all-false and the id/name default from the host for the operator to refine.

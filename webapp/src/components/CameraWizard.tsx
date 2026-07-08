@@ -21,6 +21,7 @@ import {
   draftFromEntry,
   draftFromHint,
   parseStreamUrl,
+  parseGeolocation,
   streamSchemeHints,
   plainStreamDraft,
   toResourceBody,
@@ -30,6 +31,7 @@ import {
   MOUNTS,
   ROLES,
   type ICameraDraft,
+  type IGeolocationFields,
   type Mount,
   type Role,
 } from '../lib/onboard';
@@ -83,6 +85,26 @@ export function CameraWizard({ onDone, edit, hasStoredLogin = false }: Props) {
 
   // details step
   const [draft, setDraft] = useState<ICameraDraft | null>(edit ? draftFromEntry(edit) : null);
+  // Fixed-location fields are held as raw strings so a half-typed coordinate never trips validation;
+  // they're parsed on save. Pre-filled when editing a camera that already has a geolocation.
+  const [geo, setGeo] = useState<IGeolocationFields>(() => {
+    const g = edit?.geolocation;
+    return g
+      ? {
+          latitude: String(g.latitude),
+          longitude: String(g.longitude),
+          elevationM: g.elevationM !== undefined ? String(g.elevationM) : '',
+          orientationDeg: g.orientationDeg !== undefined ? String(g.orientationDeg) : '',
+        }
+      : {};
+  });
+  const sensorOn = (s: string): boolean => draft?.capabilities.sensors?.includes(s) === true;
+  const toggleSensor = (s: string, on: boolean): void => {
+    if (!draft) return;
+    const current = draft.capabilities.sensors ?? [];
+    const sensors = on ? [...new Set([...current, s])] : current.filter((x) => x !== s);
+    setDraft({ ...draft, capabilities: { ...draft.capabilities, sensors } });
+  };
 
   const fail = (err: unknown, what: string): void => {
     if (err instanceof ApiError && err.status === 401) {
@@ -244,12 +266,18 @@ export function CameraWizard({ onDone, edit, hasStoredLogin = false }: Props) {
       setMsg({ kind: 'caution', text: 'Enter the camera’s address.' });
       return;
     }
+    const { geolocation, error: geoError } = parseGeolocation(geo);
+    if (geoError) {
+      setMsg({ kind: 'caution', text: geoError });
+      return;
+    }
     setBusy(true);
     setMsg(null);
     // Editing PUTs to the entry's existing id (never a new one), merging so stored fields the form
     // doesn't edit (capabilities, media, calibration) survive.
+    const withGeo = { ...draft, geolocation };
     const id = edit ? edit.id : draft.id;
-    const body = edit ? mergeEdit(edit, draft) : toResourceBody(draft);
+    const body = edit ? mergeEdit(edit, withGeo) : toResourceBody(withGeo);
     saveCamera(id, body)
       .then(async () => {
         if (username || password) {
@@ -284,19 +312,22 @@ export function CameraWizard({ onDone, edit, hasStoredLogin = false }: Props) {
 
       {step === 'scan' && (
         <div className="panel wizard__step">
-          <p className="muted">Scan finds ONVIF cameras on the network — no address to type.</p>
+          <p className="muted">
+            A scan finds ONVIF cameras on the network — nothing to type. If yours isn’t found, add
+            it by its address or set it up by hand.
+          </p>
           <div className="wizard__actions">
             <button type="button" className="btn" onClick={scan} disabled={busy}>
               {busy ? 'Scanning…' : 'Scan the network'}
             </button>
             <button type="button" className="btn btn--ghost" onClick={manual}>
-              Enter address manually
+              Enter the camera’s address
+            </button>
+            <button type="button" className="btn btn--ghost" onClick={() => plainStream()}>
+              Set it up manually
             </button>
             <button type="button" className="btn btn--ghost" onClick={actionCamera}>
               Action camera (GoPro / Insta360)
-            </button>
-            <button type="button" className="btn btn--ghost" onClick={() => plainStream()}>
-              Paste a stream URL (rtsp:// or rtmp://…)
             </button>
           </div>
           {candidates && candidates.length === 0 && (
@@ -457,11 +488,12 @@ export function CameraWizard({ onDone, edit, hasStoredLogin = false }: Props) {
       {step === 'stream' && draft && (
         <div className="panel wizard__step">
           <p className="muted">
-            Add a camera by its stream directly — no ONVIF needed. Paste a full URL, or fill in the
-            fields; test it before saving so a wrong address never persists.
+            Set up a camera by hand — for anything without ONVIF. You’ll need its address and the
+            link to its video stream (check the camera’s app or manual). Paste the whole link, or
+            fill in the parts below, then test it before saving.
           </p>
           <label className="field">
-            <span>Stream URL</span>
+            <span>Stream link</span>
             <input
               value={streamUrl}
               onChange={(e) => pasteUrl(e.target.value)}
@@ -476,18 +508,18 @@ export function CameraWizard({ onDone, edit, hasStoredLogin = false }: Props) {
             </p>
           )}
           <label className="field">
-            <span>Stream</span>
+            <span>Connection type</span>
             <select
               value={draft.source.scheme}
               onChange={(e) =>
                 setDraft({ ...draft, source: { ...draft.source, scheme: e.target.value } })
               }
             >
-              <option value="rtsp">rtsp</option>
-              <option value="rtsps">rtsps</option>
-              <option value="rtmp">rtmp</option>
-              <option value="http">http</option>
-              <option value="https">https</option>
+              <option value="rtsp">RTSP — most IP &amp; security cameras</option>
+              <option value="rtsps">RTSP, secure (rtsps)</option>
+              <option value="rtmp">RTMP — streaming boxes &amp; some action cameras</option>
+              <option value="http">HTTP — older or simple webcams (MJPEG)</option>
+              <option value="https">HTTPS — secure webcam (MJPEG)</option>
             </select>
           </label>
           <label className="field">
@@ -807,6 +839,57 @@ export function CameraWizard({ onDone, edit, hasStoredLogin = false }: Props) {
               placeholder="0 = forward"
             />
           </label>
+          <label className="field cfg__check">
+            <input
+              type="checkbox"
+              checked={sensorOn('bearing')}
+              onChange={(e) => toggleSensor('bearing', e.target.checked)}
+            />
+            This camera reports its own compass bearing
+          </label>
+          <fieldset className="wizard__geo">
+            <legend>Fixed location</legend>
+            <p className="muted">
+              For a camera that stays in one place — a shore station or a fixed dock camera. A
+              camera on the boat moves with you, so leave this blank.
+            </p>
+            <label className="field">
+              <span>Latitude</span>
+              <input
+                value={geo.latitude ?? ''}
+                onChange={(e) => setGeo({ ...geo, latitude: e.target.value })}
+                inputMode="decimal"
+                placeholder="e.g. 37.8199"
+              />
+            </label>
+            <label className="field">
+              <span>Longitude</span>
+              <input
+                value={geo.longitude ?? ''}
+                onChange={(e) => setGeo({ ...geo, longitude: e.target.value })}
+                inputMode="decimal"
+                placeholder="e.g. -122.4783"
+              />
+            </label>
+            <label className="field">
+              <span>Elevation (m)</span>
+              <input
+                value={geo.elevationM ?? ''}
+                onChange={(e) => setGeo({ ...geo, elevationM: e.target.value })}
+                inputMode="decimal"
+                placeholder="optional"
+              />
+            </label>
+            <label className="field">
+              <span>Heading (°)</span>
+              <input
+                value={geo.orientationDeg ?? ''}
+                onChange={(e) => setGeo({ ...geo, orientationDeg: e.target.value })}
+                inputMode="numeric"
+                placeholder="0 = north"
+              />
+            </label>
+          </fieldset>
           {editing && (
             <>
               <label className="field cfg__check">

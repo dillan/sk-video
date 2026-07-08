@@ -167,7 +167,7 @@ describe('CameraWizard', () => {
       },
     });
     render(<CameraWizard onDone={vi.fn()} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Enter address manually' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Enter the camera’s address' }));
     fireEvent.change(screen.getByPlaceholderText('192.168.1.100'), {
       target: { value: '192.168.1.100' },
     });
@@ -192,7 +192,7 @@ describe('CameraWizard', () => {
   it('is honest when the camera can’t be read (bad login / unreachable)', async () => {
     mockApi({ introspectOk: false });
     render(<CameraWizard onDone={vi.fn()} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Enter address manually' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Enter the camera’s address' }));
     fireEvent.change(screen.getByPlaceholderText('192.168.1.100'), {
       target: { value: '192.168.1.100' },
     });
@@ -226,7 +226,9 @@ describe('CameraWizard edit mode', () => {
     expect(screen.getByDisplayValue('Bow')).toBeTruthy();
     expect(screen.getByDisplayValue('192.168.1.100')).toBeTruthy();
     expect(screen.getByDisplayValue('/main')).toBeTruthy();
-    expect((screen.getByRole('checkbox') as HTMLInputElement).checked).toBe(true);
+    expect((screen.getByRole('checkbox', { name: 'Enabled' }) as HTMLInputElement).checked).toBe(
+      true,
+    );
     const selects = screen.getAllByRole('combobox') as HTMLSelectElement[];
     expect(selects.map((s) => s.value)).toEqual(['security', 'bow']);
     // The id is the resource key — locked so an edit can never mint a new camera.
@@ -364,9 +366,7 @@ describe('CameraWizard edit mode', () => {
     const calls = mockApi();
     const onDone = vi.fn();
     render(<CameraWizard onDone={onDone} />);
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Paste a stream URL (rtsp:// or rtmp://…)' }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Set it up manually' }));
     fireEvent.change(screen.getByPlaceholderText('rtsp://192.168.1.50:554/stream1'), {
       target: { value: 'rtsp://admin:pw@192.168.1.60:554/stream1' },
     });
@@ -414,12 +414,64 @@ describe('CameraWizard edit mode', () => {
     expect(calls.some((c) => c.url.includes('/discover/introspect'))).toBe(false);
   });
 
+  it('onboards a manual camera with a declared compass sensor and a fixed geolocation', async () => {
+    const calls = mockApi();
+    const onDone = vi.fn();
+    render(<CameraWizard onDone={onDone} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Set it up manually' }));
+    // Fill the address by hand (no URL paste), then move to details.
+    fireEvent.change(screen.getByPlaceholderText('192.168.1.50'), {
+      target: { value: '10.0.0.9' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    // Declare the compass sensor and a fixed shore location.
+    fireEvent.click(
+      await screen.findByRole('checkbox', { name: /reports its own compass bearing/ }),
+    );
+    fireEvent.change(screen.getByPlaceholderText('e.g. 37.8199'), { target: { value: '37.82' } });
+    fireEvent.change(screen.getByPlaceholderText('e.g. -122.4783'), {
+      target: { value: '-122.48' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('0 = north'), { target: { value: '270' } });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save camera' }));
+    await waitFor(() => {
+      const put = calls.find(
+        (c) => c.url.includes('/resources/cameras/') && c.init?.method === 'PUT',
+      );
+      expect(put).toBeTruthy();
+      const body = JSON.parse(String(put!.init?.body));
+      expect(body.capabilities.sensors).toEqual(['bearing']);
+      expect(body.geolocation).toEqual({
+        latitude: 37.82,
+        longitude: -122.48,
+        orientationDeg: 270,
+      });
+    });
+    expect(onDone).toHaveBeenCalledWith(true);
+  });
+
+  it('refuses to save a half-entered fixed location (a fix needs both coordinates)', async () => {
+    const calls = mockApi();
+    render(<CameraWizard onDone={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Set it up manually' }));
+    fireEvent.change(screen.getByPlaceholderText('192.168.1.50'), {
+      target: { value: '10.0.0.9' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    // Latitude only — no longitude.
+    fireEvent.change(await screen.findByPlaceholderText('e.g. 37.8199'), {
+      target: { value: '37.82' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save camera' }));
+    await waitFor(() => expect(screen.getByText(/both latitude and longitude/i)).toBeTruthy());
+    expect(calls.some((c) => c.init?.method === 'PUT')).toBe(false); // nothing was saved
+  });
+
   it('onboards a plain RTMP camera: scheme-aware placeholders and a saved rtmp source', async () => {
     const calls = mockApi();
     render(<CameraWizard onDone={vi.fn()} />);
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Paste a stream URL (rtsp:// or rtmp://…)' }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Set it up manually' }));
     // Paste an RTMP URL — the structured fields parse out of it.
     fireEvent.change(screen.getByPlaceholderText('rtsp://192.168.1.50:554/stream1'), {
       target: { value: 'rtmp://10.0.0.9:1935/live/boat' },
@@ -458,9 +510,7 @@ describe('CameraWizard edit mode', () => {
   it('suggests known vendor paths from the make/model hint and applies them (incl. the substream)', async () => {
     const calls = mockApi();
     render(<CameraWizard onDone={vi.fn()} />);
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Paste a stream URL (rtsp:// or rtmp://…)' }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Set it up manually' }));
     fireEvent.change(screen.getByPlaceholderText('192.168.1.50'), {
       target: { value: '192.168.1.61' },
     });
@@ -493,7 +543,7 @@ describe('CameraWizard edit mode', () => {
   it('offers the plain-stream escape when ONVIF introspection fails, carrying the host over', async () => {
     mockApi({ introspectOk: false });
     render(<CameraWizard onDone={vi.fn()} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Enter address manually' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Enter the camera’s address' }));
     fireEvent.change(screen.getByPlaceholderText('192.168.1.100'), {
       target: { value: '192.168.1.62' },
     });
