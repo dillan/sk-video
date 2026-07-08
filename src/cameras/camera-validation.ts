@@ -55,6 +55,14 @@ export const IMAGING_CONTROLS = [
 ] as const;
 export type TImagingControl = (typeof IMAGING_CONTROLS)[number];
 
+/**
+ * Sensor readouts a camera can report. This is an operator DECLARATION, not a probe result — the ONVIF
+ * library we ship (onvif@0.8.1) exposes no sensor/geolocation service, so nothing here is auto-detected.
+ * `bearing` = the camera reports its own compass heading. Closed vocabulary, extensible like imaging.
+ */
+export const CAMERA_SENSORS = ['bearing'] as const;
+export type TCameraSensor = (typeof CAMERA_SENSORS)[number];
+
 /** Video codecs the plugin reasons about for playback selection. */
 export const CAMERA_CODECS = ['h264', 'h265', 'mjpeg'] as const;
 export type TCameraCodec = (typeof CAMERA_CODECS)[number];
@@ -95,6 +103,24 @@ export interface ICameraPlacement {
   heightM?: number;
 }
 
+/**
+ * An absolute geographic fix for a FIXED-position camera (a shore station, dock cam, or fixed mount),
+ * modelled on the ONVIF Device GeoLocation concept. Distinct from {@link ICameraPlacement}, which is
+ * where the camera sits on THIS vessel: a boat-mounted camera moves with the vessel, so an absolute
+ * position is only meaningful for a camera that stays put. Operator-entered (the ONVIF library can't
+ * probe it), and NOT read by aiming math — forward-looking geo-reference data.
+ */
+export interface ICameraGeolocation {
+  /** WGS84 latitude, −90 … 90. */
+  latitude: number;
+  /** WGS84 longitude, −180 … 180. */
+  longitude: number;
+  /** Metres above sea level. */
+  elevationM?: number;
+  /** The camera's absolute bearing, degrees clockwise from north (0 = north). */
+  orientationDeg?: number;
+}
+
 /** Capability flags — server-derived (e.g. from ONVIF), never trusted from a client for behaviour. */
 export interface ICameraCapabilities {
   ptz?: boolean;
@@ -109,6 +135,8 @@ export interface ICameraCapabilities {
   imaging?: TImagingControl[];
   /** Raw ONVIF auxiliary-command tokens the camera advertised (resolved to On/Off by the control routes). */
   auxCommands?: string[];
+  /** Sensor readouts the camera can report — an operator declaration (never ONVIF-probed here). */
+  sensors?: TCameraSensor[];
 }
 
 export interface ICameraMedia {
@@ -145,6 +173,8 @@ export interface ICamera {
   enabled: boolean;
   source: ICameraSource;
   placement?: ICameraPlacement;
+  /** An absolute geographic fix for a fixed-position camera (shore/dock). Manual entry; never probed. */
+  geolocation?: ICameraGeolocation;
   role?: TCameraRole;
   capabilities?: ICameraCapabilities;
   media?: ICameraMedia;
@@ -186,6 +216,7 @@ const ALLOWED_TOP_KEYS = new Set([
   'enabled',
   'source',
   'placement',
+  'geolocation',
   'role',
   'capabilities',
   'media',
@@ -196,6 +227,7 @@ const ALLOWED_TOP_KEYS = new Set([
 ]);
 const ALLOWED_SOURCE_KEYS = new Set(['scheme', 'host', 'port', 'path']);
 const PLACEMENT_KEYS = new Set(['mount', 'bearingRelativeDeg', 'heightM']);
+const GEOLOCATION_KEYS = new Set(['latitude', 'longitude', 'elevationM', 'orientationDeg']);
 const CAPABILITY_BOOLS = [
   'ptz',
   'absolutePtz',
@@ -205,7 +237,7 @@ const CAPABILITY_BOOLS = [
   'spotlight',
   'alarm',
 ] as const;
-const CAPABILITY_KEYS = new Set<string>([...CAPABILITY_BOOLS, 'imaging', 'auxCommands']);
+const CAPABILITY_KEYS = new Set<string>([...CAPABILITY_BOOLS, 'imaging', 'auxCommands', 'sensors']);
 const MEDIA_KEYS = new Set(['codec', 'profileToken', 'substreamPath', 'projection']);
 const DEVICE_KEYS_ARR = ['manufacturer', 'model', 'serial', 'firmware'] as const;
 const DEVICE_KEYS = new Set<string>(DEVICE_KEYS_ARR);
@@ -311,7 +343,56 @@ function validateCapabilities(input: unknown, errors: string[]): ICameraCapabili
       errors.push('capabilities.auxCommands must be a list of strings');
     }
   }
+  if (o.sensors !== undefined) {
+    if (
+      Array.isArray(o.sensors) &&
+      o.sensors.every(
+        (s) => typeof s === 'string' && (CAMERA_SENSORS as readonly string[]).includes(s),
+      )
+    ) {
+      out.sensors = o.sensors as TCameraSensor[];
+    } else {
+      errors.push('capabilities.sensors must be a list of supported sensors');
+    }
+  }
   return out;
+}
+
+function validateGeolocation(input: unknown, errors: string[]): ICameraGeolocation | undefined {
+  const o = asObject(input);
+  if (!o) {
+    errors.push('geolocation must be an object');
+    return undefined;
+  }
+  rejectUnknownKeys(o, GEOLOCATION_KEYS, 'geolocation', errors);
+  // Latitude and longitude are meaningless alone: a fix needs both, and elevation/heading are just
+  // add-ons to a real position — so any geolocation at all must carry both axes.
+  const hasLat = o.latitude !== undefined;
+  const hasLon = o.longitude !== undefined;
+  if (Object.keys(o).length > 0 && !(hasLat && hasLon)) {
+    errors.push('geolocation needs both latitude and longitude');
+  }
+  const out: Partial<ICameraGeolocation> = {};
+  if (hasLat) {
+    if (isFiniteInRange(o.latitude, -90, 90)) out.latitude = o.latitude;
+    else errors.push('geolocation.latitude must be between -90 and 90');
+  }
+  if (hasLon) {
+    if (isFiniteInRange(o.longitude, -180, 180)) out.longitude = o.longitude;
+    else errors.push('geolocation.longitude must be between -180 and 180');
+  }
+  if (o.elevationM !== undefined) {
+    if (isFiniteInRange(o.elevationM, -100, 10000)) out.elevationM = o.elevationM;
+    else errors.push('geolocation.elevationM must be between -100 and 10000');
+  }
+  if (o.orientationDeg !== undefined) {
+    if (isFiniteInRange(o.orientationDeg, 0, 360)) out.orientationDeg = o.orientationDeg;
+    else errors.push('geolocation.orientationDeg must be between 0 and 360');
+  }
+  // Only a complete fix (both axes) becomes a value; otherwise the errors above already flagged it.
+  return out.latitude !== undefined && out.longitude !== undefined
+    ? (out as ICameraGeolocation)
+    : undefined;
 }
 
 function validateMedia(input: unknown, errors: string[]): ICameraMedia | undefined {
@@ -498,6 +579,8 @@ export function validateCamera(input: unknown): IValidationResult {
   // Optional vessel-context metadata. All optional, so existing minimal cameras stay valid.
   const placement =
     obj.placement !== undefined ? validatePlacement(obj.placement, errors) : undefined;
+  const geolocation =
+    obj.geolocation !== undefined ? validateGeolocation(obj.geolocation, errors) : undefined;
   const role = obj.role !== undefined ? validateRole(obj.role, errors) : undefined;
   const capabilities =
     obj.capabilities !== undefined ? validateCapabilities(obj.capabilities, errors) : undefined;
@@ -535,6 +618,7 @@ export function validateCamera(input: unknown): IValidationResult {
       enabled: enabled as boolean,
       source: normalizedSource,
       ...(placement && Object.keys(placement).length ? { placement } : {}),
+      ...(geolocation && Object.keys(geolocation).length ? { geolocation } : {}),
       ...(role ? { role } : {}),
       ...(capabilities && Object.keys(capabilities).length ? { capabilities } : {}),
       ...(media && Object.keys(media).length ? { media } : {}),

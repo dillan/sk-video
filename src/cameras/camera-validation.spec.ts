@@ -236,6 +236,53 @@ describe('validateCamera — vessel-context metadata', () => {
     ).toBe(false);
   });
 
+  it('accepts a declared sensors list (compass bearing) and rejects unknown/malformed sensors', () => {
+    const ok = validateCamera({ ...base, capabilities: { sensors: ['bearing'] } });
+    expect(ok.errors).toEqual([]);
+    expect(ok.value).toMatchObject({ capabilities: { sensors: ['bearing'] } });
+    // not a known sensor type, and not a list — the vocabulary stays closed
+    expect(validateCamera({ ...base, capabilities: { sensors: ['barometer'] } }).valid).toBe(false);
+    expect(validateCamera({ ...base, capabilities: { sensors: 'bearing' } }).valid).toBe(false);
+  });
+
+  it('accepts a full camera geolocation and normalises it', () => {
+    const r = validateCamera({
+      ...base,
+      geolocation: { latitude: 37.8, longitude: -122.4, elevationM: 15, orientationDeg: 270 },
+    });
+    expect(r.errors).toEqual([]);
+    expect(r.value).toMatchObject({
+      geolocation: { latitude: 37.8, longitude: -122.4, elevationM: 15, orientationDeg: 270 },
+    });
+  });
+
+  it('accepts a minimal geolocation (latitude/longitude only)', () => {
+    const r = validateCamera({ ...base, geolocation: { latitude: 0, longitude: 0 } });
+    expect(r.errors).toEqual([]);
+    expect(r.value).toMatchObject({ geolocation: { latitude: 0, longitude: 0 } });
+  });
+
+  it('rejects out-of-range, incomplete, or unknown-field geolocation', () => {
+    expect(validateCamera({ ...base, geolocation: { latitude: 91, longitude: 0 } }).valid).toBe(
+      false,
+    );
+    expect(validateCamera({ ...base, geolocation: { latitude: 0, longitude: 181 } }).valid).toBe(
+      false,
+    );
+    expect(
+      validateCamera({ ...base, geolocation: { latitude: 0, longitude: 0, orientationDeg: 400 } })
+        .valid,
+    ).toBe(false);
+    // latitude and longitude are meaningless alone — both are required together
+    expect(validateCamera({ ...base, geolocation: { latitude: 10 } }).valid).toBe(false);
+    expect(validateCamera({ ...base, geolocation: { longitude: 10 } }).valid).toBe(false);
+    // the field set stays closed
+    expect(
+      validateCamera({ ...base, geolocation: { latitude: 0, longitude: 0, altitude: 5 } }).valid,
+    ).toBe(false);
+    expect(validateCamera({ ...base, geolocation: [1, 2] }).valid).toBe(false);
+  });
+
   it('rejects metadata blocks that are not objects', () => {
     expect(validateCamera({ ...base, placement: 'mast' }).valid).toBe(false);
     expect(validateCamera({ ...base, capabilities: [] }).valid).toBe(false);

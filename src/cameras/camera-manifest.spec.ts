@@ -38,6 +38,17 @@ describe('buildCameraManifest', () => {
     expect(fixed.supportedFeatures).not.toContain('recording');
   });
 
+  it('advertises each declared sensor as its own feature (sensor:<type>)', () => {
+    const withSensor = buildCameraManifest(
+      'compass',
+      { ...FIXED_CAM, capabilities: { sensors: ['bearing'] } },
+      { recordingAvailable: false },
+    );
+    expect(withSensor.supportedFeatures).toContain('sensor:bearing');
+    // A camera with no declared sensors advertises none.
+    expect(fixed.supportedFeatures.some((f) => f.startsWith('sensor:'))).toBe(false);
+  });
+
   it('describes the device as read-only characteristics', () => {
     expect(manifest.characteristics).toMatchObject({
       make: 'Acme',
