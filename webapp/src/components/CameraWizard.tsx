@@ -158,6 +158,7 @@ export function CameraWizard({ onDone, edit, hasStoredLogin = false }: Props) {
   const pickHint = (h: IDeviceHint): void => {
     setHint(h);
     setDraft(draftFromHint(h, h.sources[0] ?? null));
+    setGeo({}); // a fresh camera starts with no fixed location
     setProbe(null);
     setMsg(null);
     setStep('guide');
@@ -190,6 +191,7 @@ export function CameraWizard({ onDone, edit, hasStoredLogin = false }: Props) {
     setHintText('');
     setCredsFromUrl(false);
     setDraft(plainStreamDraft({ scheme: 'rtsp', host: fromHost }));
+    setGeo({}); // a fresh camera starts with no fixed location
     setMsg(null);
     setStep('stream');
   };
@@ -240,6 +242,7 @@ export function CameraWizard({ onDone, edit, hasStoredLogin = false }: Props) {
     })
       .then((r) => {
         setDraft(draftFromIntrospect(r, host.trim()));
+        setGeo({}); // a freshly-read camera starts with no fixed location
         setReturnStep('connect');
         setStep('details');
       })

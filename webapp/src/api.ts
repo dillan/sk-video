@@ -223,10 +223,6 @@ export async function fetchSession(signal?: AbortSignal): Promise<ISessionInfo> 
 }
 
 /** A camera definition from the Signal K `cameras` resource (subset; never includes credentials). */
-/** Sensor readouts a camera can report — operator-declared (never ONVIF-probed). Starts with a compass. */
-export const CAMERA_SENSORS = ['bearing'] as const;
-export type TCameraSensor = (typeof CAMERA_SENSORS)[number];
-
 /** An absolute geographic fix for a fixed-position camera (shore/dock), mirroring the plugin's model. */
 export interface ICameraGeolocation {
   latitude: number;

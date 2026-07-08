@@ -468,6 +468,30 @@ describe('CameraWizard edit mode', () => {
     expect(calls.some((c) => c.init?.method === 'PUT')).toBe(false); // nothing was saved
   });
 
+  it('clears the fixed-location fields when starting a fresh manual setup (no stale coordinates)', async () => {
+    mockApi();
+    render(<CameraWizard onDone={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Set it up manually' }));
+    fireEvent.change(screen.getByPlaceholderText('192.168.1.50'), {
+      target: { value: '10.0.0.9' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    fireEvent.change(await screen.findByPlaceholderText('e.g. 37.8199'), {
+      target: { value: '37.82' },
+    });
+    // Back out to the picker and re-enter manual setup — the location must not carry over.
+    fireEvent.click(screen.getByRole('button', { name: 'Back' })); // details → stream
+    fireEvent.click(screen.getByRole('button', { name: 'Back' })); // stream → scan
+    fireEvent.click(screen.getByRole('button', { name: 'Set it up manually' }));
+    fireEvent.change(screen.getByPlaceholderText('192.168.1.50'), {
+      target: { value: '10.0.0.9' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(((await screen.findByPlaceholderText('e.g. 37.8199')) as HTMLInputElement).value).toBe(
+      '',
+    );
+  });
+
   it('onboards a plain RTMP camera: scheme-aware placeholders and a saved rtmp source', async () => {
     const calls = mockApi();
     render(<CameraWizard onDone={vi.fn()} />);

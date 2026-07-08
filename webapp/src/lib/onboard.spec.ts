@@ -261,6 +261,21 @@ describe('parseGeolocation (fixed-location form)', () => {
   it('errors on a non-numeric coordinate rather than silently dropping it', () => {
     expect(parseGeolocation({ latitude: 'north', longitude: '-122.4' }).error).toBeTruthy();
   });
+
+  it('rejects out-of-range values with a field-specific message (matches the backend bounds)', () => {
+    expect(parseGeolocation({ latitude: '91', longitude: '0' }).error).toMatch(/latitude/i);
+    expect(parseGeolocation({ latitude: '0', longitude: '181' }).error).toMatch(/longitude/i);
+    expect(parseGeolocation({ latitude: '0', longitude: '0', elevationM: '20000' }).error).toMatch(
+      /elevation/i,
+    );
+    expect(
+      parseGeolocation({ latitude: '0', longitude: '0', orientationDeg: '400' }).error,
+    ).toMatch(/heading/i);
+    // in-range still passes
+    expect(
+      parseGeolocation({ latitude: '-90', longitude: '180', orientationDeg: '360' }).error,
+    ).toBeUndefined();
+  });
 });
 
 describe('draftFromEntry (edit flow)', () => {
@@ -460,6 +475,18 @@ describe('mergeRescan', () => {
     const body = mergeRescan(withSensor, fresh);
     expect(body.capabilities?.sensors).toEqual(['bearing']); // survived the capability refresh
     expect(body.capabilities?.spotlight).toBe(true); // and the refreshed caps still applied
+  });
+
+  it('preserves an operator-set geolocation across a rescan (top-level, never probed)', () => {
+    const withGeo = {
+      ...existing,
+      geolocation: { latitude: 37.8, longitude: -122.4, orientationDeg: 90 },
+    } as unknown as ICameraEntry;
+    expect(mergeRescan(withGeo, fresh).geolocation).toEqual({
+      latitude: 37.8,
+      longitude: -122.4,
+      orientationDeg: 90,
+    });
   });
 });
 

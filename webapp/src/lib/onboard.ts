@@ -357,11 +357,27 @@ export function parseGeolocation(fields: IGeolocationFields): {
   if (latitude === undefined || longitude === undefined) {
     return { error: 'Enter both latitude and longitude, or clear the location.' };
   }
+  // Mirror the plugin's validateGeolocation bounds so an out-of-range fix fails here with a specific
+  // message, not server-side with a generic save error.
+  if (latitude < -90 || latitude > 90) return { error: 'Latitude must be between -90 and 90.' };
+  if (longitude < -180 || longitude > 180) {
+    return { error: 'Longitude must be between -180 and 180.' };
+  }
   const geolocation: ICameraGeolocation = { latitude, longitude };
   const elevationM = finiteNumber(fields.elevationM);
-  if (elevationM !== undefined) geolocation.elevationM = elevationM;
+  if (elevationM !== undefined) {
+    if (elevationM < -100 || elevationM > 10000) {
+      return { error: 'Elevation must be between -100 and 10000 metres.' };
+    }
+    geolocation.elevationM = elevationM;
+  }
   const orientationDeg = finiteNumber(fields.orientationDeg);
-  if (orientationDeg !== undefined) geolocation.orientationDeg = orientationDeg;
+  if (orientationDeg !== undefined) {
+    if (orientationDeg < 0 || orientationDeg > 360) {
+      return { error: 'Heading must be between 0 and 360.' };
+    }
+    geolocation.orientationDeg = orientationDeg;
+  }
   return { geolocation };
 }
 

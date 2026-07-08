@@ -36,9 +36,10 @@ export interface ICapabilityBadge {
 }
 
 /**
- * The capabilities a camera reports from ONVIF discovery, as compact badges for the management list —
- * so an operator can see at a glance what each camera can do. Only supported capabilities produce a
- * badge (never a "not supported" chip); a plain RTSP camera simply shows none.
+ * A camera's capabilities as compact badges for the management list — so an operator can see at a
+ * glance what each camera can do. Most come from ONVIF discovery; a few are operator declarations
+ * (e.g. Compass, from the "reports its own compass bearing" toggle). Only present capabilities produce
+ * a badge (never a "not supported" chip); a plain RTSP camera simply shows none.
  */
 export function capabilityBadges(c: ICamera): ICapabilityBadge[] {
   const caps = c.capabilities;
