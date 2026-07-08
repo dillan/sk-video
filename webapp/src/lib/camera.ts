@@ -79,6 +79,9 @@ export function capabilityBadges(c: ICamera): ICapabilityBadge[] {
   if (caps.alarm) {
     badges.push({ key: 'alarm', label: 'Alarm', title: 'Audible alarm / siren' });
   }
+  if (caps.sensors?.includes('bearing')) {
+    badges.push({ key: 'compass', label: 'Compass', title: 'Reports its own compass bearing' });
+  }
   return badges;
 }
 

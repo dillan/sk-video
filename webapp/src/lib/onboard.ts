@@ -3,6 +3,7 @@ import type {
   IIntrospectResult,
   ICameraWrite,
   ICameraEntry,
+  ICameraGeolocation,
   IDeviceHint,
   IOnboardingSource,
 } from '../api';
@@ -96,7 +97,11 @@ export interface ICameraDraft {
     alarm?: boolean;
     imaging?: string[];
     auxCommands?: string[];
+    /** Sensor readouts the camera reports (e.g. 'bearing') — an operator declaration, not probed. */
+    sensors?: string[];
   };
+  /** An absolute geographic fix for a fixed-position camera (shore/dock); operator-entered, never probed. */
+  geolocation?: ICameraGeolocation;
   /** Main-stream codec + the H.264 substream path captured by introspection (drives live routing),
    *  and the stream geometry for 360 sources (equirectangular/dualfisheye → client-side vPTZ). */
   media?: { codec?: string; substreamPath?: string; projection?: string };
@@ -207,9 +212,15 @@ export function mergeRescan(existing: ICameraEntry, r: IIntrospectResult): ICame
   const media = mediaFromIntrospect(r);
   const device = deviceFromIntrospect(r);
   const existingMedia = (rest.media ?? {}) as { projection?: string };
+  const capabilities = capabilitiesFromIntrospect(r);
+  // Sensors are operator-declared and never come back from the probe — carry them across the rescan.
+  const existingSensors = existing.capabilities?.sensors;
+  if (existingSensors && existingSensors.length > 0) {
+    capabilities.sensors = existingSensors;
+  }
   return {
     ...rest,
-    capabilities: capabilitiesFromIntrospect(r),
+    capabilities,
     // Refresh codec/substream from the scan; keep a projection (360 geometry) the operator may have set.
     ...(media.codec || media.substreamPath || existingMedia.projection
       ? {
@@ -375,8 +386,12 @@ export function draftFromEntry(entry: ICameraEntry): ICameraDraft {
       ...(caps.alarm !== undefined ? { alarm: caps.alarm } : {}),
       ...(caps.imaging ? { imaging: caps.imaging } : {}),
       ...(caps.auxCommands ? { auxCommands: caps.auxCommands } : {}),
+      ...(caps.sensors ? { sensors: caps.sensors } : {}),
     },
   };
+  if (entry.geolocation) {
+    draft.geolocation = entry.geolocation;
+  }
   if (entry.role && (ROLES as readonly string[]).includes(entry.role)) {
     draft.role = entry.role as Role;
   }
@@ -424,6 +439,20 @@ export function mergeEdit(existing: ICameraEntry, d: ICameraDraft): ICameraWrite
   }
   if (Object.keys(placement).length > 0) body.placement = placement as ICameraWrite['placement'];
   else delete body.placement;
+  // Capabilities are ONVIF-derived and ride through verbatim, EXCEPT the operator-declared sensors,
+  // which this form edits — rebuild them from the draft while keeping the discovered flags.
+  const capabilities = { ...(existing.capabilities ?? {}) } as Record<string, unknown>;
+  if (d.capabilities?.sensors && d.capabilities.sensors.length > 0) {
+    capabilities.sensors = d.capabilities.sensors;
+  } else {
+    delete capabilities.sensors;
+  }
+  if (Object.keys(capabilities).length > 0)
+    body.capabilities = capabilities as ICameraWrite['capabilities'];
+  else delete body.capabilities;
+  // Geolocation is fully form-owned: set it from the draft, or clear it when the operator empties it.
+  if (d.geolocation) body.geolocation = d.geolocation;
+  else delete body.geolocation;
   return body;
 }
 
@@ -453,6 +482,9 @@ export function toResourceBody(d: ICameraDraft): ICameraWrite {
   }
   if (Object.keys(placement).length > 0) {
     body.placement = placement;
+  }
+  if (d.geolocation) {
+    body.geolocation = d.geolocation;
   }
   return body;
 }

@@ -37,6 +37,11 @@ describe('capabilityBadges', () => {
     ]);
   });
 
+  it('shows a Compass badge when the camera declares a bearing sensor', () => {
+    const badge = capabilityBadges(cam({ sensors: ['bearing'] })).find((b) => b.key === 'compass');
+    expect(badge?.label).toBe('Compass');
+  });
+
   it('shows nothing for a plain camera with no reported capabilities (no "unsupported" chips)', () => {
     expect(capabilityBadges(cam({}))).toEqual([]);
     expect(capabilityBadges(base)).toEqual([]);

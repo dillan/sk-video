@@ -223,11 +223,25 @@ export async function fetchSession(signal?: AbortSignal): Promise<ISessionInfo> 
 }
 
 /** A camera definition from the Signal K `cameras` resource (subset; never includes credentials). */
+/** Sensor readouts a camera can report — operator-declared (never ONVIF-probed). Starts with a compass. */
+export const CAMERA_SENSORS = ['bearing'] as const;
+export type TCameraSensor = (typeof CAMERA_SENSORS)[number];
+
+/** An absolute geographic fix for a fixed-position camera (shore/dock), mirroring the plugin's model. */
+export interface ICameraGeolocation {
+  latitude: number;
+  longitude: number;
+  elevationM?: number;
+  orientationDeg?: number;
+}
+
 export interface ICamera {
   name: string;
   enabled: boolean;
   source?: { scheme: string; host: string; port?: number; path?: string };
   placement?: { mount?: string; bearingRelativeDeg?: number; heightM?: number };
+  /** Absolute location of a fixed-position camera (manual entry; never probed). */
+  geolocation?: ICameraGeolocation;
   role?: string;
   capabilities?: {
     ptz?: boolean;
@@ -239,6 +253,8 @@ export interface ICamera {
     alarm?: boolean;
     imaging?: string[];
     auxCommands?: string[];
+    /** Sensor readouts the camera reports (e.g. 'bearing') — an operator declaration. */
+    sensors?: string[];
   };
   media?: { codec?: string; substreamPath?: string; projection?: string };
   /** Device identity from ONVIF (durable identity + firmware, for re-scan / change detection). */
@@ -691,6 +707,7 @@ export interface ICameraWrite {
   enabled: boolean;
   source: { scheme: string; host: string; port?: number; path?: string };
   placement?: { mount?: string; bearingRelativeDeg?: number };
+  geolocation?: ICameraGeolocation;
   role?: string;
   capabilities?: ICamera['capabilities'];
   /** Codec + substream path captured at onboarding; drives go2rtc's `_sub` stream + transport routing. */
