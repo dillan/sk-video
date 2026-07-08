@@ -404,6 +404,44 @@ describe('registerPtzRoutes', () => {
       expect(res.statusCode).toBe(200);
     });
 
+    it('degrades to a relative nudge when a stale/flaky absolute read returns null pan/tilt', async () => {
+      const { handlers, controller } = setupAim({ hasAbsolutePtz: () => true });
+      // Camera stored as absolute-capable but this live read comes back with no usable position.
+      controller.getStatus.mockResolvedValue({ pan: null, tilt: null, zoom: null });
+      const res = await invoke(
+        handlers.get('POST /cameras/:id/ptz/aim')!,
+        fakeReq({ body: { dx: 0.1, dy: 0 } }),
+      );
+      expect(controller.moveAbsolute).not.toHaveBeenCalled(); // null pan/tilt must NOT become NaN absolute
+      expect(controller.moveRelative).toHaveBeenCalledTimes(1);
+      expect(res.body).toMatchObject({ kind: 'relative', outcome: 'aimed' });
+    });
+
+    it('degrades to a relative nudge when only one axis is reported (pan present, tilt null)', async () => {
+      const { handlers, controller } = setupAim({ hasAbsolutePtz: () => true });
+      // One axis is not enough to aim absolutely — the other would fabricate a value (guards the && logic).
+      controller.getStatus.mockResolvedValue({ pan: 0.3, tilt: null, zoom: 0.5 });
+      const res = await invoke(
+        handlers.get('POST /cameras/:id/ptz/aim')!,
+        fakeReq({ body: { dx: 0.1, dy: 0.1 } }),
+      );
+      expect(controller.moveAbsolute).not.toHaveBeenCalled();
+      expect(controller.moveRelative).toHaveBeenCalledTimes(1);
+      expect(res.body).toMatchObject({ kind: 'relative' });
+    });
+
+    it('holds zoom on an absolute tap-to-aim (a tap re-aims pan/tilt, never racks the lens)', async () => {
+      const { handlers, controller } = setupAim({ hasAbsolutePtz: () => true });
+      // pan/tilt present, zoom not reported — the absolute move must NOT command zoom to 0 (fully wide).
+      controller.getStatus.mockResolvedValue({ pan: 0.5, tilt: -0.2, zoom: null });
+      await invoke(
+        handlers.get('POST /cameras/:id/ptz/aim')!,
+        fakeReq({ body: { dx: 0.2, dy: -0.1 } }),
+      );
+      expect(controller.moveAbsolute).toHaveBeenCalledTimes(1);
+      expect(controller.moveAbsolute.mock.calls[0][1]).toEqual({ holdZoom: true });
+    });
+
     it('returns 502 (redacted) when the aim move itself fails', async () => {
       const { handlers, controller } = setupAim({ hasAbsolutePtz: () => false });
       controller.moveRelative.mockRejectedValue(new Error('camera offline'));

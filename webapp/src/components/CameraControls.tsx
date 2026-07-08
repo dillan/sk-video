@@ -445,7 +445,9 @@ export function CameraControls(props: Props) {
       >
         {svg(ICON.plus, 17, 'currentColor', 2)}
       </button>
-      <span className="zoompill__read mono">{zoomPct === null ? '—' : `${zoomPct}%`}</span>
+      {/* Only show the position readout when the camera actually reports zoom — no fabricated 0% /
+          dash on a camera without zoom feedback. The in/out controls stay usable either way. */}
+      {zoomPct !== null && <span className="zoompill__read mono">{`${zoomPct}%`}</span>}
       <button
         type="button"
         className="zoompill__btn"

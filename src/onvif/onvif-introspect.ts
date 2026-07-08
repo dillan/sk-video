@@ -93,7 +93,7 @@ export async function introspectOnvifCamera(
   const caps = await new OnvifPtzController(connect).probeCapabilities();
 
   const result: IIntrospectResult = {
-    ptz: caps.absolutePtz,
+    ptz: caps.ptz,
     absolutePtz: caps.absolutePtz,
     imaging: caps.imaging,
     imagingControls: caps.imagingControls,

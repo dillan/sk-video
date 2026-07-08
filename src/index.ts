@@ -728,7 +728,9 @@ export = function (app: ServerAPI): Plugin {
           aimCamera: (id, pan, tilt) => {
             void ptz
               ?.controllerFor(id)
-              .then((controller) => controller.moveAbsolute({ pan, tilt }))
+              // Hold zoom: re-point pan/tilt at the MOB, keep the operator's framing — a bare absolute
+              // move would clamp zoom to 0 and rack the lens fully wide mid-incident.
+              .then((controller) => controller.moveAbsolute({ pan, tilt }, { holdZoom: true }))
               // Surface a flaky PTZ camera rejecting the MOB aim rather than swallowing it silently —
               // the operator-facing aimedCameras count is best-effort and this is the failure trail.
               .catch((err: unknown) =>
@@ -1719,7 +1721,8 @@ export = function (app: ServerAPI): Plugin {
             if (!controller) {
               throw new Error('PTZ controller unavailable');
             }
-            await controller.moveAbsolute({ pan, tilt });
+            // Hold zoom: slew re-points pan/tilt at the cued target, keeps the current framing.
+            await controller.moveAbsolute({ pan, tilt }, { holdZoom: true });
           },
         },
         unauthorized,

@@ -88,12 +88,18 @@ export function registerPtzRoutes(
       const body = (req.body ?? {}) as { dx?: number; dy?: number };
       const offset = { dx: Number(body.dx), dy: Number(body.dy) };
       const absolutePtz = options.hasAbsolutePtz?.(String(req.params.id)) === true;
-      // With absolute pointing, read where the camera is now so the aim is a precise reposition; a
-      // failed read degrades to a relative nudge rather than erroring.
-      const current = absolutePtz ? await ctrl.getStatus().catch(() => null) : null;
+      // With absolute pointing, read where the camera is now so the aim is a precise reposition. A
+      // failed read — or a reply with no usable pan/tilt — degrades to a relative nudge, never a
+      // null-turned-NaN absolute move.
+      const status = absolutePtz ? await ctrl.getStatus().catch(() => null) : null;
+      const current =
+        status && status.pan !== null && status.tilt !== null
+          ? { pan: status.pan, tilt: status.tilt, zoom: status.zoom ?? 0 }
+          : null;
       const plan = planAim({ absolutePtz }, current, offset);
       if (plan.kind === 'absolute') {
-        await ctrl.moveAbsolute(plan.position);
+        // A tap re-aims pan/tilt only — hold zoom so an unknown/absent zoom can't rack the lens wide.
+        await ctrl.moveAbsolute(plan.position, { holdZoom: true });
       } else {
         await ctrl.moveRelative(plan.delta);
       }

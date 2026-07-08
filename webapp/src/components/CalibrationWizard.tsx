@@ -71,7 +71,17 @@ export function CalibrationWizard({
     }
     fetchPtzPosition(id)
       .then((pos) => {
-        const sample = { deg: d, normalized: axis === 'pan' ? pos.pan : pos.tilt };
+        const normalized = axis === 'pan' ? pos.pan : pos.tilt;
+        if (normalized === null) {
+          // The camera answered but reports no position for this axis — a null sample would corrupt
+          // the degrees→normalised fit, so refuse it rather than seed calibration with a fake 0.
+          setMsg({
+            kind: 'caution',
+            text: 'This camera didn’t report its position — calibration needs a camera with position feedback.',
+          });
+          return;
+        }
+        const sample = { deg: d, normalized };
         const setter = axis === 'pan' ? setPan : setTilt;
         setter((prev) => prev.map((s, i) => (i === slot ? sample : s)));
         setMsg({ kind: 'info', text: `Captured ${axis} point ${slot + 1}.` });
