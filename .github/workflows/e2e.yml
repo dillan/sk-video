@@ -1,6 +1,6 @@
 name: E2E
 
-# Boots the Docker harness (MediaMTX RTSP test pattern -> plugin -> go2rtc) and runs the Playwright
+# Boots the Docker harness (MediaMTX RTSP test pattern -> plugin -> go2rtc container) and runs the Playwright
 # contract suite against the real stack on Chromium and WebKit (WebKit covers the Safari quirks the
 # widget design pivots on). Linux runners run Docker natively, so the live gateway path (HLS, JPEG
 # snapshot, upload + Range) is exercised end to end. KIP is not built here, so its UI test skips.
@@ -22,7 +22,7 @@ jobs:
 
       - uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       # Build the plugin: the stack mounts this repo (with node_modules + dist) into Signal K.

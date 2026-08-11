@@ -4,6 +4,8 @@ import { go2rtcApiUrl, go2rtcHlsUrl } from './go2rtc-proxy';
 export interface IProxyContext {
   /** Current go2rtc API port. */
   apiPort: () => number;
+  /** Base URL for reaching go2rtc from the Signal K process. */
+  apiBaseUrl?: () => string;
   /** Whether a camera id is known — unknown ids are rejected so no client-supplied src is proxied. */
   hasCamera: (id: string) => boolean;
   fetchImpl?: typeof fetch;
@@ -27,7 +29,7 @@ function readRawBody(req: Request): Promise<string> {
 
 /**
  * Registers the same-origin transport proxy. The browser only ever talks to these endpoints, keyed by
- * an internal camera id; the plugin forwards to go2rtc on loopback. A client-supplied `src=` is never
+ * an internal camera id; the plugin forwards to go2rtc internally. A client-supplied `src=` is never
  * honoured.
  */
 export function registerProxyRoutes(router: IRouter, ctx: IProxyContext): void {
@@ -41,7 +43,7 @@ export function registerProxyRoutes(router: IRouter, ctx: IProxyContext): void {
       return;
     }
     try {
-      const url = go2rtcApiUrl(ctx.apiPort(), 'webrtc', id);
+      const url = go2rtcApiUrl(ctx.apiBaseUrl?.() ?? ctx.apiPort(), 'webrtc', id);
       const offer = await readRawBody(req);
       const upstream = await doFetch(url, {
         method: 'POST',
@@ -68,7 +70,7 @@ export function registerProxyRoutes(router: IRouter, ctx: IProxyContext): void {
       const resource = String(req.params.resource);
       const qIdx = req.url.indexOf('?');
       const rawQuery = qIdx >= 0 ? req.url.slice(qIdx + 1) : '';
-      url = go2rtcHlsUrl(ctx.apiPort(), id, resource, rawQuery);
+      url = go2rtcHlsUrl(ctx.apiBaseUrl?.() ?? ctx.apiPort(), id, resource, rawQuery);
     } catch {
       res.status(404).json({ error: 'not found' });
       return;
@@ -99,7 +101,7 @@ export function registerProxyRoutes(router: IRouter, ctx: IProxyContext): void {
         return;
       }
       try {
-        const url = go2rtcApiUrl(ctx.apiPort(), transport, id);
+        const url = go2rtcApiUrl(ctx.apiBaseUrl?.() ?? ctx.apiPort(), transport, id);
         const upstream = await doFetch(url);
         const contentType = upstream.headers.get('content-type');
         if (contentType) {

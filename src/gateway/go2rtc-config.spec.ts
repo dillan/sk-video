@@ -10,11 +10,21 @@ const foredeck: ICamera = {
 const aft: ICamera = { name: 'Aft', enabled: false, source: { scheme: 'rtsp', host: 'cam2' } };
 
 describe('buildGo2rtcConfig', () => {
-  it('binds the API and RTSP server to loopback', () => {
+  it('binds the API and RTSP server to loopback by default', () => {
     const cfg = buildGo2rtcConfig({ cameras: {}, credentials: {}, ports: DEFAULT_GO2RTC_PORTS });
     expect((cfg.api as { listen: string }).listen).toBe('127.0.0.1:1984');
     expect((cfg.rtsp as { listen: string }).listen).toBe('127.0.0.1:8554');
     expect((cfg.webrtc as { listen: string }).listen).toBe(':8555'); // routable for ICE
+  });
+
+  it('can bind the API to a container-reachable address', () => {
+    const cfg = buildGo2rtcConfig({
+      cameras: {},
+      credentials: {},
+      ports: DEFAULT_GO2RTC_PORTS,
+      apiListenHost: '0.0.0.0',
+    });
+    expect((cfg.api as { listen: string }).listen).toBe('0.0.0.0:1984');
   });
 
   it('maps enabled cameras to streams keyed by id, with embedded credentials', () => {

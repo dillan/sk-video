@@ -2,7 +2,7 @@ import type { ICamera } from '../cameras/camera-validation';
 import { buildGo2rtcSource, type ICameraCredentials } from './go2rtc-source';
 
 export interface IGo2rtcPorts {
-  /** go2rtc API/UI/WebSocket port — bound to loopback only. */
+  /** go2rtc API/UI/WebSocket port. */
   api: number;
   /** go2rtc's RTSP server port — bound to loopback only. */
   rtsp: number;
@@ -16,15 +16,17 @@ export interface IGo2rtcConfigInput {
   cameras: Record<string, ICamera>;
   credentials: Record<string, ICameraCredentials>;
   ports?: IGo2rtcPorts;
+  /** Address to bind the go2rtc API to. Use 0.0.0.0 when go2rtc runs in a container. */
+  apiListenHost?: string;
 }
 
 /**
- * Builds the go2rtc configuration object. The API (and thus the web UI) is bound to loopback so only
- * this plugin can reach it; the plugin proxies playback to the browser. Only enabled cameras become
- * streams, keyed by their resource id, with credentials embedded server-side.
+ * Builds the go2rtc configuration object. The plugin proxies playback to the browser. Only enabled
+ * cameras become streams, keyed by their resource id, with credentials embedded server-side.
  */
 export function buildGo2rtcConfig(input: IGo2rtcConfigInput): Record<string, unknown> {
   const ports = input.ports ?? DEFAULT_GO2RTC_PORTS;
+  const apiListenHost = input.apiListenHost ?? '127.0.0.1';
 
   const streams: Record<string, string> = {};
   for (const [id, camera] of Object.entries(input.cameras)) {
@@ -34,7 +36,7 @@ export function buildGo2rtcConfig(input: IGo2rtcConfigInput): Record<string, unk
   }
 
   return {
-    api: { listen: `127.0.0.1:${ports.api}` },
+    api: { listen: `${apiListenHost}:${ports.api}` },
     rtsp: { listen: `127.0.0.1:${ports.rtsp}` },
     webrtc: { listen: `:${ports.webrtc}` },
     log: { level: 'warn' },

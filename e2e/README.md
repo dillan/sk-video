@@ -4,7 +4,7 @@ A reproducible Docker stack that exercises the **live** path of the SK Video plu
 widget against a simulated camera, plus a Playwright suite (Chromium + WebKit).
 
 ```
- ffmpeg test pattern ─▶ mediamtx (RTSP) ─▶ sk-video plugin ─▶ go2rtc ─▶ browser (HLS/WebRTC/snapshot)
+ ffmpeg test pattern ─▶ mediamtx (RTSP) ─▶ sk-video plugin ─▶ go2rtc container ─▶ browser
                                     └─▶ onvif (opt-in) ─▶ plugin PTZ proxy
                           Signal K server also serves the KIP webapp at /@mxtommy/kip
 ```
@@ -36,10 +36,9 @@ npm test                 # Chromium + WebKit
 ./run.sh --down          # tear down
 ```
 
-The first camera triggers a one-time download of the pinned go2rtc binary into the plugin data dir,
-so the Signal K container needs internet egress on first run. To run fully offline, drop a matching
-`go2rtc` binary into `signalk-config/plugins/sk-video/` before starting (see the plugin's binary
-manager for the expected name).
+The first camera triggers a one-time pull of the pinned go2rtc container image, so the container
+runtime needs internet egress on first run. To run fully offline, pre-pull the image used by the
+plugin before starting the stack.
 
 ## ONVIF / PTZ (opt-in)
 
@@ -63,4 +62,6 @@ is simulated (the device acknowledges moves), so PTZ exercises the request path,
 - The stack runs Signal K with no security config (anonymous read/write) for a turnkey local test —
   do not expose it. The plugin's own security envelope (scheme allow-list, SSRF guard, write-only
   credentials, Range clamping) is still in force and is what these tests exercise.
+- The Signal K test container mounts the host Docker socket so signalk-container can start the
+  managed go2rtc sibling container.
 - Ports: Signal K `3000`, RTSP `8554`, mediamtx HLS `8888` / WebRTC `8889`, ONVIF `8081`.

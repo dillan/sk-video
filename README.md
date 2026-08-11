@@ -10,6 +10,11 @@ SK Video is a free add-on (a "plugin") for the [Signal K](https://signalk.org/) 
 watch your onboard IP cameras and saved video clips in [KIP](https://github.com/mxtommy/Kip) and other
 Signal K apps — no separate camera app, no cloud account.
 
+This build keeps the standard `sk-video` plugin id and API, but runs the video toolchain in containers
+managed by [signalk-container](https://github.com/dirkwa/signalk-container) and
+[signalk-container-helper](https://github.com/hoeken/signalk-container-helper). It does not install or
+run local `go2rtc`, `ffmpeg` or `ffprobe` binaries inside the Signal K server image.
+
 <p align="center">
   <img src="docs/images/widget-playing.png" alt="A boat camera playing in KIP" width="80%">
 </p>
@@ -31,35 +36,33 @@ between devices.
 
 ## What you'll need
 
-- A [Signal K server](https://github.com/SignalK/signalk-server) running on your boat (for example on
-  a Raspberry Pi or a [Cerbo GX](https://www.victronenergy.com/)).
-- One or more IP cameras on the same network (most marine and home IP cameras work).
+- A [Signal K server](https://github.com/SignalK/signalk-server) with Node.js 22 or newer.
+- The [signalk-container](https://github.com/dirkwa/signalk-container) plugin installed and enabled.
+- Docker or Podman available to signalk-container.
+- One or more IP cameras on a network reachable from the video containers.
 - [KIP](https://github.com/mxtommy/Kip) (or another Signal K app) to view the video.
+
+This build identifies itself as `sk-video`. Do not install it alongside another `sk-video`
+implementation; use one implementation at a time.
 
 ## Install
 
-**From the Signal K Appstore (easiest):**
+This container-runtime build is intended for manual installation until a publication strategy is
+decided:
 
-1. In your Signal K server, open **Appstore → Available**.
-2. Search for **SK Video** and install it.
-3. Open **Server → Plugin Config**, find **SK Video**, switch it **On**, and **Submit**.
+```sh
+cd ~/.signalk
+npm install /path/to/sk-video
+```
+
+Then enable **SK Video** in **Server → Plugin Config**.
 
 <p align="center">
   <img src="docs/images/plugin-config.png" alt="Enabling SK Video in the Signal K admin" width="80%">
 </p>
 
-**From source (until it's in the Appstore):**
-
-```sh
-cd ~/.signalk
-npm install dillan/sk-video      # or: npm install /path/to/sk-video
-```
-
-Then enable **SK Video** in **Server → Plugin Config** as above.
-
-> The first time you add a camera, the plugin downloads a small helper program
-> ([go2rtc](https://github.com/AlexxIT/go2rtc)) once, so the server needs internet access on that
-> first run. After that it works offline.
+> The first time you add a camera, signalk-container needs internet access to pull the pinned go2rtc
+> runtime image. After that it can work offline as long as the image remains available locally.
 
 ## How to use it
 
@@ -83,6 +86,10 @@ position, uploading a clip, and more) are in KIP's built-in help: **Help → Vid
 
 - **Cameras are saved as Signal K resources** (a custom `cameras` type), so they're shared across
   every device and app on the boat.
+- **Camera tests and playback run in containers** using a plugin-pinned go2rtc image, so the Signal K
+  server image does not need local ffmpeg tools installed.
+- **The go2rtc container only mounts this plugin's private data directory**, not the whole Signal K
+  config root.
 - **Snapshots can include your position and boat data** (GPS, heading, speed, depth, wind) in the
   photo. This is a per-widget choice in KIP, and it's off unless you turn it on — a shared photo would
   otherwise reveal where the boat was.
@@ -95,18 +102,19 @@ position, uploading a clip, and more) are in KIP's built-in help: **Help → Vid
   its address (and a path like `/stream1` from the camera's manual).
 - **Picture won't load.** Double-check the camera's address and login, and try the other **Delivery**
   option (HLS vs WebRTC).
-- **No snapshot photo.** Snapshots need ffmpeg available to the server for some camera types; install
-  ffmpeg on the server if your snapshots come back empty.
+- **No snapshot photo or test result.** Make sure signalk-container is enabled and can start Docker or
+  Podman containers, then check the Signal K logs for the container job details.
 
 ---
 
 ## For developers
 
-SK Video is a TypeScript Signal K plugin. It manages [go2rtc](https://github.com/AlexxIT/go2rtc) to
-repackage RTSP/RTMP/ONVIF cameras into browser-playable **WebRTC / HLS / MJPEG**, exposes cameras
-through the Signal K [Resources API](https://demo.signalk.org/documentation/develop/rest-api/resources_api.html)
-as a custom `cameras` type, proxies **ONVIF PTZ**, runs **WS-Discovery + mDNS**, and stores/serves
-uploaded video with HTTP range requests.
+SK Video is a TypeScript Signal K plugin. It uses signalk-container managed
+[go2rtc](https://github.com/AlexxIT/go2rtc) jobs to repackage RTSP/RTMP/ONVIF cameras into
+browser-playable **WebRTC / HLS / MJPEG**, exposes cameras through the Signal K
+[Resources API](https://demo.signalk.org/documentation/develop/rest-api/resources_api.html) as a
+custom `cameras` type, proxies **ONVIF PTZ**, runs **WS-Discovery + mDNS**, and stores/serves uploaded
+video with HTTP range requests.
 
 ### HTTP endpoints (under `/plugins/sk-video`)
 
@@ -127,14 +135,13 @@ through the plugin proxy — the browser never reaches go2rtc or a camera direct
 ### Security
 
 Built-in defences include a stream-scheme allow-list (blocks go2rtc `exec:`/`ffmpeg:` sources), an
-SSRF egress guard with DNS-rebinding protection, the go2rtc API bound to loopback, owner-only
-credential/config files, redaction of credentials from logs, PTZ velocity/token validation, magic-byte
-validation of uploads, and vetted HTTP Range handling.
+SSRF egress guard with DNS-rebinding protection, server-only credential files, redaction of
+credentials from logs, PTZ velocity/token validation, magic-byte validation of uploads, vetted HTTP
+Range handling, and a pinned go2rtc container image selected by the plugin rather than by end users.
 
 ### Develop
 
-You need [Node](https://nodejs.org/) (see [`.nvmrc`](.nvmrc) for the version we use — `nvm use`
-picks it up) and Git. Then:
+You need [Node](https://nodejs.org/) 22 or newer and Git. Then:
 
 ```sh
 git clone https://github.com/dillan/sk-video.git

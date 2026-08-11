@@ -12,11 +12,10 @@ export default defineConfig({
         'src/**/*.d.ts',
         // Thin entrypoint: wires the pieces together; covered by the Signal K integration e2e.
         'src/index.ts',
-        // External IO wrappers (spawn go2rtc, open an ONVIF connection); covered by the e2e harness,
-        // not unit-testable without the real binary/device.
-        'src/gateway/go2rtc-process.ts',
+        // External IO wrappers (open an ONVIF connection); covered by the e2e harness,
+        // not unit-testable without the real device.
         'src/onvif/onvif-connect.ts',
-        'src/diagnostics/probe-runner.ts',
+        'src/diagnostics/tcp-probe.ts',
       ],
       // A regression ratchet, not an aspiration: set a few points below current coverage
       // (~96% lines / 94% branches / 100% functions) so a meaningful drop fails CI without

@@ -1,8 +1,8 @@
 /**
  * Camera connection test ("does this camera answer, and what is it sending?"). The probe runs
  * `ffprobe` against the constructed source URL with a hard protocol allow-list — it is never a shell
- * command, and ffprobe can't be redirected to local files. Pure helpers here; the actual process and
- * socket I/O live in probe-runner.ts so this stays unit-testable.
+ * command, and ffprobe can't be redirected to local files. Pure helpers here; container and socket
+ * I/O live in separate runner modules so this stays unit-testable.
  */
 
 /** The outcome of a single connection test, safe to return to the browser. */

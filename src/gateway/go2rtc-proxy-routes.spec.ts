@@ -93,10 +93,11 @@ const PORT = 1984;
 
 function setup(over: Partial<IProxyContext> = {}) {
   const apiPort = over.apiPort ?? (() => PORT);
+  const apiBaseUrl = over.apiBaseUrl;
   const hasCamera = vi.fn(over.hasCamera ?? (() => true));
   const fetchImpl = (over.fetchImpl ?? vi.fn()) as ReturnType<typeof vi.fn>;
   const { router, handlers } = fakeRouter();
-  registerProxyRoutes(router, { apiPort, hasCamera, fetchImpl });
+  registerProxyRoutes(router, { apiPort, apiBaseUrl, hasCamera, fetchImpl });
   return { handlers, apiPort, hasCamera, fetchImpl };
 }
 
@@ -135,6 +136,24 @@ describe('registerProxyRoutes', () => {
       expect(res.statusCode).toBe(201);
       expect(res.headers['Content-Type']).toBe('application/sdp');
       expect(res.sent).toBe('v=0\r\no=answer');
+    });
+
+    it('uses the configured go2rtc base URL when supplied', async () => {
+      const fetchImpl = vi.fn().mockResolvedValue(upstreamRes({ status: 200, text: 'answer' }));
+      const { handlers } = setup({ apiBaseUrl: () => 'http://sk-video-gateway:1984', fetchImpl });
+      const res = makeRes();
+      await handlers.get('POST /cameras/:id/whep')!(
+        fakeReq({ params: { id: 'foredeck' } as never, body: 'offer' }),
+        res,
+      );
+      expect(fetchImpl).toHaveBeenCalledWith(
+        'http://sk-video-gateway:1984/api/webrtc?src=foredeck',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/sdp' },
+          body: 'offer',
+        },
+      );
     });
 
     it('returns 502 when the upstream fetch rejects', async () => {
@@ -287,7 +306,7 @@ describe('registerProxyRoutes', () => {
         expect(fetchImpl).not.toHaveBeenCalled();
       });
 
-      it(`${c.name}: proxies to the loopback go2rtc url and passes through body and content-type`, async () => {
+      it(`${c.name}: proxies to the default go2rtc url and passes through body and content-type`, async () => {
         const fetchImpl = vi
           .fn()
           .mockResolvedValue(

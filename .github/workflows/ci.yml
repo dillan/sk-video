@@ -12,8 +12,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Span the Node versions real Signal K servers run on, plus the 24 toolchain we develop with.
-        node: [20, 22, 24]
+        # Span the supported Signal K runtime target and the 24 toolchain we develop with.
+        node: [22, 24]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v6

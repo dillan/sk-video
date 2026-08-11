@@ -124,11 +124,11 @@ describe('registerTestRoutes', () => {
     expect(runFfprobe).not.toHaveBeenCalled();
   });
 
-  it('reports a friendly message when ffprobe is not installed', async () => {
+  it('reports a friendly message when the ffprobe container job cannot run', async () => {
     const { call } = setup({ runFfprobe: vi.fn().mockRejectedValue(new Error('ENOENT')) });
     const res = await call(RTSP);
     expect(res.statusCode).toBe(200);
     expect((res.body as { ok: boolean; message: string }).ok).toBe(false);
-    expect((res.body as { message: string }).message).toContain('ffmpeg');
+    expect((res.body as { message: string }).message).toContain('signalk-container');
   });
 });

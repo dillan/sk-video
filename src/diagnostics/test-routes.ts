@@ -71,10 +71,11 @@ export function registerTestRoutes(router: IRouter, ctx: ITestContext): void {
       const outcome = await ctx.runFfprobe(buildFfprobeArgs(url, timeout), timeout);
       res.json(evaluateFfprobe(outcome));
     } catch {
-      // ffprobe missing or the runner threw — surface a clear, non-fatal result.
+      // ffprobe runs as a one-off container job; route failures stay non-fatal for the config UI.
       res.json({
         ok: false,
-        message: 'Couldn’t run the test (is ffmpeg installed on the server?).',
+        message:
+          'Couldn’t run the containerized camera test. Check signalk-container and Docker/Podman.',
       });
     }
   });
