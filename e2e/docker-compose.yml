@@ -26,7 +26,7 @@ services:
       retries: 20
 
   signalk:
-    build: ./signalk-image # signalk/signalk-server:latest + ffmpeg (for go2rtc snapshots/transcode)
+    build: ./signalk-image # signalk/signalk-server:latest + signalk-container
     container_name: skv-signalk
     depends_on:
       mediamtx:
@@ -35,7 +35,7 @@ services:
     # (see README — do not expose this stack). The plugin's own security envelope is still in force.
     entrypoint: ['node', '/home/node/signalk/node_modules/signalk-server/bin/signalk-server']
     environment:
-      # Let the plugin reach the internet once to fetch the pinned go2rtc binary.
+      # Let signalk-container detect that it is running in Docker.
       IS_IN_DOCKER: 'true'
     ports:
       - '${SIGNALK_PORT:-3000}:3000'
@@ -44,6 +44,7 @@ services:
       # The built plugin (with its node_modules) and the built KIP webapp, mounted read-only.
       - ../:/home/node/.signalk/node_modules/sk-video:ro
       - ${KIP_PATH:-../../kip}:/home/node/.signalk/node_modules/@mxtommy/kip:ro
+      - /var/run/docker.sock:/var/run/docker.sock
 
   # Opt-in: a virtual ONVIF Profile-S device wrapping the mediamtx stream, for exercising PTZ.
   # ONVIF/PTZ are unicast HTTP and work over this network; WS-Discovery needs multicast (see README).

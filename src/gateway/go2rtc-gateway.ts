@@ -4,15 +4,16 @@ import type { ICamera } from '../cameras/camera-validation';
 import type { ICameraCredentials } from './go2rtc-source';
 import { buildGo2rtcConfig, DEFAULT_GO2RTC_PORTS, type IGo2rtcPorts } from './go2rtc-config';
 
-/** Controls the go2rtc child process. */
+/** Controls the go2rtc runtime process or managed container. */
 export interface IProcessController {
-  start(binaryPath: string, configPath: string): void;
-  restart(binaryPath: string, configPath: string): void;
+  start(binaryPath: string, configPath: string): void | Promise<void>;
+  restart(binaryPath: string, configPath: string): void | Promise<void>;
   stop(): Promise<void>;
   readonly running: boolean;
+  readonly apiBaseUrl?: string;
 }
 
-/** Provides the path to the go2rtc binary. */
+/** Ensures the go2rtc runtime is available before starting it. */
 export interface IBinaryProvider {
   ensure(): Promise<string>;
 }
@@ -22,6 +23,7 @@ export interface IGo2rtcGatewayOptions {
   binary: IBinaryProvider;
   process: IProcessController;
   ports?: IGo2rtcPorts;
+  apiListenHost?: string;
   /** Injectable config writer for testing. */
   writeConfig?: (path: string, config: Record<string, unknown>) => void;
   /** Injectable config remover for testing. */
@@ -45,6 +47,10 @@ export class Go2rtcGateway {
     return (this.opts.ports ?? DEFAULT_GO2RTC_PORTS).api;
   }
 
+  get apiBaseUrl(): string {
+    return this.opts.process.apiBaseUrl ?? `http://127.0.0.1:${this.apiPort}`;
+  }
+
   async sync(
     cameras: Record<string, ICamera>,
     credentials: Record<string, ICameraCredentials>,
@@ -59,14 +65,19 @@ export class Go2rtcGateway {
       return;
     }
 
-    const config = buildGo2rtcConfig({ cameras, credentials, ports: this.opts.ports });
+    const config = buildGo2rtcConfig({
+      cameras,
+      credentials,
+      ports: this.opts.ports,
+      apiListenHost: this.opts.apiListenHost,
+    });
     this.write(config);
 
     const binaryPath = await this.opts.binary.ensure();
     if (this.opts.process.running) {
-      this.opts.process.restart(binaryPath, this.configPath);
+      await this.opts.process.restart(binaryPath, this.configPath);
     } else {
-      this.opts.process.start(binaryPath, this.configPath);
+      await this.opts.process.start(binaryPath, this.configPath);
     }
   }
 

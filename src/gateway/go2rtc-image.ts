@@ -1,0 +1,3 @@
+export const GO2RTC_CONTAINER_IMAGE = 'alexxit/go2rtc';
+export const GO2RTC_CONTAINER_TAG = '1.9.14';
+export const GO2RTC_CONTAINER_REF = `${GO2RTC_CONTAINER_IMAGE}:${GO2RTC_CONTAINER_TAG}`;
